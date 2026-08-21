@@ -1871,11 +1871,11 @@ fn app_settings_save(projects_root: String) -> Result<serde_json::Value, String>
     Ok(serde_json::json!({ "projectsRoot": trimmed }))
 }
 
-/// Native: create a new project folder under the configured projects root.
-/// Returns `{ path }` on success, an error message on invalid name / conflict.
+/// Native: create a new project folder under an explicit or configured projects root.
+/// Returns `{ path }` on success, an error message on invalid input / conflict.
 /// Never needs the sidecar.
 #[tauri::command]
-fn app_create_project(name: String) -> Result<serde_json::Value, String> {
+fn app_create_project(name: String, base_dir: Option<String>) -> Result<serde_json::Value, String> {
     let name = name.trim();
     if !is_valid_project_name(name) {
         return Err(
@@ -1883,18 +1883,35 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
                 .to_string(),
         );
     }
-    // Resolve the projects root the same way app_settings_get does.
-    let settings = app_settings_get();
-    let root = settings
-        .get("projectsRoot")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_else(default_projects_root);
+    let root = match base_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(explicit) => {
+            let path = PathBuf::from(explicit);
+            if !path.is_absolute() {
+                return Err("Project location must be an absolute path.".to_string());
+            }
+            if !path.is_dir() {
+                return Err("Project location must be an existing folder.".to_string());
+            }
+            path
+        }
+        None => {
+            let settings = app_settings_get();
+            settings
+                .get("projectsRoot")
+                .and_then(|value| value.as_str())
+                .map(PathBuf::from)
+                .unwrap_or_else(default_projects_root)
+        }
+    };
     let dir = root.join(name);
     if dir.exists() {
         return Err(format!("A folder named \"{name}\" already exists."));
     }
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir(&dir).map_err(|error| error.to_string())?;
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
@@ -3345,8 +3362,8 @@ fn build_app_window_with_visibility(
     visible: bool,
 ) -> Result<WebviewWindow, String> {
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
-        .title("GG Coder")
-        .inner_size(1024.0, 720.0)
+        .title("OrcaCoder")
+        .inner_size(1024.0, 660.0)
         .min_inner_size(480.0, 360.0)
         .background_color(APP_BG)
         .visible(visible);
@@ -3832,7 +3849,7 @@ fn init_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         // Template tinting is a macOS concept; on Windows it must stay off or the
         // colour tile would be flattened.
         .icon_as_template(cfg!(target_os = "macos"))
-        .tooltip("GG Coder")
+        .tooltip("OrcaCoder")
         .menu(&build_tray_menu(app, &TrayStatus::default())?)
         // The icon has no action other than its menu, so a click that did nothing
         // would read as broken. Right-click opens it too (tray-icon defaults
@@ -4588,7 +4605,7 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
 
             let Some(delay) = daemon_respawn_delay(attempt) else {
                 let message =
-                    "Agent daemon stopped after repeated crashes. Restart GG Coder to try again.";
+                    "Agent daemon stopped after repeated crashes. Restart OrcaCoder to try again.";
                 log::error!("daemon crash circuit breaker opened after {attempt} crashes");
                 emit_daemon_error(&app2, message);
                 return;

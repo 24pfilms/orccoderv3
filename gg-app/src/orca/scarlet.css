@@ -1,0 +1,712 @@
+/* ============================================================================
+   Scarlet OrcaCoder theme (ported from OrcaCoder 0.10.2 — the shipped look).
+   Appended last so these scoped .orca-* / .scarlet-* rules win over the
+   base layout for the home, project picker, and login screens. Consumes the
+   --orca-wp-* / --orca-glass tokens written at runtime by orca-theme.ts.
+   ============================================================================ */
+
+/* Wallpaper layer — pinned behind all app content via React div in App.tsx. */
+.orca-wallpaper {
+  /* Absolute (not fixed) + scoped to the isolated .app stacking context so this
+     z-index:-1 layer reliably paints behind chat content and above the window
+     backing — a root-level fixed layer was being covered on the chat screen. */
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 120% 80% at 10% 90%, var(--orca-wp-5) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 60% at 80% 80%, var(--orca-wp-6) 0%, transparent 45%),
+    radial-gradient(ellipse 80% 70% at 60% 60%, var(--orca-wp-4) 0%, transparent 50%),
+    radial-gradient(ellipse 90% 80% at 30% 40%, var(--orca-wp-3) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 20%, var(--orca-wp-7) 0%, transparent 40%),
+    radial-gradient(ellipse 100% 90% at 50% 10%, var(--orca-wp-2) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 70% 95%, var(--orca-wp-8) 0%, transparent 35%),
+    linear-gradient(
+      180deg,
+      var(--orca-wp-1) 0%,
+      var(--orca-wp-2) 30%,
+      var(--orca-wp-3) 60%,
+      var(--orca-wp-1) 100%
+    );
+  filter: brightness(var(--orca-brightness)) saturate(var(--orca-saturation));
+  transition: filter 0.4s ease;
+}
+
+/* Glass surfaces (opt-in via .orca-glass). */
+.orca-glass {
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* ── Scarlet landing redesign (landing screen only) ── */
+.home {
+  --scarlet-primary: #ef4444;
+  --scarlet-ember: #ff7a6b;
+  --scarlet-deep: #dc2626;
+  --scarlet-text: #ffffff;
+  --scarlet-muted: rgba(255, 255, 255, 0.46);
+  --scarlet-hairline: rgba(239, 68, 68, 0.22);
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 0;
+  padding: 18px 22px 48px;
+  overflow-y: auto;
+  background: radial-gradient(120% 90% at 30% 0%, #160b09 0%, #0a0605 70%), #0a0605;
+  color: var(--scarlet-text);
+  font-family: "Space Grotesk", var(--sans);
+}
+.home::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 38% 18%, rgba(239, 68, 68, 0.11), transparent 34%),
+    radial-gradient(circle at 78% 72%, rgba(255, 122, 107, 0.055), transparent 34%);
+  opacity: 0.9;
+}
+.home-backdrop {
+  opacity: 0.08;
+  filter: sepia(1) saturate(2.2) hue-rotate(310deg);
+  mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 16%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 16%, transparent 100%);
+}
+.scarlet-deck {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 580px;
+  min-height: 0;
+  max-height: 580px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.95fr) minmax(280px, 300px);
+  gap: 22px;
+  width: min(100%, 1040px);
+  margin: auto;
+}
+.home > .scarlet-deck {
+  animation: reveal-up 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.scarlet-hero-card,
+.scarlet-controls {
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(22, 12, 10, 0.88), rgba(12, 6, 5, 0.9)), #100807;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 0 0 1px rgba(255, 255, 255, 0.015);
+}
+.scarlet-hero-card {
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(14px, 2.2vh, 24px) clamp(28px, 4.8vw, 40px) clamp(20px, 3vh, 30px);
+  justify-content: center;
+  gap: 0;
+  overflow: visible;
+  white-space: normal;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  animation: none;
+}
+.scarlet-hero-card * {
+  -webkit-text-fill-color: currentColor;
+}
+.scarlet-orca-well {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(46%, 280px);
+  margin: 0 auto clamp(8px, 1.8vh, 14px);
+  aspect-ratio: 1.12 / 1;
+}
+.scarlet-orca-well::before {
+  content: "";
+  position: absolute;
+  inset: 7% 3% 4%;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, rgba(239, 68, 68, 0.2), transparent 72%);
+  filter: blur(5px);
+}
+.orca-logo {
+  position: relative;
+  width: min(100%, 300px);
+  max-height: none;
+  object-fit: contain;
+  border-radius: 16px;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 8px 30px rgba(239, 68, 68, 0.3));
+}
+.orca-brand-title {
+  font-family: "Space Grotesk", var(--sans);
+  font-size: clamp(42px, 6.4vw, 68px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+  color: #fff;
+  text-shadow:
+    0 0 30px rgba(239, 68, 68, 0.28),
+    0 2px 14px rgba(0, 0, 0, 0.55);
+}
+.orca-brand-version {
+  margin-top: clamp(10px, 1.5vh, 16px);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.42em;
+  color: rgba(255, 255, 255, 0.5);
+  text-shadow: none;
+}
+.scarlet-eyebrow {
+  margin-top: clamp(16px, 2.3vh, 24px);
+  padding-left: 0.28em;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #ff7a7a;
+  text-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+}
+.scarlet-subcopy {
+  margin-top: 18px;
+  font-size: clamp(15px, 1.7vw, 21px);
+  font-weight: 400;
+  color: var(--scarlet-muted);
+}
+.scarlet-status-pills {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-top: clamp(18px, 2.5vh, 26px);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.scarlet-status-pills span {
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: #ffb0b0;
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+.scarlet-status-pills .scarlet-pill-muted {
+  color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.025);
+}
+.scarlet-controls {
+  display: flex;
+  flex-direction: column;
+  width: auto;
+  padding: 48px 24px 32px;
+}
+.scarlet-panel-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 25px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.76);
+  text-align: left;
+}
+.scarlet-panel-head span {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.65), transparent 72%);
+}
+.scarlet-control-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin-top: 42px;
+  margin-bottom: 0;
+}
+.home-btn.scarlet-primary,
+.home-btn.scarlet-secondary {
+  height: 54px;
+  width: 100%;
+  padding: 0 22px;
+  border-radius: 14px;
+  font-family: "Space Grotesk", var(--sans);
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.home-btn.scarlet-primary {
+  border: none;
+  color: #fff;
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  box-shadow:
+    0 8px 26px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.home-btn.scarlet-primary:hover {
+  filter: brightness(1.05);
+  box-shadow:
+    0 10px 34px rgba(239, 68, 68, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.home-btn.scarlet-secondary {
+  color: rgba(255, 255, 255, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.home-btn.scarlet-secondary:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.scarlet-iconbar {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+.scarlet-iconbar .home-settings {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+.scarlet-iconbar .home-settings:first-child {
+  color: #ff7a7a;
+}
+.scarlet-iconbar .home-settings:hover {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+.scarlet-controls .home-serve-active {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.12));
+  box-shadow:
+    0 0 22px rgba(239, 68, 68, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.scarlet-footer {
+  position: absolute;
+  left: calc(22px + max(0px, (100% - 44px - 1040px) / 2));
+  right: auto;
+  bottom: 6px;
+  z-index: 1;
+  width: calc(min(100% - 44px, 1040px) - 322px);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.66);
+  text-align: center;
+}
+.scarlet-footer .scarlet-heart {
+  display: inline-block;
+  color: #ff3347;
+  font-size: 1.28em;
+  line-height: 0;
+  vertical-align: -0.08em;
+  text-shadow:
+    0 0 10px rgba(255, 51, 71, 0.9),
+    0 0 20px rgba(239, 68, 68, 0.55);
+}
+.scarlet-footer a {
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.scarlet-footer a:hover {
+  color: #ffb0b0;
+  text-decoration: underline;
+}
+.home .modal-backdrop {
+  background: rgba(3, 1, 1, 0.68);
+  backdrop-filter: blur(2px);
+}
+.home .modal {
+  background:
+    linear-gradient(180deg, rgba(22, 12, 10, 0.96), rgba(12, 6, 5, 0.97)), #100807 !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 18px 54px rgba(0, 0, 0, 0.58),
+    0 0 34px rgba(239, 68, 68, 0.12);
+  font-family: "Space Grotesk", var(--sans);
+}
+.home .modal-title {
+  color: #fff !important;
+  font-family: "Space Grotesk", var(--sans);
+  font-weight: 700;
+}
+.home .modal-close {
+  color: rgba(255, 122, 122, 0.62);
+}
+.home .modal-close:hover {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.36);
+  background: rgba(239, 68, 68, 0.1);
+}
+.home .modal-label {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+.home .modal-hint {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+.home .modal-input {
+  color: #fff !important;
+  background: rgba(5, 3, 3, 0.72) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+.home .modal-input:focus {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.22),
+    0 0 18px rgba(239, 68, 68, 0.12);
+}
+.home .modal-btn {
+  color: rgba(255, 255, 255, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.home .modal-btn:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.45);
+  filter: none;
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.home .modal-btn.primary {
+  color: #fff;
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 8px 26px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.home .modal-btn.primary:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.05);
+  box-shadow:
+    0 10px 34px rgba(239, 68, 68, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Scarlet Pod Deck / project picker. */
+.scarlet-pod {
+  background: radial-gradient(120% 90% at 30% 0%, #160b09 0%, #0a0605 70%), #0a0605;
+  color: #fff;
+  font-family: "Space Grotesk", var(--sans);
+}
+.scarlet-pod .picker-head {
+  border-bottom-color: rgba(239, 68, 68, 0.22);
+  background: rgba(10, 6, 5, 0.86);
+}
+.scarlet-pod .picker-title,
+.scarlet-pod .picker-name {
+  color: #fff !important;
+}
+.scarlet-pod .picker-list {
+  background:
+    radial-gradient(circle at 48% 45%, rgba(239, 68, 68, 0.055), transparent 34%),
+    rgba(5, 3, 3, 0.32);
+}
+.scarlet-pod .picker-list::-webkit-scrollbar-thumb {
+  background: rgba(239, 68, 68, 0.55);
+}
+.scarlet-pod .picker-item {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    rgba(12, 6, 5, 0.86);
+  border-color: rgba(239, 68, 68, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+.scarlet-pod .picker-item:hover {
+  background:
+    linear-gradient(180deg, rgba(239, 68, 68, 0.09), rgba(255, 255, 255, 0.018)),
+    rgba(18, 9, 8, 0.96);
+  border-color: rgba(239, 68, 68, 0.46);
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+.scarlet-pod .picker-empty,
+.scarlet-pod .picker-meta,
+.scarlet-pod .picker-sources {
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+.scarlet-pod .picker-search {
+  color: #fff;
+  background: rgba(5, 3, 3, 0.72);
+  border-color: rgba(239, 68, 68, 0.24);
+}
+.scarlet-pod .picker-search:focus {
+  background: rgba(10, 6, 5, 0.92);
+  border-color: rgba(239, 68, 68, 0.55);
+}
+.scarlet-pod .badge {
+  color: #ffb0b0 !important;
+  border-color: rgba(239, 68, 68, 0.42) !important;
+  background-color: rgba(239, 68, 68, 0.11) !important;
+}
+.scarlet-pod .btn-primary {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  box-shadow:
+    0 8px 26px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.scarlet-pod .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow:
+    0 10px 34px rgba(239, 68, 68, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.scarlet-pod .btn-ghost {
+  color: #ffb0b0;
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.07);
+}
+.scarlet-pod .btn-ghost:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(239, 68, 68, 0.12);
+}
+.scarlet-pod .modal-backdrop {
+  background: rgba(3, 1, 1, 0.68);
+  backdrop-filter: blur(2px);
+}
+.scarlet-pod .modal {
+  background:
+    linear-gradient(180deg, rgba(22, 12, 10, 0.96), rgba(12, 6, 5, 0.97)), #100807 !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+}
+.scarlet-pod .modal-title,
+.scarlet-pod .modal-label {
+  color: #fff !important;
+}
+.scarlet-pod .modal-input {
+  color: #fff !important;
+  background: rgba(5, 3, 3, 0.72) !important;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+}
+.scarlet-pod .modal-btn.primary {
+  color: #fff;
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 8px 26px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Scarlet AI-provider screen + provider modals. */
+.scarlet-login {
+  background: radial-gradient(120% 90% at 30% 0%, #160b09 0%, #0a0605 70%), #0a0605;
+  color: #fff;
+  font-family: "Space Grotesk", var(--sans);
+}
+.scarlet-login .picker-head {
+  border-bottom-color: rgba(239, 68, 68, 0.22);
+  background: rgba(10, 6, 5, 0.86);
+}
+.scarlet-login .picker-title {
+  color: #fff;
+}
+.scarlet-login .btn-ghost {
+  color: #ffb0b0;
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.07);
+}
+.scarlet-login .btn-ghost:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(239, 68, 68, 0.12);
+}
+.scarlet-login .login-list {
+  padding: 12px;
+  background: rgba(5, 3, 3, 0.32);
+}
+.scarlet-login .login-list::-webkit-scrollbar-thumb {
+  background: rgba(239, 68, 68, 0.55);
+}
+.scarlet-login .login-item {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    rgba(12, 6, 5, 0.86);
+  border-color: rgba(239, 68, 68, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+.scarlet-login .login-item:hover {
+  background:
+    linear-gradient(180deg, rgba(239, 68, 68, 0.09), rgba(255, 255, 255, 0.018)),
+    rgba(18, 9, 8, 0.96);
+  border-color: rgba(239, 68, 68, 0.46);
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+.scarlet-login .login-item-name {
+  color: #fff;
+}
+.scarlet-login .login-item-desc,
+.scarlet-login .login-modal-desc,
+.scarlet-login .login-status {
+  color: rgba(255, 255, 255, 0.58);
+}
+.scarlet-login .badge {
+  color: #ffb0b0 !important;
+  border-color: rgba(239, 68, 68, 0.42) !important;
+  background-color: rgba(239, 68, 68, 0.11) !important;
+}
+.scarlet-login .modal-backdrop {
+  background: rgba(3, 1, 1, 0.68);
+  backdrop-filter: blur(2px);
+}
+.scarlet-login .modal {
+  background:
+    linear-gradient(180deg, rgba(22, 12, 10, 0.96), rgba(12, 6, 5, 0.97)), #100807 !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.58),
+    0 0 34px rgba(239, 68, 68, 0.12);
+}
+.scarlet-login .modal-title,
+.scarlet-login .modal-label {
+  color: #fff !important;
+}
+.scarlet-login .modal-input {
+  color: #fff !important;
+  background: rgba(5, 3, 3, 0.72) !important;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+}
+.scarlet-login .modal-input:focus {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+.scarlet-login .modal-btn {
+  color: rgba(255, 255, 255, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.scarlet-login .modal-btn.primary {
+  color: #fff;
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 8px 26px rgba(239, 68, 68, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+@media (max-width: 760px) {
+  .home {
+    padding: 14px;
+    overflow-y: auto;
+  }
+  .scarlet-deck {
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-height: none;
+  }
+  .scarlet-controls {
+    min-height: 360px;
+  }
+  .scarlet-footer {
+    left: 14px;
+    right: 14px;
+    width: auto;
+  }
+  .scarlet-panel-head {
+    font-size: 17px;
+  }
+}
+.scarlet-deck > .scarlet-hero-card {
+  width: auto;
+  margin: 0;
+}
+.scarlet-iconbar {
+  gap: 10px;
+}
+.scarlet-iconbar .home-settings.is-dimmed {
+  opacity: 0.45;
+}
+@media (max-height: 760px) and (min-width: 761px) {
+  .home {
+    padding: 12px 18px 42px;
+  }
+  .scarlet-deck {
+    gap: 16px;
+  }
+  .scarlet-hero-card {
+    padding: 10px 24px 14px;
+  }
+  .scarlet-orca-well {
+    width: min(35%, 210px);
+    margin-bottom: 4px;
+  }
+  .orca-brand-title {
+    font-size: clamp(34px, 5vw, 52px);
+  }
+  .orca-brand-version {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+  .scarlet-eyebrow {
+    margin-top: 10px;
+    font-size: 11px;
+  }
+  .scarlet-subcopy {
+    margin-top: 10px;
+    font-size: 14px;
+  }
+  .scarlet-status-pills {
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 11px;
+  }
+  .scarlet-status-pills span {
+    padding: 5px 11px;
+  }
+  .scarlet-controls {
+    padding: 24px 18px 18px;
+  }
+  .scarlet-panel-head {
+    gap: 14px;
+    font-size: 18px;
+  }
+  .scarlet-control-buttons {
+    gap: 8px;
+  }
+  .home-btn.scarlet-primary,
+  .home-btn.scarlet-secondary {
+    height: 46px;
+  }
+  .scarlet-iconbar {
+    padding-top: 14px;
+  }
+  .scarlet-iconbar .home-settings {
+    width: 40px;
+    height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home > .scarlet-deck {
+    animation: none;
+  }
+}

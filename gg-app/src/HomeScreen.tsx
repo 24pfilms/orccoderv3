@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { Settings, Download } from "lucide-react";
-import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Download, MessageCircle, Send, Settings } from "lucide-react";
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeBackdrop } from "./HomeBackdrop";
-import { MemeLayer } from "./MemeLayer";
 import { SettingsModal } from "./SettingsModal";
 import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
+import { SoundButton } from "./SoundButton";
 import {
   waitForReady,
   getSettings,
@@ -15,13 +14,8 @@ import {
   getServeStatus,
   startServe,
   stopServe,
-  openWhatsNewWindow,
-  getProgress,
   setRemoteActive,
-  type ProgressSnapshot,
 } from "./agent";
-import { RankBadge } from "./RankBadge";
-import { ScorecardModal } from "./ScorecardModal";
 import { useAppUpdate } from "./update";
 import { toast } from "./toast";
 
@@ -38,7 +32,7 @@ interface Props {
 }
 
 /**
- * App entry screen: the shimmering GG Coder banner over the primary actions.
+ * App entry screen: the Scarlet OrcaCoder hero over the primary actions.
  * Code and Chat require a configured workspace folder and connected AI provider.
  */
 export function HomeScreen({
@@ -55,20 +49,7 @@ export function HomeScreen({
   const [serving, setServing] = useState(false);
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [serveBusy, setServeBusy] = useState(false);
-  const [version, setVersion] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
-  const [showScorecard, setShowScorecard] = useState(false);
   const appUpdate = useAppUpdate();
-
-  useEffect(() => {
-    void getVersion()
-      .then(setVersion)
-      .catch(() => {});
-    void waitForReady()
-      .then(() => getProgress())
-      .then(setProgress)
-      .catch(() => {});
-  }, []);
 
   async function refresh(): Promise<void> {
     // Settings + auth are read NATIVELY (Rust) — do them first, WITHOUT waiting on
@@ -157,7 +138,6 @@ export function HomeScreen({
   return (
     <div className="home" data-tauri-drag-region>
       <HomeBackdrop />
-      <MemeLayer />
       {appUpdate.phase === "available" || appUpdate.phase === "installing" ? (
         <button
           className={`home-update${appUpdate.phase === "installing" ? " home-update-progress" : ""}`}
@@ -169,10 +149,6 @@ export function HomeScreen({
             <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
           )}
           <Download size={14} strokeWidth={2.25} aria-hidden="true" />
-          {/* Both labels occupy the same grid cell; the inactive one is
-              visibility:hidden, so the pill is ALWAYS sized to the wider of
-              the two and never resizes when the install starts or the
-              percentage climbs. */}
           <span className="home-update-swap">
             <span className={appUpdate.phase === "installing" ? "home-update-hidden" : undefined}>
               {`Update to ${appUpdate.version}`}
@@ -183,107 +159,87 @@ export function HomeScreen({
             </span>
           </span>
         </button>
-      ) : (
-        version && (
-          <div className="home-version-row">
-            <span className="home-version">{`v${version}`}</span>
-            <RankBadge
-              snapshot={progress}
-              onClick={() => setShowScorecard(true)}
-              className="home-rank-badge"
-            />
+      ) : null}
+
+      <div className="scarlet-deck">
+        <AsciiLogo folderSet={folderSet} providerCount={providerCount} serving={serving} />
+        <aside className="home-actions scarlet-controls" aria-label="Mission controls">
+          <div className="scarlet-panel-head">
+            <div>Mission Controls</div>
+            <span aria-hidden="true" />
+          </div>
+
+          <div className="scarlet-control-buttons">
             <button
-              className="home-whatsnew"
-              type="button"
-              title="See the latest updates"
-              onClick={() => void openWhatsNewWindow().catch(() => {})}
+              className={`btn btn-primary btn-lg home-btn scarlet-primary${ready ? "" : " is-dimmed"}`}
+              aria-disabled={!ready}
+              onClick={() => handleWorkspace(onProjects)}
             >
-              What&apos;s new
+              Enter Pod Dock
+            </button>
+            <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
+              Connect AI Providers
+            </button>
+            <button
+              className="btn btn-ghost btn-lg home-btn scarlet-secondary"
+              title="Manage MCP servers"
+              onClick={() => setShowMcp(true)}
+            >
+              MCP Channels
+            </button>
+            <button
+              className={`btn btn-ghost btn-lg home-btn scarlet-secondary${serving ? " home-serve-active" : ""}`}
+              disabled={serveBusy}
+              onClick={() => void handleServe()}
+            >
+              {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote Pod" : "Remote Pod"}
             </button>
           </div>
-        )
-      )}
-      <AsciiLogo />
-      <div className="home-tagline">Cause the other coding agents piss me off</div>
-      <div className="home-byline">
-        By Ken Kai
-        <span className="home-byline-sep">{"\u00b7"}</span>
-        <a
-          className="home-link"
-          href="https://skool.com/kenkai"
-          onClick={(e) => {
-            e.preventDefault();
-            void openUrl("https://skool.com/kenkai");
-          }}
-        >
-          Skool
-        </a>
-        <span className="home-byline-sep">{"\u00b7"}</span>
-        <a
-          className="home-link"
-          href="https://youtube.com/@kenkaidoesai"
-          onClick={(e) => {
-            e.preventDefault();
-            void openUrl("https://youtube.com/@kenkaidoesai");
-          }}
-        >
-          YouTube
-        </a>
-      </div>
-      <div className="home-actions">
-        <div className="home-projects-row home-primary-row">
-          <button
-            className={`btn btn-primary btn-lg home-btn${ready ? "" : " is-dimmed"}`}
-            aria-disabled={!ready}
-            onClick={() => handleWorkspace(onProjects)}
-          >
-            Code
-          </button>
-          <button
-            className={`btn btn-primary btn-lg home-btn${ready ? "" : " is-dimmed"}`}
-            aria-disabled={!ready}
-            onClick={() => handleWorkspace(onChat)}
-          >
-            Chat
-          </button>
-          <button
-            className="btn btn-ghost btn-icon btn-nav-icon home-settings"
-            title="Settings"
-            onClick={() => setShowSettings(true)}
-          >
-            <Settings size={20} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="home-projects-row">
-          <button className="btn btn-ghost btn-lg home-btn" onClick={onLogin}>
-            Login to AI Providers
-          </button>
-          <button
-            className="btn btn-ghost btn-lg home-btn"
-            title="Manage MCP servers"
-            onClick={() => setShowMcp(true)}
-          >
-            MCP
-          </button>
-        </div>
-        <div className="home-projects-row">
-          <button
-            className={`btn btn-ghost btn-lg home-btn${serving ? " home-serve-active" : ""}`}
-            disabled={serveBusy}
-            onClick={() => void handleServe()}
-          >
-            {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote · Stop" : "Remote"}
-          </button>
-          <button
-            className="btn btn-ghost btn-icon btn-nav-icon home-settings"
-            title="Telegram setup"
-            onClick={() => setShowTelegram(true)}
-          >
-            <Settings size={20} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </div>
+
+          <div className="scarlet-iconbar" aria-label="Landing utilities">
+            <SoundButton />
+            <button
+              className={`btn btn-ghost btn-icon home-settings${ready ? "" : " is-dimmed"}`}
+              aria-disabled={!ready}
+              title="Open Orca Chat"
+              onClick={() => handleWorkspace(onChat)}
+            >
+              <MessageCircle size={20} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <button
+              className="btn btn-ghost btn-icon home-settings"
+              title="Settings"
+              onClick={() => setShowSettings(true)}
+            >
+              <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <button
+              className="btn btn-ghost btn-icon home-settings"
+              title="Telegram setup"
+              onClick={() => setShowTelegram(true)}
+            >
+              <Send size={20} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </div>
+        </aside>
       </div>
 
+      <div className="scarlet-footer" aria-label="Made by SquareCircleLabs.com">
+        Made with{" "}
+        <span className="scarlet-heart" aria-hidden="true">
+          ♥
+        </span>{" "}
+        by{" "}
+        <a
+          href="https://squarecirclelabs.com"
+          onClick={(event) => {
+            event.preventDefault();
+            void openUrl("https://squarecirclelabs.com");
+          }}
+        >
+          SquareCircleLabs.com
+        </a>
+      </div>
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}
@@ -300,9 +256,6 @@ export function HomeScreen({
         />
       )}
       {showMcp && <McpModal onClose={() => setShowMcp(false)} />}
-      {showScorecard && progress && (
-        <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
-      )}
     </div>
   );
 }

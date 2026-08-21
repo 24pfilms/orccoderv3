@@ -22,7 +22,7 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 
   it("routes only real user-level questions/options to HUMAN", () => {
-    // Leak regression: without this rule, GG Coder ending with "want me to…?"
+    // Leak regression: without this rule, OrcaCoder ending with "want me to…?"
     // or an A/B/C menu reads as "unfinished" and Ken answers for the user.
     // But the inverse matters too: permission to continue obvious safe work is
     // NOT a user decision and should be a PROMPT, not a blocker. This is a
@@ -77,12 +77,12 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
     // prompt; autopilot Ken carried that habit over and front-loaded reasoning
     // prose before the keyword, which parsed as a HUMAN stop and stalled the
     // cycle. The contract must name the habit and give the why exactly one
-    // legal home: inside the PROMPT body, only when GG Coder needs it.
+    // legal home: inside the PROMPT body, only when OrcaCoder needs it.
     expect(prompt).toContain("NOT ");
     expect(prompt).toContain("no audience for a why");
     expect(prompt).toContain("Never justify your verdict");
     expect(prompt).toContain("INSIDE a PROMPT body");
-    expect(prompt).toContain("when GG Coder itself needs it");
+    expect(prompt).toContain("when OrcaCoder itself needs it");
   });
 
   it("shows a contrastive WRONG/RIGHT example of the drift", () => {
@@ -102,10 +102,18 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 });
 
-describe("buildKenSystemPrompt — chat mode unaffected", () => {
+describe("buildKenSystemPrompt — public Orca identity", () => {
+  it("presents the mentor as Orca without exposing the internal Ken name", async () => {
+    const prompt = await buildKenSystemPrompt(TEST_CWD);
+    expect(prompt).toContain("You are Orca");
+    expect(prompt).toContain("your public name is Orca");
+    expect(prompt).toContain("You're Orca");
+    expect(prompt).not.toContain("You're Ken");
+  });
+
   it("keeps the chat output contract (prompt fence) and no verdict keywords", async () => {
     const prompt = await buildKenSystemPrompt(TEST_CWD);
-    expect(prompt).toContain("Send to GG Coder");
+    expect(prompt).toContain("Send to OrcaCoder");
     // The verdict contract is autopilot-only.
     expect(prompt).not.toContain("ALL_CLEAR");
   });
@@ -129,16 +137,16 @@ describe("UI guidance alignment", () => {
   });
 });
 
-describe("GG Coder capabilities — both modes know what the executor can do", () => {
-  it("teaches Ken GG Coder's real toolset in chat AND autopilot", async () => {
-    // Ken directs GG Coder, so both prompts must ground his instructions in the
+describe("OrcaCoder capabilities — both modes know what the executor can do", () => {
+  it("teaches Ken OrcaCoder's real toolset in chat AND autopilot", async () => {
+    // Ken directs OrcaCoder, so both prompts must ground his instructions in the
     // executor's actual capabilities (plan mode, subagents, bash, screenshots),
     // not leave him guessing from the transcript.
     for (const prompt of [
       await buildKenSystemPrompt(TEST_CWD),
       await buildKenAutopilotSystemPrompt(TEST_CWD),
     ]) {
-      expect(prompt).toContain("What GG Coder can do");
+      expect(prompt).toContain("What OrcaCoder can do");
       expect(prompt).toContain("enter_plan");
       expect(prompt).toContain("subagents");
       expect(prompt).toContain("bash");
@@ -146,9 +154,9 @@ describe("GG Coder capabilities — both modes know what the executor can do", (
     }
   });
 
-  it("draws the boundary: Ken's own tools check, GG Coder's tools build", async () => {
+  it("draws the boundary: Ken's own tools check, OrcaCoder's tools build", async () => {
     // Ken should verify facts with his own read-only tools before delegating,
-    // not send GG Coder to find out something he could confirm faster himself.
+    // not send OrcaCoder to find out something he could confirm faster himself.
     for (const prompt of [
       await buildKenSystemPrompt(TEST_CWD),
       await buildKenAutopilotSystemPrompt(TEST_CWD),

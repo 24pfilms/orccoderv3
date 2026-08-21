@@ -28,6 +28,16 @@ describe("ActivityBar plan progress", () => {
   });
 });
 
+describe("ActivityBar idle copy", () => {
+  it("uses Orca/ocean language", () => {
+    const { container } = render(<ActivityBar {...baseProps} running={false} />);
+
+    expect(container.textContent).toMatch(
+      /Pod|Sonar|repo|seals|commit|Floating|barnacles|Hydrophone|migration|Regex/,
+    );
+  });
+});
+
 describe("ActivityBar cancellation state", () => {
   it("shows an enabled cancel action during a normal run", () => {
     render(<ActivityBar {...baseProps} />);

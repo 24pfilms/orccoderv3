@@ -29,21 +29,21 @@ const FRAME_MS = SPINNER_FRAME_MS;
  * funny like the wake screen, never meme-speak. The original stays first.
  */
 const READY_PHRASES = [
-  "Ready for work",
-  "Ready when you are",
-  "Your move",
-  "Standing by. Obviously.",
-  "Waiting on you, as usual",
-  "Doing nothing, expertly",
-  "Napping, but professionally",
-  "Polishing my tokens",
-  "Idling at 0 tokens/sec",
-  "Stretching my context window",
+  "Pod standing by",
+  "Sonar clear. Suspiciously clear.",
+  "Circling the repo. Not menacingly.",
+  "Holding position. Eating zero seals.",
+  "Waiting below the commit line",
+  "Floating with professional intent",
+  "Keeping barnacles off the context window",
+  "Hydrophone open. Gossip encrypted.",
+  "Pretending this migration was planned",
+  "Regex has been asked to remain ashore",
 ] as const;
 
 function pickReadyPhrase(exclude?: string): string {
   const pool = exclude ? READY_PHRASES.filter((p) => p !== exclude) : READY_PHRASES;
-  return pool[Math.floor(Math.random() * pool.length)] ?? "Ready for work";
+  return pool[Math.floor(Math.random() * pool.length)] ?? "Pod standing by";
 }
 
 function formatElapsed(ms: number): string {

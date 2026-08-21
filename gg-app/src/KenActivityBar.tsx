@@ -79,7 +79,7 @@ export function KenActivityBar({
           {SPINNER_FRAMES[frame]}
         </span>
         <span className="working" style={{ color: theme.ken }}>
-          {"Ken is thinking\u2026"}
+          {"Orca is thinking\u2026"}
         </span>
         <span style={{ color: theme.textMuted }}>
           {"("}

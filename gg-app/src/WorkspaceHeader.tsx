@@ -61,7 +61,7 @@ export function WorkspaceHeader({
   stripExtras,
   children,
 }: WorkspaceHeaderProps): React.ReactElement {
-  const fallbackTitle = workspaceMode === "chat" ? "GG Chat" : "GG Coder";
+  const fallbackTitle = workspaceMode === "chat" ? "Orca Chat" : "OrcaCoder";
   const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
   // Stable per-project colour, so a wall of identical dark windows becomes
   // identifiable at a glance. Published as a CSS variable (not just inlined on
@@ -70,7 +70,7 @@ export function WorkspaceHeader({
 
   return (
     <div
-      className="chat-head"
+      className="chat-head orca-glass"
       style={accent ? ({ "--project-accent": accent } as React.CSSProperties) : undefined}
     >
       <div className="chat-head-strip" data-tauri-drag-region>

@@ -46,6 +46,7 @@ function setup(
   // Track the outputs the assertions read; spy the rest so nothing throws.
   let liveToolFeed: LiveToolEntry[] = [];
   let planReview: string | null = null;
+  let doneStatus: string | null = null;
   const setLiveToolFeed = vi.fn(
     (u: LiveToolEntry[] | ((p: LiveToolEntry[]) => LiveToolEntry[])) => {
       liveToolFeed = typeof u === "function" ? u(liveToolFeed) : u;
@@ -90,7 +91,9 @@ function setup(
     setLiveToolFeed,
     setTokens,
     setContextTokens: noop as unknown as AgentEventsDeps["setContextTokens"],
-    setDoneStatus: noop as unknown as AgentEventsDeps["setDoneStatus"],
+    setDoneStatus: ((u: string | null | ((previous: string | null) => string | null)) => {
+      doneStatus = typeof u === "function" ? u(doneStatus) : u;
+    }) as AgentEventsDeps["setDoneStatus"],
     setIsThinking: noop as unknown as AgentEventsDeps["setIsThinking"],
     setThinkingStartTs: noop as unknown as AgentEventsDeps["setThinkingStartTs"],
     setThinkingAccumMs: noop as unknown as AgentEventsDeps["setThinkingAccumMs"],
@@ -122,6 +125,7 @@ function setup(
     },
     getLiveToolFeed: () => liveToolFeed,
     getPlanReview: () => planReview,
+    getDoneStatus: () => doneStatus,
     getState: () => agentState,
     getModels: () => models,
     setRunning,
@@ -131,6 +135,19 @@ function setup(
 
 describe("useAgentEvents", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("uses Orca/ocean copy when a run finishes without tools", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const { hook, getDoneStatus } = setup();
+
+    act(() => {
+      hook.result.current.handleEvent(ev("run_start"));
+      hook.result.current.handleEvent(ev("run_end", { cancelled: false }));
+    });
+
+    expect(getDoneStatus()).toMatch(/^Surfaced with an answer in /);
+    random.mockRestore();
+  });
 
   describe("queued pill lifecycle", () => {
     it("clears a bubble's queued pill as soon as the agent consumes it, mid-run", () => {

@@ -1,0 +1,310 @@
+/* ============================================================================
+   Orca Theme Kit — base OKLCH/APCA tokens (Warp × Linear × Resend synthesis)
+   + the runtime OrcaCoder overlay (wallpaper / glass / accent recolor).
+
+   Load order: import this ONCE at the app root. The --orca-wp-* / --orca-glass
+   / --primary tokens below are the STATIC defaults; orca-theme.ts overwrites
+   them at runtime from the selected palette. Keep the two in sync only when you
+   change the default palette (see VERSION / README).
+   ============================================================================ */
+
+:root {
+  /* Surfaces — cool charcoal ramp, elevation by ΔL only (no shadows). */
+  --bg: #0f1115;
+  --surface-1: #161922;
+  --surface-2: #1d212b;
+  --border: #272b36;
+  --border-strong: #353a47;
+
+  /* Text — neutral-cool, APCA-gated. */
+  --text: #f4f6f8;
+  --text-secondary: #c3c9d4;
+  --text-muted: #9aa3b2;
+  --text-dim: #5b6472;
+
+  /* OrcaCoder default: Scarlet red with ember-orange highlights. */
+  --primary: #ef4444;
+  --success: #36c489;
+  --warning: #e3a23f;
+  --error: #f2716e;
+  --secondary: #ff7a6b;
+  --info: #2dd4bf;
+
+  /* User identity — periwinkle text on a slate chip (mirrors the ggcoder TUI:
+     commandColor #818cf8 on the #374151 message fill). Shared by the user
+     bubble and the chat input. */
+  --user-text: #818cf8;
+  --user-bg: #313a49;
+
+  /* Ken Kai (mentor agent) — soft cyan/green. Single source of truth with
+     theme.ken in theme.ts; both MUST match or the inline-styled @Ken input
+     drifts from the CSS-styled chat bubbles. Marks every Ken element. */
+  --ken: #5ad1e6;
+
+  /* Shape system (Linear capsule-vs-card + Warp three radii). */
+  --radius-button: 6px;
+  --radius-card: 10px;
+  --radius-pill: 9999px;
+
+  /* Motion — brightness-on-hover (no movement). */
+  --t-fast: 0.15s ease;
+
+  /* Button system — glossy capsule pills. Vertical light→dark gradient and a
+     white inner top-highlight for sheen. No colored glow behind the pill. */
+  --grad-primary: linear-gradient(135deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  --gloss-primary: linear-gradient(180deg, #ff7a6b 0%, #ef4444 52%, #dc2626 100%);
+  --gloss-neutral: linear-gradient(180deg, #2a2e3a 0%, #1a1d26 100%);
+  --gloss-success: linear-gradient(180deg, #4ad69b 0%, #2fb87f 100%);
+  --gloss-shadow-primary: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  --gloss-shadow-neutral: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --gloss-shadow-success: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+
+  /* Fonts — same-family Geist Sans + Geist Mono. */
+  --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Orca overlay tokens. Runtime-applied by orca-theme.ts. Defaults = scarlet. */
+  --orca-wp-1: #0a0605;
+  --orca-wp-2: #160b09;
+  --orca-wp-3: #2b0c08;
+  --orca-wp-4: #4b110c;
+  --orca-wp-5: #7f1d1d;
+  --orca-wp-6: #dc2626;
+  --orca-wp-7: #ef4444;
+  --orca-wp-8: #ff7a6b;
+  --orca-brightness: 0.72;
+  --orca-saturation: 1.15;
+  --orca-glass: rgba(22, 12, 10, 0.42);
+  --orca-glass-solid: rgba(22, 12, 10, 0.72);
+  --orca-glass-hover: rgba(22, 12, 10, 0.52);
+  --orca-accent-glow: rgba(239, 68, 68, 0.3);
+}
+
+/* ── Button system (shared) ───────────────────────────────────────────────
+   .btn is the base; pair with .btn-primary (glossy accent pill), .btn-ghost
+   (glossy neutral pill), or .btn-success (glossy green pill). Pill-shaped, with
+   a vertical light→dark gradient, white inner top-highlight, and soft drop
+   shadow. Hover brightens the whole pill — no movement, no color swap. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  padding: 8px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    filter var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Primary — glossy accent pill. Brightens on hover. */
+.btn-primary {
+  background: var(--gloss-primary);
+  color: #f4f8ff;
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: var(--gloss-shadow-primary);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Success — glossy green pill. */
+.btn-success {
+  background: var(--gloss-success);
+  color: #f0fbf5;
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: var(--gloss-shadow-success);
+}
+.btn-success:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Ghost — glossy neutral pill with the same depth, no color. */
+.btn-ghost {
+  background: var(--gloss-neutral);
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: var(--gloss-shadow-neutral);
+}
+.btn-ghost:hover:not(:disabled) {
+  filter: brightness(1.18);
+  color: var(--text);
+}
+
+/* Size modifiers. */
+.btn-sm {
+  font-size: 12px;
+  padding: 4px 12px;
+  gap: 6px;
+}
+.btn-lg {
+  font-size: 15px;
+  padding: 13px 22px;
+}
+/* Icon-only — perfect circle, fixed square size, no rectangular padding. */
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  flex: 0 0 auto;
+}
+
+/* ── Reusable pill badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   Orca overlay — wallpaper + glass. Consumes the --orca-wp-* / --orca-glass
+   tokens written at runtime by orca-theme.ts.
+   ============================================================================ */
+
+/* Wallpaper layer — pin behind all app content (render a <div class="orca-wallpaper">
+   as the first child of an isolated stacking context, e.g. `.app { isolation: isolate }`). */
+.orca-wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 120% 80% at 10% 90%, var(--orca-wp-5) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 60% at 80% 80%, var(--orca-wp-6) 0%, transparent 45%),
+    radial-gradient(ellipse 80% 70% at 60% 60%, var(--orca-wp-4) 0%, transparent 50%),
+    radial-gradient(ellipse 90% 80% at 30% 40%, var(--orca-wp-3) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 20%, var(--orca-wp-7) 0%, transparent 40%),
+    radial-gradient(ellipse 100% 90% at 50% 10%, var(--orca-wp-2) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 70% 95%, var(--orca-wp-8) 0%, transparent 35%),
+    linear-gradient(
+      180deg,
+      var(--orca-wp-1) 0%,
+      var(--orca-wp-2) 30%,
+      var(--orca-wp-3) 60%,
+      var(--orca-wp-1) 100%
+    );
+  filter: brightness(var(--orca-brightness)) saturate(var(--orca-saturation));
+  transition: filter 0.4s ease;
+}
+
+/* Glass surfaces (opt-in via .orca-glass). */
+.orca-glass {
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* ============================================================================
+   Appearance panel — header settings dropdown (theme dots + sliders).
+   Rendered by <OrcaAppearance />. Mount the toggle in the app header.
+   ============================================================================ */
+
+.orca-appearance-group {
+  position: relative;
+}
+
+.orca-appearance-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 260px;
+  padding: 14px;
+  z-index: 1000;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  animation: orca-fade-in 0.15s ease-out;
+}
+
+@keyframes orca-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.orca-appearance-title {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.orca-appearance-title:not(:first-child) {
+  margin-top: 16px;
+}
+
+.orca-theme-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.orca-theme-dot {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.orca-theme-dot:hover {
+  transform: scale(1.08);
+}
+
+.orca-theme-dot.active {
+  border-color: var(--text);
+}
+
+.orca-slider-group {
+  margin-top: 10px;
+}
+
+.orca-slider-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.orca-slider-value {
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.orca-slider-group input {
+  width: 100%;
+  margin-top: 6px;
+}

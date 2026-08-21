@@ -616,8 +616,10 @@ body {
 }
 .ken-power-banner {
   font-family: var(--mono);
-  font-size: clamp(7px, 1.7vw, 12px);
-  line-height: 1.05;
+  font-size: clamp(28px, 6vw, 64px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.16em;
   white-space: pre;
   text-align: center;
   animation: ken-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1000,6 +1002,7 @@ body {
    traffic lights. */
 .chat-head {
   position: relative;
+  z-index: 90;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -4201,9 +4204,6 @@ body {
   color: var(--primary);
   animation: ggblink 1s step-end infinite;
 }
-.wake-cursor-rest {
-  color: var(--secondary);
-}
 @media (prefers-reduced-motion: reduce) {
   .wake-cursor {
     animation: none;
@@ -5943,4 +5943,76 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* OrcaCoder V3 identity layer. Kept at the stylesheet edge so upstream rules
+   remain intact and future merges stay localized. */
+.app {
+  position: relative;
+  isolation: isolate;
+  background: var(--bg);
+}
+.home-appearance {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  z-index: 20;
+}
+.ascii-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(540px, 76vw);
+  margin: 0 auto 6px;
+  padding: 0;
+  color: var(--text);
+  filter: none;
+}
+.orca-logo-image {
+  width: clamp(132px, 18vw, 190px);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.42));
+}
+.orca-wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--sans);
+  letter-spacing: -0.04em;
+}
+.orca-wordmark strong {
+  color: var(--text);
+  font-size: clamp(34px, 5vw, 54px);
+  font-weight: 750;
+}
+.orca-wordmark span {
+  color: var(--primary);
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.chat-head.orca-glass {
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+}
+.orca-slider-group input {
+  accent-color: var(--primary);
+}
+@media (max-width: 720px) {
+  .home-appearance {
+    top: 12px;
+    right: 12px;
+  }
+  .orca-logo-image {
+    width: 122px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orca-wallpaper,
+  .orca-appearance-dropdown {
+    animation: none;
+    transition: none;
+  }
 }

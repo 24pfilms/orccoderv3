@@ -1,36 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * The empty-state "wake" screen — the app addressing the user, Matrix-style.
- *
- * A faint, brand-tinted digital-rain canvas drifts behind a single line of
- * terminal text that types itself out one character at a time, cycles through a
- * few homage lines ("Wake up…" → "The codebase has you…"), then rests on the
- * invitation with a blinking block cursor. The whole thing fades out the moment
- * the first prompt is sent (the parent stops rendering it once items appear).
- *
- * Pure 2D canvas + timeouts, zero deps. Honors `prefers-reduced-motion`: the
- * rain is skipped and the final line is shown immediately, no typing.
+ * Empty-state wake screen: a calm ocean-current canvas behind rotating Orca
+ * prompts. Reduced-motion users get the final invitation immediately.
  */
 
-// Sequential lines, typed one at a time on the same row (each replaces the
-// prior). The last entry is the resting invitation and never gets cleared.
 const CODE_LINES = [
-  "Wake up\u2026",
-  "The codebase has you.",
-  "Follow the commit history.",
-  "Talk to me. Let\u2019s start coding.",
+  "Sonar ping sent\u2026",
+  "Found the repo. It was hiding in plain sight.",
+  "The pod reviewed your folder names. We have concerns.",
+  "Scanning for bugs. They know what they did.",
+  "Current stable. Branch name less so.",
+  "Orca found the TODO. It was not subtle.",
+  "Deep dive in progress. Snacks remain topside.",
+  "No seals harmed. One linter mildly offended.",
+  "Preparing the pod. Regex was asked to stay ashore.",
+  "Give Orca a mission before it refactors for fun.",
 ] as const;
 
 const CHAT_LINES = [
-  "Take a breath\u2026",
-  "What\u2019s on your mind?",
-  "Talk to me. I\u2019m listening.",
+  "Surfacing for a thought\u2026",
+  "Hydrophone on. Whale noises optional.",
+  "Go ahead. The pod signed an NDA.",
+  "Listening at 40,000 Hz. Still heard that sigh.",
+  "Your secrets are safe. The dolphins are nosy, though.",
+  "Ask anything. Except why the ocean is wet.",
+  "The pod is quiet. This is rarely permanent.",
+  "Orca is all ears. Metaphorically complicated.",
+  "Say the weird idea. Those are usually useful.",
+  "Channel open. Judgment temporarily disabled.",
 ] as const;
 
-const TYPE_MS = 55; // per-character type speed
-const HOLD_MS = 1400; // pause once a line finishes typing
-const ERASE_MS = 22; // per-character erase speed
+const TYPE_MS = 55;
+const HOLD_MS = 6000;
+const ERASE_MS = 22;
 
 type Phase = "typing" | "holding" | "erasing";
 
@@ -42,7 +45,17 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-function MatrixRain(): React.ReactElement {
+interface Bubble {
+  x: number;
+  y: number;
+  radius: number;
+  speed: number;
+  drift: number;
+  phase: number;
+  alpha: number;
+}
+
+function OceanCurrent(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -53,79 +66,86 @@ function MatrixRain(): React.ReactElement {
     const canvas = canvasEl;
     const ctx = context;
 
-    // Katakana + digits + a few brackets — the classic rain alphabet.
-    const GLYPHS =
-      "\u30A2\u30AB\u30B5\u30BF\u30CA\u30CF\u30DE\u30E4\u30E9\u30EF\u30F30123456789<>[]{}=+*";
-    const FONT_SIZE = 14;
-
-    let columns = 0;
-    let drops: number[] = [];
     let width = 0;
     let height = 0;
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let bubbles: Bubble[] = [];
+    let raf = 0;
+    let last = 0;
 
-    function resize() {
+    function seedBubble(fromBottom = false): Bubble {
+      const radius = 1.5 + Math.random() * 5;
+      return {
+        x: Math.random() * width,
+        y: fromBottom ? height + radius + Math.random() * 80 : Math.random() * height,
+        radius,
+        speed: 0.25 + Math.random() * 0.75,
+        drift: 4 + Math.random() * 12,
+        phase: Math.random() * Math.PI * 2,
+        alpha: 0.12 + Math.random() * 0.28,
+      };
+    }
+
+    function resize(): void {
       const parent = canvas.parentElement;
       if (!parent) return;
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
-      // macOS reports 0×0 for a webview while its window is minimized or fully
-      // occluded by siblings. Measuring into that collapses the canvas and resets
-      // the rain field against the wrong size — exactly what bunches it into the
-      // corner once the window is restored. Hold the last-good layout instead,
-      // and skip no-op resizes so the drops don't visibly jump on every tick.
-      if (w < 2 || h < 2) return;
-      if (w === width && h === height) return;
-      width = w;
-      height = h;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const nextWidth = parent.clientWidth;
+      const nextHeight = parent.clientHeight;
+      if (nextWidth < 2 || nextHeight < 2) return;
+      if (nextWidth === width && nextHeight === height) return;
+      width = nextWidth;
+      height = nextHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      columns = Math.max(1, Math.floor(width / FONT_SIZE));
-      drops = Array.from({ length: columns }, () =>
-        Math.floor((Math.random() * height) / FONT_SIZE),
-      );
+      bubbles = Array.from({ length: Math.max(18, Math.floor(width / 42)) }, () => seedBubble());
     }
-    resize();
 
-    const ro = new ResizeObserver(resize);
-    if (canvas.parentElement) ro.observe(canvas.parentElement);
-
-    let raf = 0;
-    let last = 0;
-    const STEP = 70; // ms between rain advances (~14fps — calm, cheap)
-
-    function frame(now: number) {
-      raf = requestAnimationFrame(frame);
-      if (now - last < STEP) return;
-      last = now;
-
-      // Trail fade — translucent wash over the prior frame.
-      ctx.fillStyle = "rgba(15, 17, 21, 0.18)";
-      ctx.fillRect(0, 0, width, height);
-      // Canvas 2D cannot resolve CSS var(), so spell out the mono stack (matches
-      // the --mono token) instead of silently falling back to the default font.
-      ctx.font = `${FONT_SIZE}px "Geist Mono Variable", ui-monospace, monospace`;
-
-      for (let i = 0; i < columns; i++) {
-        const ch = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-        const x = i * FONT_SIZE;
-        const y = drops[i] * FONT_SIZE;
-        // Brand periwinkle/blue rain — bright lead glyph, dim tail.
-        ctx.fillStyle = Math.random() > 0.97 ? "#9b8cf7" : "rgba(77, 157, 255, 0.55)";
-        ctx.fillText(ch, x, y);
-        if (y > height && Math.random() > 0.975) drops[i] = 0;
-        else drops[i]++;
+    function drawCurrent(now: number): void {
+      for (let layer = 0; layer < 3; layer++) {
+        ctx.beginPath();
+        for (let x = -24; x <= width + 24; x += 24) {
+          const y =
+            height * (0.3 + layer * 0.2) +
+            Math.sin(x * 0.012 + now * 0.00025 + layer * 1.7) * (12 + layer * 5);
+          if (x === -24) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = `rgba(64, 205, 220, ${0.045 + layer * 0.018})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
     }
-    // Run the loop ONLY while this window is focused + visible. With multiple
-    // project windows, letting every window run its canvas at 60fps starves the
-    // GPU compositor and causes intermittent multi-window rendering failures
-    // (black frames, frozen/bunched canvases). Pausing unfocused windows cuts
-    // concurrent rendering from N to 1.
+
+    function frame(now: number): void {
+      raf = requestAnimationFrame(frame);
+      if (now - last < 50) return;
+      last = now;
+      ctx.clearRect(0, 0, width, height);
+      drawCurrent(now);
+
+      for (let index = 0; index < bubbles.length; index++) {
+        let bubble = bubbles[index];
+        bubble.y -= bubble.speed;
+        if (bubble.y < -bubble.radius) {
+          bubble = seedBubble(true);
+          bubbles[index] = bubble;
+        }
+        const x = bubble.x + Math.sin(now * 0.0006 + bubble.phase) * bubble.drift;
+        ctx.beginPath();
+        ctx.arc(x, bubble.y, bubble.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(140, 235, 242, ${bubble.alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    const observer = new ResizeObserver(resize);
+    resize();
+    if (canvas.parentElement) observer.observe(canvas.parentElement);
+
     function startLoop(): void {
       if (raf === 0) raf = requestAnimationFrame(frame);
     }
@@ -133,8 +153,6 @@ function MatrixRain(): React.ReactElement {
       cancelAnimationFrame(raf);
       raf = 0;
     }
-    startLoop();
-
     function onVisible(): void {
       if (document.visibilityState === "visible") {
         resize();
@@ -143,13 +161,15 @@ function MatrixRain(): React.ReactElement {
         stopLoop();
       }
     }
+
+    startLoop();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", startLoop);
     window.addEventListener("blur", stopLoop);
 
     return () => {
       stopLoop();
-      ro.disconnect();
+      observer.disconnect();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", startLoop);
       window.removeEventListener("blur", stopLoop);
@@ -163,7 +183,6 @@ export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactEle
   const reduced = prefersReducedMotion();
   const lines = chat ? CHAT_LINES : CODE_LINES;
   const [text, setText] = useState(reduced ? lines[lines.length - 1] : "");
-  const [done, setDone] = useState(reduced);
 
   useEffect(() => {
     if (reduced) return;
@@ -174,8 +193,6 @@ export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactEle
     let pos = 0;
     let phase: Phase = "typing";
 
-    const isLast = () => line === lines.length - 1;
-
     function tick() {
       if (cancelled) return;
       const full = lines[line];
@@ -184,10 +201,6 @@ export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactEle
         pos++;
         setText(full.slice(0, pos));
         if (pos >= full.length) {
-          if (isLast()) {
-            setDone(true);
-            return; // rest here forever — the invitation stays
-          }
           phase = "holding";
           timer = setTimeout(tick, HOLD_MS);
         } else {
@@ -206,7 +219,7 @@ export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactEle
       pos--;
       setText(full.slice(0, Math.max(0, pos)));
       if (pos <= 0) {
-        line++;
+        line = (line + 1) % lines.length;
         phase = "typing";
         timer = setTimeout(tick, TYPE_MS * 4);
       } else {
@@ -223,10 +236,10 @@ export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactEle
 
   return (
     <div className="wake-screen transcript-reveal" aria-label="Ready to start">
-      {!reduced && <MatrixRain />}
+      {!reduced && <OceanCurrent />}
       <div className="wake-text">
         <span className="wake-line">{text}</span>
-        <span className={`wake-cursor${done ? " wake-cursor-rest" : ""}`}>{"\u2588"}</span>
+        <span className="wake-cursor">{"\u2588"}</span>
       </div>
     </div>
   );

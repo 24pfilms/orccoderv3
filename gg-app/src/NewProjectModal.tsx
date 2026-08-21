@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { FolderOpen } from "lucide-react";
 import { theme } from "./theme";
 import { Modal } from "./Modal";
 import { createProject, selectProject } from "./agent";
 
 interface Props {
-  /** Where new projects are created — shown so the user knows the destination. */
+  /** Existing directory prefilled into the editable Location field. */
   projectsRoot: string;
   onClose: () => void;
   /** Called after the project is created + this window re-pointed at it. */
@@ -21,22 +23,38 @@ function slugify(input: string): string {
 
 export function NewProjectModal({ projectsRoot, onClose, onCreated }: Props): React.ReactElement {
   const [name, setName] = useState("");
+  const [location, setLocation] = useState(projectsRoot);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const slug = slugify(name);
-  const canCreate = slug.length > 0 && !busy;
+  const destination = location.trim();
+  const canCreate = slug.length > 0 && destination.length > 0 && !busy;
+
+  async function browse(): Promise<void> {
+    setError(null);
+    try {
+      const picked = await open({
+        directory: true,
+        title: "Choose where to create the project",
+        defaultPath: destination || undefined,
+      });
+      if (typeof picked === "string") setLocation(picked);
+    } catch (browseError) {
+      setError(browseError instanceof Error ? browseError.message : String(browseError));
+    }
+  }
 
   async function create(): Promise<void> {
     if (!canCreate) return;
     setBusy(true);
     setError(null);
     try {
-      const cwd = await createProject(slug);
+      const cwd = await createProject(slug, destination);
       await selectProject(cwd);
       onCreated(cwd);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : String(createError));
       setBusy(false);
     }
   }
@@ -47,17 +65,36 @@ export function NewProjectModal({ projectsRoot, onClose, onCreated }: Props): Re
         className="modal-input"
         style={{ color: theme.text, background: theme.inputBackground }}
         value={name}
+        aria-label="Project name"
         placeholder="my-project"
         autoFocus
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") void create();
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") void create();
         }}
       />
+      <div className="modal-row">
+        <input
+          className="modal-input"
+          style={{ color: theme.text, background: theme.inputBackground }}
+          value={location}
+          aria-label="Project location"
+          placeholder="C:\\Users\\you\\projects"
+          spellCheck={false}
+          onChange={(event) => setLocation(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void create();
+          }}
+        />
+        <button className="modal-btn" title="Browse for a folder" onClick={() => void browse()}>
+          <FolderOpen size={16} strokeWidth={1.8} aria-hidden="true" />
+          Browse
+        </button>
+      </div>
       <div className="modal-hint" style={{ color: theme.textDim }}>
         Creates{" "}
         <span style={{ color: theme.textMuted }}>
-          {projectsRoot}/{slug || "\u2026"}
+          {destination || "\u2026"}\\{slug || "\u2026"}
         </span>
       </div>
       {error && (

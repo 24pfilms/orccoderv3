@@ -130,24 +130,27 @@ import { EnhanceDissolve } from "./EnhanceDissolve";
 import { toast } from "./toast";
 import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
 import { basename } from "./tool-format";
+import { OrcaAppearance } from "./orca/OrcaAppearance";
 import "./App.css";
+import "./orca/orca-theme.css";
+import "./orca/scarlet.css";
 
-const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Ken for help";
+const DEFAULT_INPUT_PLACEHOLDER = "Send the pod a mission, / command, @ file, or @Orca";
 const INPUT_PLACEHOLDERS = [
   DEFAULT_INPUT_PLACEHOLDER,
-  "Need a second opinion? Ask @Ken",
-  "Stuck on what to do next? Ask @Ken",
-  DEFAULT_INPUT_PLACEHOLDER,
-  "Want a second set of eyes? Ask @Ken",
-  "Unsure how to proceed? Ask @Ken",
-  "Need a quick review? Ask @Ken",
+  "Sonar clear. What are we breaking responsibly?",
+  "Ask @Orca before the code develops opinions",
+  "Drop a task into the pod. Keep hands clear of regex",
+  "The water is calm. Production probably isn't",
+  "Point Orca at the weird part. Orca knows",
+  "No pressure. Only users are watching",
 ] as const;
 const RUNNING_INPUT_PLACEHOLDERS = [
-  "Agent is working. Add a follow-up if you want",
-  "Got another thought? Queue it here",
-  "Agent is on it. You can stack the next note",
-  "Thinking ahead? Drop the next instruction",
-  "Keep going. Your next message will queue up",
+  "Orca is diving. Please do not unplug the ocean",
+  "The pod is moving. Queue the next instruction",
+  "Another thought? Toss it overboard here",
+  "Sonar busy. Pretend the progress bar means science",
+  "Deep work underway. Please do not tap the glass",
 ] as const;
 const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -155,7 +158,7 @@ const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
 
 // Autopilot Ken's "all clear" line, rotated so the auto-review loop doesn't
-// repeat the exact same sentence every time GG Coder's work checks out.
+// repeat the exact same sentence every time OrcaCoder's work checks out.
 // Info row shown when a video attachment is sent to a model without native
 // video analysis. Shared by the live send path and history restore so the
 // resumed transcript matches the live one exactly.
@@ -163,16 +166,16 @@ const VIDEO_CAPABILITY_WARNING =
   "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Gemini, Kimi, MiniMax) for native video analysis.";
 
 const ALL_CLEAR_VARIATIONS = [
-  "All clear. Looks good to me.",
-  "Checks out. Nothing left to flag.",
-  "Nice, this holds up. Nothing more from me.",
-  "Solid work. I've got no notes.",
-  "Yep, that covers it. All good.",
-  "Looks right to me — ship it.",
-  "Clean pass. Nothing to add here.",
-  "That does the job. No complaints.",
-  "Good to go, no issues found.",
-  "This holds together. All clear.",
+  "Sonar clear. Even the regex behaved.",
+  "No leaks detected. The duct tape can stay.",
+  "The pod approves. Nobody tell staging.",
+  "All clear below the commit line.",
+  "No loose nets in this diff.",
+  "This floats in fresh and salt water.",
+  "Review complete. The seals are unimpressed.",
+  "Deep scan clean. Suspicious, but clean.",
+  "Looks solid from sea level.",
+  "Ship it. Yes, that pun was mandatory.",
 ] as const;
 
 function stableIndex(seed: string, modulo: number): number {
@@ -227,18 +230,18 @@ export type Item =
       // into a normal one (dim → solid, "queued" pill collapsing away) instead of
       // snapping. Cleared by a timer in useAgentEvents once the motion is done.
       promoted?: boolean;
-      // True when this prompt was addressed to Ken (`@Ken …`). Renders the bubble
-      // in Ken's color so the transcript shows it went to the mentor, not GG Coder.
+      // True when this prompt was addressed to Ken (`@Orca …`). Renders the bubble
+      // in Ken's color so the transcript shows it went to the mentor, not OrcaCoder.
       ken?: boolean;
-      // True when this bubble came from clicking a "Send to GG Coder" button on
+      // True when this bubble came from clicking a "Send to OrcaCoder" button on
       // one of Ken's recommended prompts. Renders as a shimmering "Sent to GG
       // Coder" label in Ken's color (like a slash command shows `/name`), instead
-      // of the full prompt body that was actually sent to GG Coder.
+      // of the full prompt body that was actually sent to OrcaCoder.
       kenSent?: boolean;
     }
   | { kind: "assistant"; id: number; text: string }
   // Ken Kai (mentor agent) reply — magenta-tinted bubble + "Ken Kai" badge,
-  // streamed from the ken_* SSE events. Never mistaken for GG Coder.
+  // streamed from the ken_* SSE events. Never mistaken for OrcaCoder.
   | { kind: "ken"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   // Structured error (see gg-ai's formatError): headline always answers "is this
@@ -277,8 +280,8 @@ export type Item =
       newCount?: number;
     }
   // Autopilot Ken verdict — emitted by the auto-review loop and rendered like a
-  // normal @Ken reply bubble (Ken dot + text), not a separate marker style.
-  // `phase` selects the message: he prompted GG Coder (with the `body` he sent),
+  // normal @Orca reply bubble (Ken dot + text), not a separate marker style.
+  // `phase` selects the message: he prompted OrcaCoder (with the `body` he sent),
   // gave the all-clear, needs a human (with `reason`), or hit the round cap.
   | {
       kind: "autopilot";
@@ -998,7 +1001,7 @@ function App(): React.ReactElement {
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
-    const fallbackTitle = workspaceMode === "chat" ? "GG Chat" : "GG Coder";
+    const fallbackTitle = workspaceMode === "chat" ? "Orca Chat" : "OrcaCoder";
     const title =
       !needsProject && !showPicker
         ? formatWorkspaceTitle(
@@ -1355,7 +1358,7 @@ function App(): React.ReactElement {
             if (h.error) {
               const prefix =
                 h.error.scope === "ken_error"
-                  ? "Ken: "
+                  ? "Orca: "
                   : h.error.scope === "autopilot_error"
                     ? "Autopilot: "
                     : "";
@@ -1369,15 +1372,20 @@ function App(): React.ReactElement {
             }
             if (h.infoKind === "video_warning")
               return { kind: "info", id: nextId(), text: VIDEO_CAPABILITY_WARNING };
-            // Ken "Send to GG Coder" prompts: restore the shimmer label, not the
+            // Ken "Send to OrcaCoder" prompts: restore the shimmer label, not the
             // full prompt body (matches live).
             if (h.kenSent && h.role === "user")
               return { kind: "user", id: nextId(), text: h.text, kenSent: true };
             // Persisted Ken (mentor) turns: his reply restores as a Ken bubble,
-            // the `@Ken` question as a Ken-tinted user bubble (matches live).
+            // the `@Orca` question as a Ken-tinted user bubble (matches live).
             if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
             if (h.ken && h.role === "user")
-              return { kind: "user", id: nextId(), text: h.text, ken: true };
+              return {
+                kind: "user",
+                id: nextId(),
+                text: h.text.replace(/^(\s*)@ken\b/i, "$1@Orca"),
+                ken: true,
+              };
             // Persisted autopilot verdict marker: render identically to the
             // live item so a resumed session never shows the raw verdict text
             // (e.g. "ALL_CLEAR") the model actually replied with.
@@ -1505,7 +1513,7 @@ function App(): React.ReactElement {
     [notesKey],
   );
 
-  // Pin Ken to a model (or null → clear the pin, follow GG Coder). The
+  // Pin Ken to a model (or null → clear the pin, follow OrcaCoder). The
   // sidecar's ken_model_change broadcast updates state; the .then is just a
   // faster local echo of the same payload.
   function onSelectKenModel(modelId: string | null): void {
@@ -1590,22 +1598,22 @@ function App(): React.ReactElement {
   // Clamp so a shrinking match list never points past the end.
   const clampedSlashIndex = slashMatches.length > 0 ? slashIndex % slashMatches.length : 0;
 
-  // `@Ken` is the mentor-agent address, not a file mention. When the input leads
+  // `@Orca` is the mentor-agent address, not a file mention. When the input leads
   // with it (case-insensitive, word-boundary so `@kennedy.ts` still picks files),
   // Ken is "active": the file picker is suppressed and the input is tinted in
   // Ken's color with a shimmering marker, so it's obvious the message goes to Ken.
-  const kenActive = workspaceMode === "code" && /^@ken\b/i.test(input.trimStart());
-  // Split the input for the `@Ken` highlight overlay: any leading whitespace,
-  // the literal `@Ken` token (preserving the user's casing), then the rest. Only
+  const kenActive = workspaceMode === "code" && /^@orca\b/i.test(input.trimStart());
+  // Split the input for the `@Orca` highlight overlay: any leading whitespace,
+  // the literal `@Orca` token (preserving the user's casing), then the rest. Only
   // the token shimmers; lead+rest render in the normal input color.
   const kenInputParts = (() => {
-    const m = /^(\s*)(@ken)/i.exec(input);
+    const m = /^(\s*)(@orca)/i.exec(input);
     if (!m) return null;
     return { lead: m[1], token: m[2], rest: input.slice(m[1].length + m[2].length) };
   })();
   // `@`-mention picker: open whenever a mention token is active and the search
   // returned at least one file. Clamp the highlighted row to the result count.
-  // Never open while `@Ken` is active — that token addresses Ken, not a file.
+  // Never open while `@Orca` is active — that token addresses Ken, not a file.
   const mentionOpen = mention !== null && fileMatches.length > 0 && !kenActive;
   const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
@@ -1732,7 +1740,7 @@ function App(): React.ReactElement {
   }
 
   // Debounced file search whenever the active mention query changes. Skipped when
-  // `@Ken` is active so typing `@ken` never spawns a file lookup or picker.
+  // `@Orca` is active so typing `@ken` never spawns a file lookup or picker.
   useEffect(() => {
     if (mention === null || kenActive) {
       setFileMatches([]);
@@ -1819,9 +1827,9 @@ function App(): React.ReactElement {
   const submitTextRef = useRef(submitText);
   submitTextRef.current = submitText;
 
-  // Click handler for the "Send to GG Coder" button on Ken's recommended prompts.
-  // Pushes a shimmering "Sent to GG Coder" user bubble (the full prompt body went
-  // to GG Coder, but the transcript shows the short Ken-colored label, like a
+  // Click handler for the "Send to OrcaCoder" button on Ken's recommended prompts.
+  // Pushes a shimmering "Sent to OrcaCoder" user bubble (the full prompt body went
+  // to OrcaCoder, but the transcript shows the short Ken-colored label, like a
   // slash command shows `/name`), then sends the prompt to the build session.
   const sendKenRecommendedPrompt = useCallback(
     (text: string) => {
@@ -2018,10 +2026,10 @@ function App(): React.ReactElement {
       return;
     }
 
-    // `@Ken <prompt>` (case-insensitive, optional colon) routes to Ken Kai, the
-    // read-only mentor agent — NOT GG Coder. Ken runs concurrently with any
+    // `@Orca <prompt>` (case-insensitive, optional colon) routes to Ken Kai, the
+    // read-only mentor agent — NOT OrcaCoder. Ken runs concurrently with any
     // build run; his reply streams into a magenta bubble via ken_* events.
-    const kenMatch = workspaceMode === "code" ? /^@ken\b:?\s*/i.exec(trimmed) : null;
+    const kenMatch = workspaceMode === "code" ? /^@orca\b:?\s*/i.exec(trimmed) : null;
     if (kenMatch) {
       const question = trimmed.slice(kenMatch[0].length).trim();
       if (!question) return;
@@ -2258,7 +2266,8 @@ function App(): React.ReactElement {
   // indistinguishable from a dead/black webview during a slow recovery.
   if (needsProject && !restoreChecked) {
     return (
-      <div className="app app-restoring" style={{ background: theme.background }}>
+      <div className="app app-restoring">
+        <div className="orca-wallpaper" aria-hidden="true" />
         <div className="app-restoring-status" role="status" aria-live="polite">
           <span className="app-restoring-dot" aria-hidden="true" />
           Restoring workspace…
@@ -2269,7 +2278,8 @@ function App(): React.ReactElement {
 
   if (needsProject) {
     return (
-      <div className="app" style={{ background: theme.background }}>
+      <div className="app">
+        <div className="orca-wallpaper" aria-hidden="true" />
         {entryView === "home" ? (
           <HomeScreen
             onProjects={() => {
@@ -2315,7 +2325,8 @@ function App(): React.ReactElement {
       },
     };
     return (
-      <div className="app" style={{ background: theme.background }}>
+      <div className="app">
+        <div className="orca-wallpaper" aria-hidden="true" />
         {workspaceMode === "chat" ? (
           <ChatPicker initialAgent={state?.chatAgent ?? "general"} {...pickerProps} />
         ) : (
@@ -2329,12 +2340,12 @@ function App(): React.ReactElement {
   return (
     <div
       className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}`}
-      style={{ background: theme.background }}
       onDragEnter={handleWindowDragEnter}
       onDragOver={handleWindowDragOver}
       onDragLeave={handleWindowDragLeave}
       onDrop={handleWindowDrop}
     >
+      <div className="orca-wallpaper" aria-hidden="true" />
       {confettiNonce && <Confetti key={confettiNonce} />}
 
       <WorkspaceHeader
@@ -2383,6 +2394,7 @@ function App(): React.ReactElement {
         </div>
         {workspaceMode === "chat" ? (
           <span className="picker-head-actions">
+            <OrcaAppearance />
             <button
               className="btn btn-primary btn-sm"
               disabled={running}
@@ -2416,6 +2428,7 @@ function App(): React.ReactElement {
                   playSound(next ? "autopilotOn" : "autopilotOff");
                 }}
               />
+              <OrcaAppearance />
               <button
                 className="btn btn-primary btn-sm"
                 disabled={running}
@@ -2620,8 +2633,8 @@ function App(): React.ReactElement {
                 onDone={onEnhanceAnimDone}
               />
             )}
-            {/* `@Ken` active: a textarea can't color just one token, so we mirror
-                the input in an aligned overlay where the leading `@Ken` shimmers
+            {/* `@Orca` active: a textarea can't color just one token, so we mirror
+                the input in an aligned overlay where the leading `@Orca` shimmers
                 in Ken's color. The textarea text below is made transparent (caret
                 stays visible) so only this styled copy shows. Metrics match
                 `.input` 1:1 so wrapping/caret line up. */}
@@ -2820,14 +2833,16 @@ function App(): React.ReactElement {
                 })()}
               <span className="model-anchor">
                 <span className="model-label" style={{ color: theme.text }}>
-                  GG
+                  OrcaCoder
                 </span>
                 <ModelSelect
                   models={models}
                   currentModel={state?.model ?? ""}
                   onSelect={onSelectModel}
                   disabled={running}
-                  title={workspaceMode === "chat" ? "Switch GG's model" : "Switch GG Coder's model"}
+                  title={
+                    workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
+                  }
                 />
               </span>
               {workspaceMode === "code" && (
@@ -2835,7 +2850,7 @@ function App(): React.ReactElement {
                   <FooterSep />
                   <span className="model-anchor">
                     <span className="model-label" style={{ color: theme.ken }}>
-                      Ken
+                      Orca
                     </span>
                     <ModelSelect
                       models={models}
@@ -2844,8 +2859,8 @@ function App(): React.ReactElement {
                       color={theme.ken}
                       title={
                         state?.kenModelOverride
-                          ? "Ken is pinned to his own model — click to change"
-                          : "Ken follows GG Coder's model — click to pin one"
+                          ? "Orca is pinned to a separate model — click to change"
+                          : "Orca follows OrcaCoder's model — click to pin one"
                       }
                       onSelectFollow={() => onSelectKenModel(null)}
                       followActive={!state?.kenModelOverride}
@@ -2865,7 +2880,7 @@ function App(): React.ReactElement {
           onClick={() => void appUpdate.install()}
         >
           <span className="update-banner-dot" />
-          {"Ken just updated GG Coder!"}
+          {"OrcaCoder update ready"}
           <Badge>Install</Badge>
         </button>
       )}
@@ -2980,13 +2995,13 @@ const TranscriptRow = memo(function TranscriptRow({
   switch (item.kind) {
     case "user":
       if (item.kenSent) {
-        // Sent from a Ken "Send to GG Coder" button: show a shimmering "Sent to GG
+        // Sent from a Ken "Send to OrcaCoder" button: show a shimmering "Sent to GG
         // Coder" in Ken's color (like a slash command shows `/name`), not the
-        // full prompt body. The full body still went to GG Coder.
+        // full prompt body. The full body still went to OrcaCoder.
         return (
           <div className="user-msg command labelled user-ken-sent">
             <span className="command-shimmer" style={{ color: theme.ken }}>
-              Sent to GG Coder
+              Sent to OrcaCoder
             </span>
           </div>
         );
@@ -3075,9 +3090,9 @@ const TranscriptRow = memo(function TranscriptRow({
     }
     case "ken":
       // Ken Kai's reply: the whole bubble is tinted in Ken's color (dot + all
-      // text), which is the ONLY differentiator from a normal GG Coder reply.
+      // text), which is the ONLY differentiator from a normal OrcaCoder reply.
       // No badge, no byline. The Markdown component special-cases ```prompt
-      // fences into a "Send to GG Coder" button.
+      // fences into a "Send to OrcaCoder" button.
       return (
         <div className="assistant-msg ken-msg">
           <span className="assistant-dot" style={{ color: theme.ken }}>
@@ -3089,17 +3104,17 @@ const TranscriptRow = memo(function TranscriptRow({
         </div>
       );
     case "autopilot": {
-      // Autopilot Ken's verdict, rendered like a normal @Ken reply (Ken-tinted
+      // Autopilot Ken's verdict, rendered like a normal @Orca reply (Ken-tinted
       // dot + text) rather than its own marker style. The text is his verdict as
-      // prose: for a PROMPT he shows what he sent GG Coder back to do; the
+      // prose: for a PROMPT he shows what he sent OrcaCoder back to do; the
       // terminal verdicts read as short Ken one-liners. `done` rotates through
       // several casual Ken lines (picked deterministically off the item's
       // stable id, so it never flickers on re-render) instead of always
       // repeating the exact same sentence turn after turn.
       const copy: Record<Extract<Item, { kind: "autopilot" }>["phase"], string> = {
         prompted: item.body?.trim()
-          ? `Sending GG Coder back in:\n\n${item.body.trim()}`
-          : "Sending GG Coder back in for another pass.",
+          ? `Sending OrcaCoder back in:\n\n${item.body.trim()}`
+          : "Sending OrcaCoder back in for another pass.",
         done: allClearCopy(item.copySeed, item.id),
         human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
         capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",

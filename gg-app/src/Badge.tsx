@@ -37,7 +37,7 @@ const SOURCE_STYLES: Record<string, { label: string; color: string }> = {
   "claude-code": { label: "Claude Code", color: "#d97757" }, // Anthropic clay
   codex: { label: "Codex", color: "#aeb6c2" }, // neutral silver
   folder: { label: "Folder", color: theme.textDim }, // on disk, never opened
-  ken: { label: "Ken Kai", color: theme.ken }, // orchid/magenta mentor
+  ken: { label: "Orca", color: theme.ken }, // branded mentor label; protocol remains `ken`
 };
 
 export function sourceStyle(source: string): { label: string; color: string } {

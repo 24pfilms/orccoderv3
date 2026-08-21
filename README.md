@@ -1,20 +1,71 @@
-# GG Coder
+# OrcaCoder V3
 
 <p align="center">
-  <strong>Cause the other coding agents piss me off.</strong>
+  <img src="docs/images/orcacoder-hero.png" alt="OrcaCoder V3 Scarlet hero — Pod Command Deck" width="1200">
 </p>
 
 <p align="center">
-  <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/github/v/release/KenKaiii/gg-framework?style=for-the-badge&label=GG%20Coder%20App&color=7C3AED" alt="GG Coder desktop release"></a>
-  <a href="https://www.npmjs.com/package/@kenkaiiii/ggcoder"><img src="https://img.shields.io/npm/v/@kenkaiiii/ggcoder?style=for-the-badge&label=CLI" alt="ggcoder npm version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-  <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
+  <strong>Creative development, engineered end to end.</strong>
 </p>
+
+OrcaCoder V3 is a self-contained, Windows-first AI creative-development workstation built
+from the MIT-licensed [GG Framework](https://github.com/KenKaiii/gg-framework). It preserves
+the upstream coding workflow while adding the Scarlet Orca identity, public **Orca / @Orca**
+mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
+ComfyUI, and Houdini workflows.
+
+## Current status — 21 August 2026
+
+| Area                | Status                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| Repository          | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
+| Application version | `0.53.0`, aligned with the imported GG Framework release                                     |
+| Desktop runtime     | Tauri dev executable rebuilt and launched on Windows                                         |
+| Branding            | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
+| Start page          | Scarlet two-panel deck, compact 1024×660 default window, responsive short-height layout      |
+| Appearance          | Scarlet default plus nine persisted palettes; selector beside Autopilot/New                  |
+| Mentor              | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
+| Motion/copy         | Ocean-current empty state with 10 six-second rotating lines per mode                         |
+| Updater             | Intentionally inert until Orca owns a release endpoint and signing key                       |
+| Distribution        | Development build only; no Orca-signed public installer yet                                  |
+
+**Latest evidence:** 96 Orca branding and mentor tests, the app TypeScript check, the
+`@kenkaiiii/ggcoder` build, and Rust `cargo check` pass. The broader imported upstream suite
+passes 2,587 of 2,596 active tests; its nine remaining failures are environment-sensitive prompt
+context/budget and LSP timing or local TypeScript-resolution checks outside this branding work.
+
+**Known local warning:** the optional `supademo` extension is missing
+`~/.gg/extensions/supademo/plugin.json`. The warning does not block OrcaCoder startup.
+
+## Self-contained Orca sources
+
+No runtime or build step reads from OneDrive, the archived L-drive projects, or `.gg/uploads`.
+Everything needed for the current Orca identity is stored under this repository:
+
+- Theme engine and Scarlet skin: [`gg-app/src/orca/`](gg-app/src/orca/)
+- Artwork and icon-generation sources: [`gg-app/src/assets/`](gg-app/src/assets/)
+- Native application icons: [`gg-app/src-tauri/icons/`](gg-app/src-tauri/icons/)
+- Theme maintenance guide: [`gg-app/THEMING.md`](gg-app/THEMING.md)
+- Product and visual contracts: [`PRODUCT.md`](PRODUCT.md) and [`DESIGN.md`](DESIGN.md)
+- Upstream provenance/sync policy: [`UPSTREAM.md`](UPSTREAM.md)
+- MIT license and original notices: [`LICENSE`](LICENSE)
+
+## Run the current Orca build
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter @kenkaiiii/ggcoder build
+pnpm --dir gg-app bundle:sidecar
+pnpm --dir gg-app tauri dev
+```
+
+The first packaged build also needs the committed/staged Node sidecar described in
+[`gg-app/DISTRIBUTION.md`](gg-app/DISTRIBUTION.md). Internal `@kenkaiiii/*`, `ggcoder`,
+`ken_*`, and legacy storage names intentionally remain for upstream and session compatibility.
 
 ---
 
-# ⭐ GG Coder, the desktop app
+# Upstream GG Framework feature guide
 
 **This is the main thing.** A real desktop app, not a chat box with a code theme. Every
 window is its own agent, pointed at its own project folder, running real tools on your

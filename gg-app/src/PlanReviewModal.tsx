@@ -42,7 +42,7 @@ export function PlanReviewModal({
 
       {kenReviewing && (
         <div className="plan-review-ken" style={{ color: theme.ken }}>
-          Ken is reviewing this plan… you can still accept or reject it yourself.
+          Orca is reviewing this plan… you can still accept or reject it yourself.
         </div>
       )}
       <div className="plan-review-actions">

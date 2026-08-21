@@ -31,12 +31,12 @@ const HIGHLIGHT_TERMS = [
   "Radio Paradise",
   "Kencode search",
   "Prompt Enhancer",
-  "Send to GG Coder",
+  "Send to OrcaCoder",
   "Grant Permissions",
   "Autopilot",
   "Scorecard",
   "Enhance",
-  "@Ken",
+  "@Orca",
   "Radio",
   "Windows",
   "Notes",
@@ -94,7 +94,7 @@ export function WhatsNewWindow(): React.ReactElement {
       <div className="modal-head">
         <div className="modal-title">
           <ShimmerText base={theme.primary} bright={theme.secondary}>
-            What&apos;s new with GG Coder
+            What&apos;s new with OrcaCoder
           </ShimmerText>
         </div>
         <button

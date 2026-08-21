@@ -4229,7 +4229,7 @@ async function createSession(
     // from the BUILD session's transcript each turn (one-way mirror).
     if (method === "POST" && url === "/ken/prompt") {
       if (mode === "chat") {
-        json(res, 404, { error: "Ken is not available in GG Chat." });
+        json(res, 404, { error: "Orca is not available in Orca Chat." });
         return;
       }
       void readBody(req, res).then(async (raw) => {
@@ -4246,7 +4246,7 @@ async function createSession(
           return;
         }
         if (kenRunning) {
-          json(res, 409, { error: "Ken is already thinking — wait for his reply." });
+          json(res, 409, { error: "Orca is already thinking — wait for the reply." });
           return;
         }
         json(res, 202, { accepted: true });
@@ -4269,7 +4269,7 @@ async function createSession(
           const reply = lastAssistantText(ken.getMessages());
           if (reply.trim()) await session.persistKenTurn(text, reply);
         } catch (err) {
-          broadcastError("ken_error", "ken run failed", err);
+          broadcastError("ken_error", "Orca mentor run failed", err);
         } finally {
           kenRunning = false;
           broadcast("ken_run_end", {});

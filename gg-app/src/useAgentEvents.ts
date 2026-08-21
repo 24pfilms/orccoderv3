@@ -98,14 +98,14 @@ function pickDoneVerb(toolsUsed: ReadonlySet<string>): string {
   if (has("find") || has("ls")) return "Browsed files in";
 
   const phrases = [
-    "Brewed up a response in",
-    "Cooked up an answer in",
-    "Worked out a reply in",
-    "Conjured a response in",
-    "Pondered for",
-    "Reasoned for",
+    "Surfaced with an answer in",
+    "Dragged the result up from the deep in",
+    "Finished the sonar sweep in",
+    "Navigated that current in",
+    "Returned with only one piece of seaweed in",
+    "Held its breath for",
   ];
-  return phrases[Math.floor(Math.random() * phrases.length)] ?? "Worked in";
+  return phrases[Math.floor(Math.random() * phrases.length)] ?? "Surfaced in";
 }
 
 /**

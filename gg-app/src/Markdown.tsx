@@ -106,23 +106,23 @@ function selectWordAtPoint(x: number, y: number): boolean {
 
 /**
  * True once the surrounding Ken bubble has FINISHED streaming. While Ken is
- * still typing the prompt, this is false and the "Send to GG Coder" button is
+ * still typing the prompt, this is false and the "Send to OrcaCoder" button is
  * withheld so the user can't fire a half-written prompt by accident. Defaults to
- * true so ordinary (non-streaming) renders — resumed history, GG Coder text —
+ * true so ordinary (non-streaming) renders — resumed history, OrcaCoder text —
  * always show the button. Provided by Markdown; consumed by PromptBlock.
  */
 const PromptReadyContext = createContext(true);
 
 /**
- * Handler the "Send to GG Coder" button calls when clicked. App provides one
- * that pushes a shimmering "Sent to GG Coder" user bubble into the transcript
+ * Handler the "Send to OrcaCoder" button calls when clicked. App provides one
+ * that pushes a shimmering "Sent to OrcaCoder" user bubble into the transcript
  * (like a slash command renders) and then sends the prompt. Defaults to null, in
  * which case the button falls back to sending directly with no transcript row
  * (safe for any render outside App). */
 const PromptSendContext = createContext<((text: string) => void) | null>(null);
 
 /**
- * A Ken-recommended GG Coder prompt. Ken wraps every runnable prompt in a
+ * A Ken-recommended OrcaCoder prompt. Ken wraps every runnable prompt in a
  * ```prompt fence; we render the body in a styled block with a "Send to GG
  * Coder" button that fires it into the build session exactly as if the user
  * typed it. The button only appears once Ken's reply has finished streaming
@@ -135,7 +135,7 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
   const send = useCallback(() => {
     const text = body.replace(/\n$/, "").trim();
     if (!text) return;
-    // Route through App so it can render the shimmering "Sent to GG Coder" user
+    // Route through App so it can render the shimmering "Sent to OrcaCoder" user
     // bubble; fall back to a direct send if no handler is provided. Stays "Sent"
     // (disabled) afterward so the user can see it landed and can't double-fire.
     if (onSend) onSend(text);
@@ -151,10 +151,10 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
           className={`ken-prompt-send${sent ? " sent" : ""}`}
           onClick={send}
           disabled={sent}
-          title={sent ? "Sent to GG Coder" : "Send this prompt to GG Coder"}
+          title={sent ? "Sent to OrcaCoder" : "Send this prompt to OrcaCoder"}
         >
           {sent ? <Check size={12} /> : <CornerDownLeft size={12} />}
-          {sent ? "Sent" : "Send to GG Coder"}
+          {sent ? "Sent" : "Send to OrcaCoder"}
         </button>
       )}
     </div>
@@ -164,7 +164,7 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
 /**
  * Dispatch for ReactMarkdown's `pre` override. Hook-free so the branch is safe:
  * a ```prompt fence (Ken's runnable-prompt contract) renders as a PromptBlock
- * with a "Send to GG Coder" button; everything else is a normal CodeBlock.
+ * with a "Send to OrcaCoder" button; everything else is a normal CodeBlock.
  */
 function PreBlock({ children }: { children?: React.ReactNode }): React.ReactElement {
   if (codeLanguage(children) === "prompt") {
@@ -316,7 +316,7 @@ export const Markdown = memo(function Markdown({ children }: Props): React.React
   return (
     <div className="markdown">
       {visible.map((block, index) => (
-        // A ```prompt block reveals its "Send to GG Coder" button as soon as ITS
+        // A ```prompt block reveals its "Send to OrcaCoder" button as soon as ITS
         // own closing fence arrives (per-block), not when the whole reply ends —
         // so the button shows right after Ken finishes the prompt even if he
         // keeps talking after it.
@@ -335,6 +335,6 @@ export const Markdown = memo(function Markdown({ children }: Props): React.React
   );
 });
 
-/** Provider for the "Send to GG Coder" click handler. App wraps the transcript
+/** Provider for the "Send to OrcaCoder" click handler. App wraps the transcript
  *  with this so prompt-block buttons push a transcript row + send. */
 export const PromptSendProvider = PromptSendContext.Provider;

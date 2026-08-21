@@ -72,7 +72,7 @@ export function LoginScreen({ onClose }: Props): React.ReactElement {
   const connectedCount = providers.filter((p) => p.connected).length;
 
   return (
-    <div className="picker">
+    <div className="picker scarlet-login">
       <div className="picker-head" data-tauri-drag-region>
         <BackButton label="Back" onClick={onClose} />
         <span className="picker-title">AI Providers</span>

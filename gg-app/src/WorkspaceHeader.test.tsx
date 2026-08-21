@@ -34,7 +34,7 @@ describe("WorkspaceHeader", () => {
   it("renders the chevron in chat mode and toggles the navbar", () => {
     render(<ChatHeaderHarness />);
 
-    expect(screen.getByText("GG Chat")).toBeDefined();
+    expect(screen.getByText("Orca Chat")).toBeDefined();
     expect(screen.getByRole("button", { name: "New chat" })).toBeDefined();
 
     const hideToggle = screen.getByRole("button", { name: "Hide nav buttons" });
@@ -49,6 +49,16 @@ describe("WorkspaceHeader", () => {
     fireEvent.click(showToggle);
 
     expect(screen.getByRole("button", { name: "New chat" })).toBeDefined();
+  });
+
+  it("uses the OrcaCoder product name when code mode has no project", () => {
+    render(
+      <WorkspaceHeader workspaceMode="code" navHidden onToggleNav={() => {}}>
+        <button>New session</button>
+      </WorkspaceHeader>,
+    );
+
+    expect(screen.getByText("OrcaCoder")).toBeDefined();
   });
 
   it("formats clean, dirty, and pre-commit project context", () => {

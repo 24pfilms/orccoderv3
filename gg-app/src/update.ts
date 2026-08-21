@@ -25,6 +25,9 @@ export interface UpdateInfo {
 }
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+// Orca builds must never install upstream GG releases. Enable only after an
+// Orca-owned release endpoint and signing key are configured together.
+const UPDATES_CONFIGURED = false;
 
 /**
  * DEV ONLY — fake a pending update so the banner + home button + install flow
@@ -50,6 +53,7 @@ export function useAppUpdate(): UpdateInfo {
       setPhase((p) => (p === "installing" ? p : "available"));
       return;
     }
+    if (!UPDATES_CONFIGURED) return;
     // Don't interrupt an in-flight install with a re-check.
     setPhase((p) => (p === "installing" ? p : "checking"));
     try {
@@ -70,6 +74,7 @@ export function useAppUpdate(): UpdateInfo {
   }, []);
 
   useEffect(() => {
+    if (!UPDATES_CONFIGURED && !devFakeEnabled) return;
     void runCheck();
     const id = setInterval(() => void runCheck(), POLL_INTERVAL_MS);
     return () => clearInterval(id);
@@ -95,7 +100,7 @@ export function useAppUpdate(): UpdateInfo {
       setPhase("available");
       return;
     }
-    if (!update) return;
+    if (!UPDATES_CONFIGURED || !update) return;
     setPhase("installing");
     setProgress(0);
     try {

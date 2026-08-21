@@ -25,6 +25,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.53.0",
     date: "2026-08-21",
     items: [
+      "`OrcaCoder` is live with the canonical Orca identity, an orange-first appearance system, and the full GG Framework workflow preserved underneath.",
       "You can now fill your machine with models without leaving the app. Hit the new `Hugging Face` tile on the Connect page, search anything, click once, and I download it straight into `Ollama` with a live progress bar you can cancel. Fresh models appear in your picker instantly, no restart.",
       "Three heavyweights joined the roster: `Grok 4.6` with a new extra-deep thinking mode, `Gemini 3.7 Flash` at a full `1M` context, and the stable `DeepSeek V4 Pro 0813` build.",
       "Hugging Face accounts now plug in directly. One token unlocks hosted `Qwen3 Coder 480B` and `GPT-OSS 120B` with zero setup.",
@@ -414,7 +415,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.33.1",
     date: "2026-07-28",
     items: [
-      "Reopen a chat and everything sits exactly where it happened. Errors, `Ken` verdicts and plan banners used to pile up at the bottom of long conversations, sometimes `900` messages below where they belong. I went through every one of your saved chats and fixed the lot, old ones included.",
+      "Reopen a chat and everything sits exactly where it happened. Errors, `Orca` verdicts and plan banners used to pile up at the bottom of long conversations, sometimes `900` messages below where they belong. I went through every one of your saved chats and fixed the lot, old ones included.",
       "No more seeing the same thing twice. When `Autopilot` hands me a job, reopening that chat used to show its instruction again as raw text underneath. Now you get the one clean handoff, exactly like you saw it live.",
       "Your slash commands stay looking like commands. Reopen a chat and `/release` is still a neat little chip instead of the giant prompt hiding behind it, even after you have edited that command since.",
     ],
@@ -690,7 +691,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     items: [
       "Your token bill on OpenAI models just took a serious haircut. I capped how much raw tool output a single turn can dump into context, so those runaway `400K` token spikes from parallel file reads are gone for good.",
       "Long sessions now clean up after themselves. I quietly drop stale file reads and ancient command output the moment newer versions exist, keeping conversations lean, cutting rebilled context by up to `60%`, and pushing full compaction much further away.",
-      "`Autopilot` stopped double-checking itself. When Ken reviews your work he now owns the whole verification, so runs finish faster with one clean verdict instead of two overlapping reviews.",
+      "`Autopilot` stopped double-checking itself. When Orca reviews your work he now owns the whole verification, so runs finish faster with one clean verdict instead of two overlapping reviews.",
     ],
   },
   {
@@ -884,7 +885,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.11",
     date: "2026-07-07",
     items: [
-      "`Kencode search` is back. I fixed the silent startup failure, confirmed live searches flow again, and wired a build-time tripwire so this cannot quietly ship broken again.",
+      "`Orcacode search` is back. I fixed the silent startup failure, confirmed live searches flow again, and wired a build-time tripwire so this cannot quietly ship broken again.",
     ],
   },
   {
@@ -899,8 +900,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.9",
     date: "2026-07-06",
     items: [
-      "Your session list is yours again. Ken's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
-      "`Autopilot` got tougher to derail. I made Ken's handoffs land even when they arrive wrapped in chatter, then tightened his reviews so cycles run leaner and stall less.",
+      "Your session list is yours again. Orca's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
+      "`Autopilot` got tougher to derail. I made Orca's handoffs land even when they arrive wrapped in chatter, then tightened his reviews so cycles run leaner and stall less.",
     ],
   },
   {
@@ -915,7 +916,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-05",
     items: [
       "Your machine breathes easier now. `GG Coder` hunts down leftover built-in and custom tool helpers on startup, so closed projects stop quietly eating your memory for days.",
-      "Ken gives sharper advice. He now knows exactly what GG Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
+      "Orca gives sharper advice. He now knows exactly what GG Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
     ],
   },
   {
@@ -1001,7 +1002,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-02",
     items: [
       "`Autopilot` is calmer and harder to fool. I judge GG Coder against your original request, stop inventing work after the job is done, and call you in instead of answering real questions or plan decisions on your behalf.",
-      "Ken gets his own model switch. Pin me to a different brain or let me follow GG Coder, right from the footer.",
+      "Orca gets his own model switch. Pin me to a different brain or let me follow GG Coder, right from the footer.",
       "Queued messages land cleaner now. If you send one while I am reviewing and there is no live run to steer, I treat it as a fresh turn instead of mixing it into the next unrelated job.",
     ],
   },
@@ -1009,14 +1010,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.12.1",
     date: "2026-07-02",
     items: [
-      "The `KEN IS ON` banner now lands over exactly what you are viewing, even deep in a session, with full edge-to-edge coverage and no chat text peeking through.",
+      "The `ORCA IS ON` banner now lands over exactly what you are viewing, even deep in a session, with full edge-to-edge coverage and no chat text peeking through.",
     ],
   },
   {
     version: "0.12.0",
     date: "2026-07-02",
     items: [
-      "`Autopilot` got sharper and clearer. I skip pointless reviews for small talk and routine chores, lock the switch during active work, and flash `KEN IS ON` or `KEN IS OFF` so you always know who is watching.",
+      "`Autopilot` got sharper and clearer. I skip pointless reviews for small talk and routine chores, lock the switch during active work, and flash `ORCA IS ON` or `ORCA IS OFF` so you always know who is watching.",
     ],
   },
   {
@@ -1031,7 +1032,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.11.0",
     date: "2026-07-02",
     items: [
-      "Meet `Autopilot`. I review every finished job, send broken work straight back with a sharp fix, call clear work done, and tap you for real judgment calls, all while a live Ken status and in-chat verdict show exactly what I am doing.",
+      "Meet `Autopilot`. I review every finished job, send broken work straight back with a sharp fix, call clear work done, and tap you for real judgment calls, all while a live Orca status and in-chat verdict show exactly what I am doing.",
       "Your workspace tidies itself. The second a task is done it slips out of your Tasks list on its own, so all you ever see is what still needs doing. No more hunting for the checkbox.",
       "Un-minimizing one window now brings the whole crew back. Click a single GG Coder window back up and its siblings rise with it, so you are never left digging through the dock for the rest.",
     ],
@@ -1092,14 +1093,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.7.1",
     date: "2026-06-30",
     items: [
-      "`@Ken` is easier to remember and stays in sync. Helpful hints rotate into the input, and every model switch carries over so his advice comes from the same brain you chose for GG Coder.",
+      "`@Orca` is easier to remember and stays in sync. Helpful hints rotate into the input, and every model switch carries over so his advice comes from the same brain you chose for GG Coder.",
     ],
   },
   {
     version: "0.7.0",
     date: "2026-06-30",
     items: [
-      "Say hey to `@Ken`, your research-first mentor inside the app. I check real code and live docs, challenge shaky plans, recommend tools with taste, turn advice into one-click `Send to GG Coder` prompts, and keep our chats waiting for you after a restart.",
+      "Say hey to `@Orca`, your research-first mentor inside the app. I check real code and live docs, challenge shaky plans, recommend tools with taste, turn advice into one-click `Send to GG Coder` prompts, and keep our chats waiting for you after a restart.",
     ],
   },
   {

@@ -41,9 +41,11 @@ afterEach(cleanup);
 describe("LoginScreen cross-window auth", () => {
   it("refreshes connection state when another window connects a provider", async () => {
     vi.mocked(authStatus).mockResolvedValue(providers([]));
+    let container!: HTMLElement;
     await act(async () => {
-      render(<LoginScreen onClose={vi.fn()} />);
+      ({ container } = render(<LoginScreen onClose={vi.fn()} />));
     });
+    expect(container.firstElementChild?.classList.contains("scarlet-login")).toBe(true);
     expect(screen.getByText("0 connected")).toBeTruthy();
 
     // Another window completed a login; auth.json is shared, so this screen is

@@ -10,11 +10,11 @@ interface Props {
   currentModel: string;
   onSelect: (modelId: string) => void;
   disabled?: boolean;
-  /** Tooltip + accessible name (e.g. "Switch GG Coder's model"). */
+  /** Tooltip + accessible name (e.g. "Switch OrcaCoder's model"). */
   title: string;
-  /** Accent color for the closed control (GG = text, Ken = ken). */
+  /** Accent color for the closed control (Orca = text, Ken = ken). */
   color?: string;
-  /** When set, adds a "Follow GG Coder" choice (Ken's picker) — selecting it
+  /** When set, adds a "Follow OrcaCoder" choice (Ken's picker) — selecting it
    *  clears the pin. `followActive` makes it the selected value. */
   onSelectFollow?: () => void;
   followActive?: boolean;
@@ -101,7 +101,7 @@ export function ModelSelect({
   // A locked picker has to SAY it is locked. Both controls render the model as
   // plain footer text, so without this the disabled state is invisible: the
   // label looks identical, the click does nothing, and the tooltip still
-  // promises "Switch GG Coder's model". Users read that as a broken dropdown
+  // promises "Switch OrcaCoder's model". Users read that as a broken dropdown
   // (and the sidecar agrees with the lock — POST /model answers 409 while a run
   // is in flight), so name the reason instead of going quietly inert.
   const unavailableReason = disabled
@@ -234,8 +234,8 @@ export function ModelSelect({
           {onSelectFollow && (
             <option value={FOLLOW_VALUE}>
               {following
-                ? `Follow GG Coder (${modelDisplayName(models, currentModel)})`
-                : "Follow GG Coder"}
+                ? `Follow OrcaCoder (${modelDisplayName(models, currentModel)})`
+                : "Follow OrcaCoder"}
             </option>
           )}
           {!known && currentModel !== "" && <option value={currentModel}>{currentModel}</option>}
@@ -294,9 +294,9 @@ export function ModelSelect({
                 background: following ? theme.surface2 : "transparent",
               }}
               onClick={chooseFollow}
-              title="Ken adopts whatever model GG Coder is using"
+              title="Orca adopts whatever model OrcaCoder is using"
             >
-              Follow GG Coder
+              Follow OrcaCoder
             </button>
           )}
           {groups.map((group) => (

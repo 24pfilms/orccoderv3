@@ -1173,13 +1173,14 @@ export async function openPermissionsSettings(): Promise<void> {
 }
 
 /**
- * Create a new project folder (lowercase/dashes name) under the configured
- * projects root. Returns the created absolute path. Handled NATIVELY in Rust
- * (no sidecar), so it can't fail with "sidecar not ready". Throws with a
- * user-facing message on invalid name / conflict.
+ * Create a new project folder (lowercase/dashes name) under an explicit or
+ * configured projects root. Handled natively in Rust, including path validation.
  */
-export async function createProject(name: string): Promise<string> {
-  const res = await invoke<{ path: string }>("app_create_project", { name });
+export async function createProject(name: string, baseDir?: string): Promise<string> {
+  const res = await invoke<{ path: string }>("app_create_project", {
+    name,
+    baseDir: baseDir?.trim() || null,
+  });
   return res.path;
 }
 
