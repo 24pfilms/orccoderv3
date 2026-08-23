@@ -5013,12 +5013,17 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn prepare_updater_test_home(home: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(home.join("AppData/Local"))?;
+    std::fs::create_dir_all(home.join("AppData/Roaming"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
     if context.config().identifier == "com.orcacoder.desktop.updater-test" {
         let test_home = home_dir().join(".orcacoder-updater-test-home");
-        std::fs::create_dir_all(&test_home).expect("create isolated updater test home");
+        prepare_updater_test_home(&test_home).expect("create isolated updater test home");
         std::env::set_var("USERPROFILE", &test_home);
         std::env::set_var("HOME", &test_home);
     }
@@ -5369,6 +5374,21 @@ fn refresh_live_sessions(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updater_test_home_has_windows_known_folders() {
+        let home = std::env::temp_dir().join(format!(
+            "orcacoder-updater-home-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+
+        prepare_updater_test_home(&home).unwrap();
+
+        assert!(home.join("AppData/Local").is_dir());
+        assert!(home.join("AppData/Roaming").is_dir());
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn cancel_response_accepts_acknowledged_success() {
