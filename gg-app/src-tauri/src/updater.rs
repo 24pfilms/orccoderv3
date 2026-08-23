@@ -395,7 +395,7 @@ pub(crate) async fn update_install(
             return Err("active work started while the update downloaded".to_string());
         }
         log::info!("updater stage=workspace-snapshot-started");
-        super::refresh_live_sessions(&app);
+        super::refresh_live_sessions_async(&app).await;
         super::snapshot_workspace(&app).map_err(|error| {
             log::error!("updater stage=workspace-snapshot-failed error={error}");
             error

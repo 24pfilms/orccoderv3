@@ -10,6 +10,7 @@ import {
 import type { ReactElement, ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { error as logError } from "@tauri-apps/plugin-log";
 
 export type UpdatePhase =
@@ -77,7 +78,11 @@ export function AppUpdateProvider({ children }: { children: ReactNode }): ReactE
 
   const install = useCallback(async (): Promise<void> => {
     const version = state.version ?? "the new version";
-    if (!window.confirm(`Install OrcaCoder ${version} and restart all OrcaCoder windows?`)) return;
+    const approved = await confirm(
+      `Install OrcaCoder ${version} and restart all OrcaCoder windows?`,
+      { title: "Install update", kind: "info" },
+    );
+    if (!approved) return;
     try {
       await invoke("update_install");
     } catch (error) {

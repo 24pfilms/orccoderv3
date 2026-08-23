@@ -5308,7 +5308,41 @@ pub fn run() {
 /// started a new session mid-run (changing its session file) is recorded at its
 /// CURRENT session, not the one it was created with. Best-effort + time-boxed:
 /// any window we can't reach keeps its last-known session_path.
-fn refresh_live_sessions(app: &tauri::AppHandle) {
+async fn fetch_live_session_updates(
+    client: reqwest::Client,
+    port: u16,
+    targets: Vec<(String, String)>,
+) -> Vec<(String, Option<String>, Option<PathBuf>)> {
+    let mut updates = Vec::with_capacity(targets.len());
+    for (label, session_id) in targets {
+        let request = client
+            .get(format!("{}/state", sidecar_base(port)))
+            .header("x-gg-session", session_id)
+            .timeout(std::time::Duration::from_millis(400))
+            .send()
+            .await;
+        let Ok(response) = request else {
+            continue;
+        };
+        let Ok(body) = response.json::<serde_json::Value>().await else {
+            continue;
+        };
+        let session_path = body
+            .get("sessionPath")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let cwd = body
+            .get("cwd")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        updates.push((label, session_path, cwd));
+    }
+    updates
+}
+
+async fn refresh_live_sessions_async(app: &tauri::AppHandle) {
     let Some(port) = *app.state::<Daemon>().port.lock().unwrap() else {
         return;
     };
@@ -5316,64 +5350,51 @@ fn refresh_live_sessions(app: &tauri::AppHandle) {
         let state: State<Windows> = app.state();
         let map = state.map.lock().unwrap();
         map.iter()
-            .filter_map(|(label, w)| w.session_id.clone().map(|id| (label.clone(), id)))
+            .filter_map(|(label, window)| {
+                window
+                    .session_id
+                    .clone()
+                    .map(|id| (label.clone(), id))
+            })
             .collect()
     };
     if targets.is_empty() {
         return;
     }
     let client = app.state::<reqwest::Client>().inner().clone();
-    // The exit callback runs on the main event-loop thread (outside the async
-    // runtime), so block_on is safe here. Each request is time-boxed so a hung
-    // session can't stall quit.
-    let results: Vec<(String, Option<String>, Option<PathBuf>)> =
-        tauri::async_runtime::block_on(async {
-            let mut out = Vec::with_capacity(targets.len());
-            for (label, sid) in targets {
-                let url = format!("{}/state", sidecar_base(port));
-                let req = client
-                    .get(&url)
-                    .header("x-gg-session", &sid)
-                    .timeout(std::time::Duration::from_millis(400))
-                    .send()
-                    .await;
-                let Ok(res) = req else {
-                    continue;
-                };
-                let Ok(body) = res.json::<serde_json::Value>().await else {
-                    continue;
-                };
-                let session_path = body
-                    .get("sessionPath")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
-                let cwd = body
-                    .get("cwd")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(PathBuf::from);
-                out.push((label, session_path, cwd));
-            }
-            out
-        });
+    let results = fetch_live_session_updates(client, port, targets).await;
     let state: State<Windows> = app.state();
     let mut map = state.map.lock().unwrap();
     for (label, session_path, cwd) in results {
-        if let Some(inst) = map.get_mut(&label) {
+        if let Some(instance) = map.get_mut(&label) {
             if session_path.is_some() {
-                inst.session_path = session_path;
+                instance.session_path = session_path;
             }
             if let Some(cwd) = cwd {
-                inst.cwd = Some(cwd);
+                instance.cwd = Some(cwd);
             }
         }
     }
 }
 
+/// Exit callbacks are synchronous and run outside the async runtime.
+fn refresh_live_sessions(app: &tauri::AppHandle) {
+    tauri::async_runtime::block_on(refresh_live_sessions_async(app));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_session_fetch_with_no_targets_completes() {
+        let updates = tauri::async_runtime::block_on(fetch_live_session_updates(
+            reqwest::Client::new(),
+            1,
+            Vec::new(),
+        ));
+        assert!(updates.is_empty());
+    }
 
     #[test]
     fn updater_test_home_has_windows_known_folders() {
