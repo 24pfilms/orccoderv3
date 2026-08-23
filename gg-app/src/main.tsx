@@ -20,6 +20,7 @@ import { WhatsNewWindow } from "./WhatsNewWindow";
 // import { GazeController } from "./GazeController";
 import { applyAll, loadState } from "./orca/orca-theme";
 import { tagPlatform } from "./platform";
+import { AppUpdateProvider } from "./update";
 
 // Mirror Rust-side logs into the devtools console, and forward uncaught
 // webview errors into the shared log file so failures aren't invisible.
@@ -64,11 +65,11 @@ if (new URLSearchParams(window.location.search).get("whatsnew") === "1") {
   // updaters double-registers the single Tauri `agent-event` listener and was
   // amplifying state-updater impurity. A desktop webview gains nothing from it.
   root.render(
-    <>
+    <AppUpdateProvider>
       <App />
       <ZoomController />
       <WhatsNewModal />
       {/* <GazeController /> */}
-    </>,
+    </AppUpdateProvider>,
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Download, MessageCircle, Send, Settings } from "lucide-react";
+import { CheckCircle2, Download, MessageCircle, Send, Settings } from "lucide-react";
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeBackdrop } from "./HomeBackdrop";
 import { SettingsModal } from "./SettingsModal";
@@ -138,25 +138,76 @@ export function HomeScreen({
   return (
     <div className="home" data-tauri-drag-region>
       <HomeBackdrop />
-      {appUpdate.phase === "available" || appUpdate.phase === "installing" ? (
+      {appUpdate.phase === "updated" ||
+      (appUpdate.configured &&
+        [
+          "idle",
+          "checking",
+          "check-error",
+          "available",
+          "installing",
+          "relaunching",
+          "install-error",
+        ].includes(appUpdate.phase)) ? (
         <button
-          className={`home-update${appUpdate.phase === "installing" ? " home-update-progress" : ""}`}
-          disabled={appUpdate.phase === "installing"}
-          title={`Update to ${appUpdate.version} — installs and restarts the app`}
-          onClick={() => void appUpdate.install()}
+          className={`home-update${
+            appUpdate.phase === "installing" ? " home-update-progress" : ""
+          }`}
+          disabled={
+            appUpdate.phase === "checking" ||
+            appUpdate.phase === "installing" ||
+            appUpdate.phase === "relaunching"
+          }
+          aria-live="polite"
+          aria-label={
+            appUpdate.phase === "updated"
+              ? "Dismiss update confirmation"
+              : appUpdate.phase === "install-error"
+                ? "Retry update installation"
+                : appUpdate.phase === "check-error"
+                  ? "Retry update check"
+                  : undefined
+          }
+          title={
+            appUpdate.error ??
+            (appUpdate.phase === "updated"
+              ? "Dismiss"
+              : appUpdate.phase === "idle" || appUpdate.phase === "checking"
+                ? "Check for OrcaCoder updates"
+                : `Install OrcaCoder ${appUpdate.version ?? "update"}`)
+          }
+          onClick={() => {
+            if (appUpdate.phase === "updated") return void appUpdate.dismissUpdated();
+            if (appUpdate.phase === "idle" || appUpdate.phase === "check-error") {
+              return void appUpdate.check();
+            }
+            return void appUpdate.install();
+          }}
         >
           {appUpdate.phase === "installing" && (
             <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
           )}
-          <Download size={14} strokeWidth={2.25} aria-hidden="true" />
-          <span className="home-update-swap">
-            <span className={appUpdate.phase === "installing" ? "home-update-hidden" : undefined}>
-              {`Update to ${appUpdate.version}`}
-            </span>
-            <span className={appUpdate.phase === "installing" ? undefined : "home-update-hidden"}>
-              {"Installing\u2026"}
-              <span className="home-update-pct">{`${appUpdate.progress ?? 0}%`}</span>
-            </span>
+          {appUpdate.phase === "updated" ? (
+            <CheckCircle2 size={14} strokeWidth={2.25} aria-hidden="true" />
+          ) : (
+            <Download size={14} strokeWidth={2.25} aria-hidden="true" />
+          )}
+          <span>
+            {appUpdate.phase === "updated"
+              ? "OrcaCoder just updated!"
+              : appUpdate.phase === "check-error"
+                ? "Try update check again"
+                : appUpdate.phase === "idle"
+                  ? "Check for updates"
+                  : appUpdate.phase === "checking"
+                    ? "Checking…"
+                    : appUpdate.phase === "install-error"
+                      ? "Retry install"
+                      : appUpdate.phase === "relaunching"
+                        ? "Restarting…"
+                        : appUpdate.phase === "installing"
+                          ? `Installing… ${appUpdate.progress ?? 0}%`
+                          : "Install update"}
           </span>
         </button>
       ) : null}

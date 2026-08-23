@@ -1,0 +1,252 @@
+name: Desktop publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Stage a draft first; publish only after reviewing that draft
+        required: true
+        type: choice
+        options:
+          - stage-draft
+          - publish-reviewed-draft
+      signing_run_id:
+        description: Successful Desktop protected signing workflow run ID
+        required: true
+        type: string
+      commit_sha:
+        description: Exact approved 40-character source commit SHA
+        required: true
+        type: string
+      version:
+        description: Exact approved SemVer
+        required: true
+        type: string
+      release_notes:
+        description: Plain-text notes (required when staging)
+        required: false
+        type: string
+      publish_confirmation:
+        description: For publication, type desktop-vVERSION@FULL_SHA
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_REPOSITORY: 24pfilms/orcacoder-releases
+  RELEASE_NAME: desktop-signed-release-${{ inputs.version }}-${{ inputs.commit_sha }}
+  RELEASE_TAG: desktop-v${{ inputs.version }}
+
+concurrency:
+  group: desktop-publication-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate signed release set
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Validate signing run and approval inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+          SIGNING_RUN_ID: ${{ inputs.signing_run_id }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.publish_confirmation }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:APPROVED_SHA -notmatch '^[0-9a-f]{40}$') { throw 'commit_sha must be a full lowercase SHA' }
+          if ($env:APPROVED_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'version must be approved 0.x SemVer' }
+          if ($env:SIGNING_RUN_ID -notmatch '^[0-9]+$') { throw 'signing_run_id must be numeric' }
+          if ($env:OPERATION -eq 'stage-draft' -and [string]::IsNullOrWhiteSpace($env:NOTES)) { throw 'release notes are required for a draft' }
+          if ($env:OPERATION -eq 'publish-reviewed-draft' -and $env:CONFIRMATION -ne "desktop-v$env:APPROVED_VERSION@$env:APPROVED_SHA") { throw 'publish confirmation does not bind the tag to the source SHA' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SIGNING_RUN_ID" | ConvertFrom-Json
+          if ($run.conclusion -ne 'success') { throw 'signing run did not succeed' }
+          if ($run.head_sha -ne $env:APPROVED_SHA) { throw 'signing run SHA does not match approval' }
+          if ($run.path -ne '.github/workflows/desktop-sign.yml') { throw 'run is not the protected signing workflow' }
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          path: release
+          run-id: ${{ inputs.signing_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify signed files and build static manifest
+        shell: pwsh
+        env:
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((Get-Content release/source-sha.txt -Raw) -ne $env:APPROVED_SHA) { throw 'signed release SHA mismatch' }
+          if ((Get-Content release/version.txt -Raw) -ne $env:APPROVED_VERSION) { throw 'signed release version mismatch' }
+          Push-Location release
+          Get-Content SHA256SUMS | ForEach-Object {
+            $hash, $name = $_ -split '  ', 2
+            if (-not $name -or (Get-FileHash $name -Algorithm SHA256).Hash.ToLower() -ne $hash) { throw "signed digest mismatch: $name" }
+          }
+          Pop-Location
+          $installer = @(Get-ChildItem release/*-setup.exe)
+          if ($installer.Count -ne 1) { throw "expected one NSIS installer, found $($installer.Count)" }
+          if ($installer[0].Name -notmatch [regex]::Escape($env:APPROVED_VERSION)) { throw 'installer filename does not contain approved version' }
+          $signature = Get-AuthenticodeSignature $installer[0]
+          if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) { throw 'installer Authenticode validation failed' }
+          $tauriSignaturePath = "$($installer[0].FullName).sig"
+          if (-not (Test-Path $tauriSignaturePath)) { throw 'Tauri signature is missing' }
+          $tauriSignature = (Get-Content $tauriSignaturePath -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($tauriSignature)) { throw 'Tauri signature is empty' }
+          $assetUrl = "https://github.com/24pfilms/orcacoder-releases/releases/download/desktop-v$env:APPROVED_VERSION/$($installer[0].Name)"
+          $manifest = [ordered]@{
+            version = $env:APPROVED_VERSION
+            notes = $env:NOTES
+            pub_date = (Get-Date).ToUniversalTime().ToString('o')
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{ signature = $tauriSignature; url = $assetUrl }
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content release/latest.json -Encoding utf8NoBOM
+          Get-FileHash release/latest.json -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  latest.json" | Add-Content release/SHA256SUMS
+          }
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-publication-set-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  verify-tauri-signature:
+    name: Verify Tauri update signature
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-publication-set-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: release
+
+      - name: Verify against the approved production public key
+        shell: bash
+        env:
+          TAURI_SIGNING_PUBLIC_KEY: ${{ vars.TAURI_SIGNING_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$TAURI_SIGNING_PUBLIC_KEY"
+          curl --fail --location --silent --show-error https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz --output minisign.tar.gz
+          echo '9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  minisign.tar.gz' | sha256sum --check --strict
+          tar -xzf minisign.tar.gz minisign-linux/x86_64/minisign
+          chmod +x minisign-linux/x86_64/minisign
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" | base64 --decode > updater.pub
+          signature_file=$(find release -maxdepth 1 -name '*-setup.exe.sig' -print -quit)
+          installer_file=${signature_file%.sig}
+          test -f "$installer_file"
+          base64 --decode < "$signature_file" > updater.sig
+          minisign-linux/x86_64/minisign -Vm "$installer_file" -p updater.pub -x updater.sig
+
+  stage-draft:
+    name: Stage public draft
+    if: inputs.operation == 'stage-draft'
+    needs: [validate, verify-tauri-signature]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: desktop-publication
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-publication-set-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: release
+
+      - name: Create source-bound draft and upload exact assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          ! gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1
+          record=$(jq -cn --arg source_repository "$GITHUB_REPOSITORY" --arg source_sha "$APPROVED_SHA" --arg version "$APPROVED_VERSION" '{source_repository:$source_repository,source_sha:$source_sha,version:$version}')
+          blob=$(gh api --method POST "repos/$RELEASE_REPOSITORY/git/blobs" -f content="$record" -f encoding=utf-8 --jq .sha)
+          tree=$(gh api --method POST "repos/$RELEASE_REPOSITORY/git/trees" --input - --jq .sha <<JSON
+          {"tree":[{"path":"records/$RELEASE_TAG.json","mode":"100644","type":"blob","sha":"$blob"}]}
+          JSON
+          )
+          commit=$(gh api --method POST "repos/$RELEASE_REPOSITORY/git/commits" -f message="Record $RELEASE_TAG from $APPROVED_SHA" -f tree="$tree" --jq .sha)
+          gh release create "$RELEASE_TAG" release/* --repo "$RELEASE_REPOSITORY" --target "$commit" --title "OrcaCoder $APPROVED_VERSION" --notes "$NOTES" --draft
+
+  publish:
+    name: Publish reviewed immutable release
+    if: inputs.operation == 'publish-reviewed-draft'
+    needs: [validate, verify-tauri-signature]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: desktop-publication
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-publication-set-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: approved
+
+      - name: Re-verify draft assets and publish once
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          mkdir downloaded
+          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --dir downloaded
+          diff -u <(cd approved && find . -maxdepth 1 -type f -printf '%f\n' | sort) <(cd downloaded && find . -maxdepth 1 -type f -printf '%f\n' | sort)
+          for file in approved/*; do
+            name=$(basename "$file")
+            case "$name" in latest.json|SHA256SUMS) continue ;; esac
+            cmp "$file" "downloaded/$name"
+          done
+          (cd downloaded && while read -r hash name; do printf '%s  %s\n' "$(sha256sum "$name" | cut -d' ' -f1)" "$name"; done < SHA256SUMS) > downloaded.verified
+          diff -u downloaded/SHA256SUMS downloaded.verified
+          signature_file=$(find downloaded -maxdepth 1 -name '*-setup.exe.sig' -print -quit)
+          jq -e --arg version "${{ inputs.version }}" --rawfile signature "$signature_file" '.version == $version and .platforms["windows-x86_64"].signature == ($signature | rtrimstr("\n") | rtrimstr("\r"))' downloaded/latest.json
+          gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --draft=false --latest
+
+  verify-publication:
+    name: Verify anonymous immutable release
+    if: inputs.operation == 'publish-reviewed-draft'
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download every public asset without credentials
+        shell: bash
+        env:
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          mkdir public
+          curl --fail --location --silent --show-error "https://api.github.com/repos/$RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" --output release.json
+          jq -er '.assets[].browser_download_url' release.json > asset-urls.txt
+          while IFS= read -r url; do curl --fail --location --silent --show-error "$url" --output "public/$(basename "$url")"; done < asset-urls.txt
+          (cd public && while read -r hash name; do test "$(sha256sum "$name" | cut -d' ' -f1)" = "$hash"; done < SHA256SUMS)
+          jq -e --arg version "${{ inputs.version }}" '.version == $version and (.platforms | keys == ["windows-x86_64"]) and (.platforms["windows-x86_64"].url | startswith("https://github.com/24pfilms/orcacoder-releases/releases/download/desktop-v"))' public/latest.json
+
+      - name: Verify GitHub immutable-release attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release verify "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY"
+          for asset in public/*; do gh release verify-asset "$RELEASE_TAG" "$asset" --repo "$RELEASE_REPOSITORY"; done

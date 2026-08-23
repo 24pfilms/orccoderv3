@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -34,6 +34,8 @@ use tauri::{
     Emitter, EventTarget, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
+
+mod updater;
 
 /// The single shared Node daemon process. Every window's `AgentSession` lives
 /// inside this one process as an in-process object, addressed by a session id
@@ -1967,15 +1969,64 @@ fn read_workspace() -> Workspace {
         .unwrap_or_default()
 }
 
-/// Write the workspace snapshot (creating ~/.gg if needed). Best-effort.
-fn write_workspace(ws: &Workspace) {
-    let path = app_workspace_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let dir = path.parent().ok_or("file path has no parent")?;
+    std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("state");
+    let temp = dir.join(format!(".{name}-{}-{nonce}.tmp", std::process::id()));
+    let result = (|| -> Result<(), String> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|error| error.to_string())?;
+        file.write_all(bytes).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            use windows_sys::Win32::Storage::FileSystem::{
+                MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+            };
+            let from: Vec<u16> = temp.as_os_str().encode_wide().chain(Some(0)).collect();
+            let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let moved = unsafe {
+                MoveFileExW(
+                    from.as_ptr(),
+                    to.as_ptr(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                )
+            };
+            if moved == 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            std::fs::rename(&temp, path).map_err(|error| error.to_string())?;
+            std::fs::File::open(dir)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
     }
-    if let Ok(pretty) = serde_json::to_string_pretty(ws) {
-        let _ = std::fs::write(&path, pretty);
-    }
+    result
+}
+
+/// Atomically replace the workspace snapshot and force its bytes to storage.
+fn write_workspace(ws: &Workspace) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec_pretty(ws).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    atomic_replace(&app_workspace_path(), &bytes)
 }
 
 /// Pure: picker-only windows have a daemon session at the default boot cwd but
@@ -1997,10 +2048,10 @@ fn filter_restorable<F: Fn(&str) -> bool>(
         .collect()
 }
 
-/// Walk every live window + its `Windows` session entry and write a fresh
+/// Walk every live window + its `Windows` session entry and durably write a fresh
 /// snapshot. Picker-only windows (without an active target) are excluded.
 /// Geometry is captured from each window's current outer position + inner size.
-fn snapshot_workspace(app: &tauri::AppHandle) {
+fn snapshot_workspace(app: &tauri::AppHandle) -> Result<(), String> {
     let windows = app.webview_windows();
     let selected_labels: HashSet<String> = app
         .state::<RestoreTargets>()
@@ -2049,7 +2100,7 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
         });
     }
     drop(map);
-    write_workspace(&Workspace { windows: entries });
+    write_workspace(&Workspace { windows: entries })
 }
 
 /// Remove one window's entry from the snapshot (deliberate user close). Keyed by
@@ -2075,7 +2126,7 @@ fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
         .position(|w| w.mode == mode && w.chat_agent == chat_agent && w.cwd == cwd)
     {
         ws.windows.remove(idx);
-        write_workspace(&ws);
+        let _ = write_workspace(&ws);
     }
 }
 
@@ -3567,7 +3618,7 @@ async fn select_project(
         &mut app.state::<RestoreTargets>().map.lock().unwrap(),
         &label,
     );
-    snapshot_workspace(&app);
+    let _ = snapshot_workspace(&app);
 
     // Take the old session id (and clear it) so the old SSE bridge retires.
     let old_id = {
@@ -3619,7 +3670,7 @@ async fn select_project(
         label,
         target,
     );
-    snapshot_workspace(&app);
+    let _ = snapshot_workspace(&app);
     Ok(())
 }
 
@@ -4964,6 +5015,14 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    if context.config().identifier == "com.orcacoder.desktop.updater-test" {
+        let test_home = home_dir().join(".orcacoder-updater-test-home");
+        std::fs::create_dir_all(&test_home).expect("create isolated updater test home");
+        std::env::set_var("USERPROFILE", &test_home);
+        std::env::set_var("HOME", &test_home);
+    }
+
     // Per-launch daemon auth token (see `Daemon::token`). The shared reqwest
     // client attaches it as a default header so all ~60 proxy call sites are
     // authenticated without per-site changes.
@@ -4980,10 +5039,19 @@ pub fn run() {
         .unwrap_or_else(|_| reqwest::Client::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let window = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().into_values().next());
+            if let Some(window) = window {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -5008,6 +5076,7 @@ pub fn run() {
         .manage(MoveDebounce::default())
         .manage(TrayState::default())
         .manage(TrayIntents::default())
+        .manage(updater::UpdateCoordinator::default())
         .manage(http_client)
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
@@ -5096,7 +5165,12 @@ pub fn run() {
             window_restore_target,
             window_tray_intent,
             set_update_available,
-            set_remote_active
+            set_remote_active,
+            updater::update_state,
+            updater::update_check,
+            updater::update_set_window_readiness,
+            updater::update_dismiss_updated,
+            updater::update_install
         ])
         .setup(|app| {
             // Windows-only: track per-window minimized state so restoring one
@@ -5124,6 +5198,7 @@ pub fn run() {
             // single default `main` window. Windows are built in code (not from
             // config) so macOS gets `hidden_title(true)` via the builder.
             restore_or_default_windows(&app.handle().clone())?;
+            updater::initialise(&app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -5203,7 +5278,7 @@ pub fn run() {
             }
             _ => {}
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running tauri application")
         .run(|app, event| {
             if let RunEvent::ExitRequested { .. } = event {
@@ -5212,7 +5287,7 @@ pub fn run() {
                 // snapshot (current geometry + each window's live cwd/session).
                 app.state::<AppExiting>().0.store(true, Ordering::SeqCst);
                 refresh_live_sessions(app);
-                snapshot_workspace(app);
+                let _ = snapshot_workspace(app);
                 // Terminate the daemon's process group once — reaps every
                 // session's MCP/LSP children in one shot (no orphans).
                 let child = app.state::<Daemon>().child.lock().unwrap().take();

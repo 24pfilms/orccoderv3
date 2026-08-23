@@ -2,20 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [orca-main]
   pull_request:
-    branches: [main]
+    branches: [orca-main]
 
 permissions:
   contents: read
 
 # Cancel the superseded run when a branch gets rapid successive pushes/PR
-# updates. Keyed on head_ref for PRs, run_id (never collides) for main pushes.
+# updates. Keyed on head_ref for PRs, run_id (never collides) for orca-main pushes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-# Cross-platform smoke matrix. Every push to main and every PR runs build +
+# Cross-platform smoke matrix. Every push to orca-main and every PR runs build +
 # typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
 # platform-specific regressions before they hit npm.
 #
@@ -32,16 +32,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [22.x]
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        node: [24.15.0]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -119,25 +119,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22.x
+          node-version: 24.15.0
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable snapshot
+        with:
+          toolchain: 1.97.1
 
       # Both `cargo test` and the Windows packaged build compile the same large
       # Tauri dependency tree; without a cache the packaged smoke would rebuild
       # it from scratch on every run.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: gg-app/src-tauri
 

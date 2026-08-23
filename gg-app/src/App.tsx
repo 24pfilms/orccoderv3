@@ -119,7 +119,7 @@ import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
-import { useAppUpdate } from "./update";
+import { reportUpdateReadiness, useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
 import { playSound } from "./sounds";
 import { segmentDoneMarkers, hasDoneMarker, countPlanSteps } from "./plan-steps";
@@ -608,8 +608,26 @@ function App(): React.ReactElement {
       setExporting(false);
     }
   }, []);
-  // App self-update (GitHub releases). Drives the footer update banner.
+  // Rust owns update checks and installation; this window only reports work that
+  // must not be interrupted and renders the shared coordinator state.
   const appUpdate = useAppUpdate();
+  useEffect(() => {
+    const blockers: string[] = [];
+    if (running || kenRunning) blockers.push("An agent is still running");
+    if (autopilotReviewing || planReview) blockers.push("A review is waiting for a decision");
+    if (input.trim() || attachments.length > 0) blockers.push("A draft or attachment is waiting");
+    if (enhancing || queuedCount > 0) blockers.push("A prompt operation is still active");
+    void reportUpdateReadiness(blockers);
+  }, [
+    attachments.length,
+    autopilotReviewing,
+    enhancing,
+    input,
+    kenRunning,
+    planReview,
+    queuedCount,
+    running,
+  ]);
 
   // ── macOS menu-bar tray ───────────────────────────────────────────────────
   // Settings opened from the tray. Owned HERE, not by HomeScreen, because the
@@ -627,8 +645,8 @@ function App(): React.ReactElement {
     setHomeRefreshSignal((n) => n + 1);
   }, []);
 
-  // Rust owns the tray menu but not the updater — the webview polls GitHub. Push
-  // availability down so "Update now" shows only while an update is pending.
+  // Rust owns update state; mirror availability into the native tray so its
+  // update action appears only while a signed update is pending.
   const updateVersion = appUpdate.phase === "available" ? appUpdate.version : null;
   useEffect(() => {
     void setUpdateAvailable(updateVersion);

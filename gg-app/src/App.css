@@ -3976,44 +3976,36 @@ body {
     box-shadow: 0 0 0 0 transparent;
   }
 }
-/* Home-screen update pill — small green-gradient chip floating above the ASCII
-   logo, shown only when an update is pending. Deliberately smaller than the
-   primary action buttons so it reads as a notification, not a main CTA. */
+/* Compact blue action for install, progress, retry, and update confirmation. */
 .home-update {
-  position: relative; /* anchor + clip the progress fill below */
+  position: relative;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   align-self: center;
-  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
-  color: #04130d;
-  border: none;
-  border-radius: 999px;
+  min-height: 30px;
+  background: var(--gloss-primary);
+  color: #f4f8ff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-pill);
   font-family: var(--sans);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
   padding: 5px 12px;
   cursor: pointer;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
-  transition:
-    filter var(--t-fast),
-    transform var(--t-fast);
+  box-shadow: var(--gloss-shadow-primary);
+  transition: filter var(--t-fast);
 }
 .home-update:hover:not(:disabled) {
   filter: brightness(1.08);
-  transform: translateY(-1px);
 }
 .home-update:disabled {
   opacity: 0.7;
   cursor: default;
 }
-/* Installing state: the pill keeps its vibrant gradient as the track (no
-   :disabled dimming). Progress is a slim strip along the pill's bottom edge —
-   a full-height fill swept over the "Installing…" label and looked muddy at
-   this size. The percentage reserves a steady 3ch so the label doesn't jitter
-   as it climbs. */
+/* Installing keeps the action visible while the slim bottom strip reports progress. */
 .home-update-progress {
   opacity: 1;
   cursor: default;
@@ -4023,33 +4015,9 @@ body {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, #8ff5c6 0%, #a7f3e9 100%);
+  background: rgba(255, 255, 255, 0.78);
   transition: width 180ms linear;
   pointer-events: none;
-}
-/* Label swap without resizing: both labels occupy the same grid cell (the
-   inactive one is visibility:hidden), so the pill is always sized to the
-   wider of "Update to x.y.z" and "Installing… 100%". */
-.home-update-swap {
-  display: grid;
-}
-.home-update-swap > * {
-  grid-area: 1 / 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.home-update-hidden {
-  visibility: hidden;
-}
-.home-update-pct {
-  display: inline-block;
-  /* 4ch, not 3ch: "100%" is three digits PLUS the % glyph — 3ch fit "99%" but
-     the span outgrew it at 100%, stretching the pill right at the finish. */
-  min-width: 4ch;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 /* Shown in the update pill's place when already up to date — the current
    version plus a "What's new" button, so the spot never collapses/jumps. */

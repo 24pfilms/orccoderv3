@@ -1,267 +1,147 @@
-name: Release
-
-# Build + sign + publish the gg-app desktop bundle for every OS/arch on a tag
-# push (v*). Each runner stages its own per-platform Node runtime and bundles
-# the sidecar (so sharp's native binary matches the target), then tauri-action
-# produces the installers, signs the updater artifacts, uploads them to a
-# published (non-draft) GitHub release, and generates `latest.json` for the
-# updater endpoint.
-#
-# Required repository secrets:
-#   Updater signing (all OSes):
-#     TAURI_SIGNING_PRIVATE_KEY           — minisign private key (must match the
-#                                           `plugins.updater.pubkey` in tauri.conf.json)
-#     TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — password for that key
-#   macOS code signing + notarization (only used on the macOS matrix legs):
-#     APPLE_CERTIFICATE           — base64 of the exported "Developer ID Application" .p12
-#     APPLE_CERTIFICATE_PASSWORD  — password set when exporting that .p12
-#     APPLE_SIGNING_IDENTITY      — e.g. "Developer ID Application: NAME (396M7LY29W)"
-#     KEYCHAIN_PASSWORD           — any throwaway password for the CI keychain
-#     APPLE_ID                    — Apple ID email used for notarization
-#     APPLE_PASSWORD              — app-specific password for that Apple ID
-#     APPLE_TEAM_ID               — Apple Team ID (396M7LY29W)
-# All signing/notarization credentials live in the protected
-# `desktop-production` environment. Preflight fails closed before any build if
-# credentials are absent; unsigned public releases are never produced.
+name: Desktop candidate
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact 40-character commit SHA on orca-main
+        required: true
+        type: string
+      version:
+        description: Exact SemVer without a tag prefix
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-candidate-${{ inputs.commit_sha }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24.15.0
+  PNPM_VERSION: 10.28.2
+  RUST_VERSION: 1.97.1
+
 jobs:
-  preflight:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: desktop-production
-      url: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Validate tag and every release credential
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_REF_TYPE" == "tag" ]]
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
-            echo "Release tag must point to a commit on origin/main" >&2
-            exit 1
-          }
-          required=(
-            TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
-            KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-          )
-          for name in "${required[@]}"; do
-            [[ -n "${!name:-}" ]] || {
-              echo "Missing protected release secret: $name" >&2
-              exit 1
-            }
-          done
-
-  release:
-    needs: preflight
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-14 # Apple Silicon (arm64)
-            args: "--target aarch64-apple-darwin"
-          # NOTE: Intel macOS (x86_64) is intentionally omitted. GitHub's free
-          # Intel mac runners are effectively unavailable (jobs queue for hours),
-          # and a universal binary isn't viable here because the bundled Node
-          # runtime + native .node addons are single-arch. Re-add a
-          # `macos-13 / --target x86_64-apple-darwin` leg if a paid/Intel runner
-          # becomes available. Apple Silicon covers all Macs sold since 2020.
-          - platform: windows-latest
-            args: ""
-          # NOTE: Linux is intentionally omitted for now. We ship macOS +
-          # Windows only. Re-add an `ubuntu-latest` leg (with
-          # `args: --bundles deb,rpm` — AppImage's linuxdeploy hangs on CI for
-          # Node-bundling apps) when Linux support is prioritized.
-    runs-on: ${{ matrix.platform }}
-    # Signing + notarization + per-OS installer builds; observed ~15-20 min,
-    # headroom for notarization stalls and cold caches.
+  candidate:
+    name: Windows x64 candidate
+    runs-on: windows-2025
     timeout-minutes: 60
-    environment:
-      name: desktop-production
-      url: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-    # Hoisted to job level so the certificate-import step's own `if` can read it
-    # (a step cannot reference env it defines in the same step's `if`).
-    env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ inputs.commit_sha }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Validate protected release context
+      - name: Prove source authority
         shell: bash
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_TYPE" == "tag" ]]
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
-            echo "Release tag must point to a commit on origin/main" >&2
-            exit 1
+          [[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$APPROVED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+          git fetch --no-tags origin orca-main
+          git merge-base --is-ancestor "$APPROVED_SHA" origin/orca-main
+          test -z "$(git status --porcelain)"
+
+      - name: Verify release identity and version sources
+        shell: pwsh
+        env:
+          APPROVED_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content gg-app/package.json -Raw | ConvertFrom-Json
+          $tauri = Get-Content gg-app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $cargoText = Get-Content gg-app/src-tauri/Cargo.toml -Raw
+          $lockText = Get-Content gg-app/src-tauri/Cargo.lock -Raw
+          $cargoVersion = [regex]::Match($cargoText, '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"').Groups[1].Value
+          $lockVersion = [regex]::Match($lockText, '(?m)^name = "gg-app"\r?\nversion = "([0-9]+\.[0-9]+\.[0-9]+)"').Groups[1].Value
+          $versions = @($package.version, $tauri.version, $cargoVersion, $lockVersion)
+          if ($versions -contains '' -or @($versions | Select-Object -Unique).Count -ne 1 -or $versions[0] -ne $env:APPROVED_VERSION) {
+            throw "version mismatch: approved=$env:APPROVED_VERSION package=$($versions[0]) tauri=$($versions[1]) cargo=$($versions[2]) lock=$($versions[3])"
           }
-          required=(TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD)
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            required+=(
-              APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
-              KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-            )
-          fi
-          for name in "${required[@]}"; do
-            [[ -n "${!name:-}" ]] || {
-              echo "Missing protected release secret: $name" >&2
-              exit 1
-            }
-          done
+          if ($tauri.productName -ne 'OrcaCoder' -or $tauri.identifier -ne 'com.orcacoder.desktop') { throw 'desktop product identity mismatch' }
+          if (@($tauri.bundle.targets).Count -ne 1 -or $tauri.bundle.targets[0] -ne 'nsis') { throw 'Windows release must target NSIS only' }
+          if ($tauri.bundle.createUpdaterArtifacts) { throw 'candidate source config must keep updater artifacts disabled' }
+          if ($tauri.plugins.updater.endpoints.Count -ne 0 -or $tauri.plugins.updater.pubkey) { throw 'candidate source config must keep the production updater disabled' }
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
-          version: 10
+          version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22.x
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable snapshot
         with:
-          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin' || '' }}
+          toolchain: ${{ env.RUST_VERSION }}
 
-      # Same cache as the ci.yml app job: the Tauri dependency tree is large
-      # and identical across runs; without this every tag rebuilds it from
-      # scratch on both matrix legs.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: gg-app/src-tauri
 
-      - name: Linux system deps (tauri)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
-
-      - name: Install
+      - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      # shell: bash is load-bearing on the windows-latest leg. The default shell
-      # there is PowerShell, which does NOT abort a multi-line script when an
-      # intermediate command exits non-zero — only the LAST line decides the
-      # step's outcome. Without this a failing gg-ai or gg-agent build is
-      # silently swallowed by ggcoder's build succeeding after it, and we SHIP
-      # an installer built from stale or missing artifacts. The same bug hid 72
-      # failing tests in ci.yml.
-      - name: Build framework packages
+      - name: Install pinned SBOM generator
+        run: dotnet tool install --global Microsoft.Sbom.DotNetTool --version 4.1.5
+
+      - name: Build and verify
         shell: bash
         run: |
+          set -euo pipefail
           pnpm --filter @kenkaiiii/gg-ai build
           pnpm --filter @kenkaiiii/gg-agent build
           pnpm --filter @kenkaiiii/ggcoder build
-
-      - name: Stage node runtime + bundle sidecar
-        run: |
+          pnpm check
+          pnpm lint
+          pnpm test
+          cargo test --locked --manifest-path gg-app/src-tauri/Cargo.toml
           pnpm --filter gg-app stage:node
           pnpm --filter gg-app bundle:sidecar
-        shell: bash
+          node gg-app/scripts/smoke-sidecar.mjs
 
-      - name: Sidecar smoke (bundled runtime + bundle)
-        run: node gg-app/scripts/smoke-sidecar.mjs
-        shell: bash
+      - name: Build unsigned NSIS candidate
+        working-directory: gg-app
+        run: pnpm tauri build --ci --bundles nsis --no-sign
 
-      # Preflight above guarantees every macOS signing secret exists. Import the
-      # Developer ID certificate into an ephemeral keychain for nested signing and
-      # Tauri notarization.
-      - name: Import Apple Developer certificate (macOS)
-        if: runner.os == 'macOS'
+      - name: Assemble candidate evidence
+        shell: pwsh
         env:
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
         run: |
-          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security find-identity -v -p codesigning build.keychain
-          rm -f certificate.p12
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory candidate | Out-Null
+          Set-Content candidate/source-sha.txt $env:APPROVED_SHA -NoNewline
+          Set-Content candidate/version.txt $env:APPROVED_VERSION -NoNewline
+          Copy-Item gg-app/src-tauri/target/release/gg-app.exe candidate/gg-app.exe
+          Copy-Item gg-app/src-tauri/binaries/ggnode-x86_64-pc-windows-msvc.exe candidate/ggnode-x86_64-pc-windows-msvc.exe
+          Copy-Item gg-app/src-tauri/resources/sidecar candidate/sidecar -Recurse
+          Copy-Item gg-app/src-tauri/target/release/bundle/nsis/*-setup.exe candidate/
+          Copy-Item pnpm-lock.yaml,gg-app/src-tauri/Cargo.lock candidate/
+          cargo metadata --locked --format-version 1 --manifest-path gg-app/src-tauri/Cargo.toml | Set-Content candidate/cargo-metadata.json
+          pnpm list --recursive --json --depth Infinity | Set-Content candidate/pnpm-dependencies.json
+          sbom-tool generate -b candidate -bc . -pn OrcaCoder -pv $env:APPROVED_VERSION -ps 24pfilms -nsb https://github.com/24pfilms/orcacoder-releases
+          Copy-Item candidate/_manifest/spdx_2.2/manifest.spdx.json candidate/OrcaCoder.spdx.json
+          Remove-Item candidate/_manifest -Recurse -Force
+          Get-ChildItem candidate -File -Recurse | Sort-Object FullName | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetRelativePath((Resolve-Path candidate), $_.Path).Replace('\','/'))" } |
+            Set-Content candidate/SHA256SUMS
+          Get-ChildItem candidate -File | ForEach-Object { $_.Name }
 
-      # Sign the nested Mach-O binaries Tauri won't touch (the staged Node
-      # runtime + the sidecar's native addons under bundle.resources) with
-      # Developer ID + hardened runtime + secure timestamp, so notarization of
-      # the assembled app passes. Runs after the cert is in the keychain and
-      # before tauri-action assembles + notarizes the bundle.
-      - name: Sign nested bundle binaries (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          bash gg-app/scripts/sign-nested-macos.sh \
-            "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
-            gg-app/src-tauri/binaries \
-            gg-app/src-tauri/sidecar
-
-      # v1 (from v0): updater artifacts (.app.tar.gz[.sig]) now include the
-      # app version in their filename; latest.json is generated by the action
-      # itself so the updater endpoint stays consistent. v1 also restored the
-      # `uploadUpdaterJson` input name (v0's `includeUpdaterJson` is gone and
-      # would be silently ignored).
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS signing + notarization; protected-environment preflight
-          # guarantees these are populated on the macOS leg.
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          projectPath: gg-app
-          tagName: ${{ github.ref_name }}
-          releaseName: "gg-coder ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install this version."
-          releaseDraft: false
-          prerelease: false
-          # Generates + uploads `latest.json` for the updater endpoint
-          # (default true; kept explicit because the updater depends on it).
-          uploadUpdaterJson: true
-          args: ${{ matrix.args }}
+          name: desktop-candidate-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
