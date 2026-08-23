@@ -1,8 +1,7 @@
 <!doctype html>
 <!--
   Source for the NSIS Welcome/Finish sidebar (final BMP is 164×314; rendered
-  here at 2× = 328×628 then downscaled for crispness). Regenerate with:
-  pnpm --filter gg-app installer:art
+  here at 2× = 328×628 then downscaled for crispness).
 -->
 <html>
   <head>
@@ -18,25 +17,15 @@
         width: 328px;
         height: 628px;
         overflow: hidden;
-        font-family: -apple-system, "SF Pro Display", Segoe UI, system-ui, sans-serif;
+        font-family: "Segoe UI", system-ui, sans-serif;
       }
       .panel {
         position: relative;
         width: 328px;
         height: 628px;
-        background:
-          radial-gradient(
-            120% 50% at 50% 0%,
-            rgba(77, 157, 255, 0.22),
-            transparent 60%
-          ),
-          radial-gradient(
-            120% 50% at 50% 100%,
-            rgba(155, 140, 247, 0.18),
-            transparent 60%
-          ),
-          linear-gradient(180deg, #141720 0%, #0c0e13 100%);
-        color: #f4f6f8;
+        overflow: hidden;
+        background: linear-gradient(180deg, #2a0d0a 0%, #120706 42%, #0a0605 100%);
+        color: #fff7f5;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -44,55 +33,59 @@
       .panel::before {
         content: "";
         position: absolute;
-        inset: 0;
-        background-image:
-          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-        background-size: 26px 26px;
-        mask-image: radial-gradient(80% 60% at 50% 38%, #000 20%, transparent 75%);
+        width: 420px;
+        height: 170px;
+        top: 105px;
+        border: 1px solid rgba(255, 122, 107, 0.12);
+        border-radius: 50%;
+        transform: rotate(-8deg);
       }
       .logo {
-        margin-top: 150px;
-        width: 132px;
-        height: 132px;
-        border-radius: 28px;
-        filter: drop-shadow(0 14px 36px rgba(77, 157, 255, 0.40));
+        margin-top: 96px;
+        width: 190px;
+        height: 190px;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 34px rgba(239, 68, 68, 0.38));
         position: relative;
         z-index: 1;
       }
       .name {
-        margin-top: 34px;
+        margin-top: 22px;
         font-size: 38px;
-        font-weight: 700;
+        font-weight: 750;
         letter-spacing: -0.03em;
+        position: relative;
         z-index: 1;
       }
-      .name .g {
-        background: linear-gradient(135deg, #4d9dff, #9b8cf7);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
+      .name .accent {
+        color: #ff7a6b;
       }
       .tag {
         margin-top: 12px;
-        font-size: 19px;
-        color: #9aa3b2;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: #e8b7af;
+        position: relative;
         z-index: 1;
       }
       .rule {
-        margin-top: 26px;
-        width: 64px;
+        margin-top: 28px;
+        width: 54px;
         height: 3px;
         border-radius: 2px;
-        background: linear-gradient(90deg, #4d9dff, #9b8cf7);
+        background: #ef4444;
+        position: relative;
         z-index: 1;
       }
       .foot {
         position: absolute;
         bottom: 34px;
-        font-size: 16px;
-        color: #5b6472;
-        letter-spacing: 0.04em;
+        font-size: 15px;
+        font-weight: 600;
+        color: #c69086;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
         z-index: 1;
       }
     </style>
@@ -100,10 +93,10 @@
   <body>
     <div class="panel">
       <img class="logo" src="logo.png" alt="" />
-      <div class="name"><span class="g">GG</span> Coder</div>
-      <div class="tag">the coding agent</div>
+      <div class="name"><span class="accent">Orca</span>Coder</div>
+      <div class="tag">Pod Command Deck</div>
       <div class="rule"></div>
-      <div class="foot">on your desktop</div>
+      <div class="foot">Built for Windows</div>
     </div>
   </body>
 </html>

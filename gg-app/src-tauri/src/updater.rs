@@ -162,6 +162,7 @@ async fn check_inner(
     manual: bool,
 ) -> Result<UpdateSnapshot, String> {
     if !manual && !check_due(app) {
+        log::info!("updater stage=check-skipped reason=interval");
         return Ok(coordinator.snapshot.lock().unwrap().clone());
     }
     if coordinator
@@ -169,21 +170,36 @@ async fn check_inner(
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
+        log::info!("updater stage=check-skipped reason=already-checking");
         return Ok(coordinator.snapshot.lock().unwrap().clone());
     }
+    log::info!(
+        "updater stage=check-started mode={}",
+        if manual { "manual" } else { "automatic" }
+    );
     set_snapshot(app, coordinator, |snapshot| {
         snapshot.phase = "checking";
         snapshot.error = None;
     });
 
     let result = async {
-        let updater = app.updater().map_err(|error| error.to_string())?;
-        let update = updater.check().await.map_err(|error| error.to_string())?;
-        record_check(app)?;
+        let updater = app.updater().map_err(|error| {
+            log::error!("updater stage=configuration-failed error={error}");
+            error.to_string()
+        })?;
+        let update = updater.check().await.map_err(|error| {
+            log::error!("updater stage=check-request-failed error={error}");
+            error.to_string()
+        })?;
+        record_check(app).map_err(|error| {
+            log::error!("updater stage=check-state-write-failed error={error}");
+            error
+        })?;
         match update {
             Some(update) if allowed_artifact(app, &update) => {
                 let version = update.version.clone();
                 let notes = update.body.clone();
+                log::info!("updater stage=update-available version={version}");
                 *coordinator.pending.lock().unwrap() = Some(update);
                 Ok(set_snapshot(app, coordinator, |snapshot| {
                     snapshot.phase = "available";
@@ -193,8 +209,12 @@ async fn check_inner(
                     snapshot.error = None;
                 }))
             }
-            Some(_) => Err("update artifact host is not approved".to_string()),
+            Some(_) => {
+                log::error!("updater stage=check-failed reason=unapproved-artifact-host");
+                Err("update artifact host is not approved".to_string())
+            }
             None => {
+                log::info!("updater stage=check-complete result=up-to-date");
                 *coordinator.pending.lock().unwrap() = None;
                 Ok(set_snapshot(app, coordinator, |snapshot| {
                     snapshot.phase = "idle";
@@ -210,6 +230,7 @@ async fn check_inner(
 
     coordinator.checking.store(false, Ordering::SeqCst);
     if let Err(error) = &result {
+        log::error!("updater stage=check-failed error={error}");
         set_snapshot(app, coordinator, |snapshot| {
             snapshot.phase = "check-error";
             snapshot.error = Some(error.clone());
@@ -225,6 +246,9 @@ pub(crate) fn initialise(app: &AppHandle) {
     let persisted = read_persisted(app);
     let current_version = app.package_info().version.to_string();
     let updated = persisted.pending_version.as_deref() == Some(current_version.as_str());
+    log::info!(
+        "updater stage=initialised configured={configured} version={current_version} post_update={updated}"
+    );
     set_snapshot(app, coordinator.inner(), |snapshot| {
         snapshot.configured = configured;
         snapshot.phase = if updated {
@@ -306,12 +330,18 @@ pub(crate) async fn update_install(
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
+        log::info!("updater stage=install-skipped reason=already-installing");
         return Ok(());
     }
 
+    log::info!("updater stage=install-requested");
     let result = async {
         let blockers = current_blockers(&app, state.inner());
         if !blockers.is_empty() {
+            log::warn!(
+                "updater stage=install-blocked active_blockers={}",
+                blockers.len()
+            );
             set_snapshot(&app, state.inner(), |snapshot| {
                 snapshot.phase = "available";
                 snapshot.blockers = blockers.clone();
@@ -327,6 +357,7 @@ pub(crate) async fn update_install(
             .clone()
             .ok_or("no update is ready to install")?;
         let version = update.version.clone();
+        log::info!("updater stage=download-started version={version}");
         set_snapshot(&app, state.inner(), |snapshot| {
             snapshot.phase = "installing";
             snapshot.progress = Some(0);
@@ -349,30 +380,54 @@ pub(crate) async fn update_install(
                 },
             )
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                log::error!("updater stage=download-failed version={version} error={error}");
+                error.to_string()
+            })?;
+        log::info!("updater stage=download-complete version={version} bytes={downloaded}");
 
         let blockers = current_blockers(&app, state.inner());
         if !blockers.is_empty() {
+            log::warn!(
+                "updater stage=install-blocked-after-download active_blockers={}",
+                blockers.len()
+            );
             return Err("active work started while the update downloaded".to_string());
         }
+        log::info!("updater stage=workspace-snapshot-started");
         super::refresh_live_sessions(&app);
-        super::snapshot_workspace(&app)?;
-        record_pending(&app, Some(version))?;
+        super::snapshot_workspace(&app).map_err(|error| {
+            log::error!("updater stage=workspace-snapshot-failed error={error}");
+            error
+        })?;
+        record_pending(&app, Some(version.clone())).map_err(|error| {
+            log::error!("updater stage=pending-state-write-failed error={error}");
+            error
+        })?;
+        log::info!("updater stage=workspace-snapshot-complete version={version}");
 
         let child = app.state::<super::Daemon>().child.lock().unwrap().take();
         if let Some(child) = child {
+            log::info!("updater stage=sidecar-stop-started");
             super::terminate_child(child);
+            log::info!("updater stage=sidecar-stop-complete");
         }
         set_snapshot(&app, state.inner(), |snapshot| {
             snapshot.phase = "relaunching";
             snapshot.progress = Some(100);
         });
-        update.install(bytes).map_err(|error| error.to_string())?;
+        log::info!("updater stage=installer-launch version={version}");
+        update.install(bytes).map_err(|error| {
+            log::error!("updater stage=installer-launch-failed version={version} error={error}");
+            error.to_string()
+        })?;
+        log::info!("updater stage=installer-launched version={version}");
         Ok(())
     }
     .await;
 
     if let Err(error) = &result {
+        log::error!("updater stage=install-failed error={error}");
         let _ = record_pending(&app, None);
         if app.state::<super::Daemon>().child.lock().unwrap().is_none() {
             super::spawn_daemon(app.clone(), false);

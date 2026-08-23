@@ -5060,7 +5060,7 @@ pub fn run() {
                 ))
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("gg-app".into()),
+                        file_name: Some("orcacoder".into()),
                     },
                 ))
                 .build(),

@@ -1,17 +1,19 @@
 # Installer art
 
-Branded installer chrome for the macOS DMG and Windows NSIS setup, matching the
-app's dark blue→purple aesthetic (tokens mirror `src/theme.ts`).
+Branded installer chrome for the macOS DMG and Windows NSIS setup. Windows uses
+the canonical Scarlet Orca identity from `DESIGN.md`; production and isolated
+test installers share the artwork while retaining separate product names.
 
 ## Files
 
-| Source (HTML) | Rendered PNG | Final asset (`out/`) | Used by |
-|---|---|---|---|
-| `dmg.html` | `dmg-background.png` (1320×800) | `out/dmg-background.png` | macOS DMG window background |
-| `nsis-sidebar.html` | `nsis-sidebar.png` (328×628) | `out/nsis-sidebar.bmp` (164×314, 24-bit) | NSIS Welcome/Finish page |
-| `nsis-header.html` | `nsis-header.png` (300×114) | `out/nsis-header.bmp` (150×57, 24-bit) | NSIS page header strip |
+| Source (HTML)       | Rendered PNG                    | Final asset (`out/`)                     | Used by                     |
+| ------------------- | ------------------------------- | ---------------------------------------- | --------------------------- |
+| `dmg.html`          | `dmg-background.png` (1320×800) | `out/dmg-background.png`                 | macOS DMG window background |
+| `nsis-sidebar.html` | `nsis-sidebar.png` (328×628)    | `out/nsis-sidebar.bmp` (164×314, 24-bit) | NSIS Welcome/Finish page    |
+| `nsis-header.html`  | `nsis-header.png` (300×114)     | `out/nsis-header.bmp` (150×57, 24-bit)   | NSIS page header strip      |
 
-`logo.png` is a copy of `src-tauri/icons/128x128@2x.png`.
+`logo.png` is a build copy of the canonical
+`src/assets/orca-scarlet-icon.png` source.
 
 The `out/` assets are committed and referenced from `src-tauri/tauri.conf.json`
 (`bundle.macOS.dmg` + `bundle.windows.nsis`). The build does **not** regenerate
@@ -35,6 +37,12 @@ them — edit + regenerate only when the branding changes.
    `build-art.mjs` resizes each PNG to the exact dimensions and writes the DMG
    PNG + the two 24-bit BMPs (hand-packed, since neither sharp nor sips emits
    BMP). NSIS requires uncompressed 24-bit BMP.
+
+`windows-hooks.nsh` guarantees Desktop and Start menu shortcuts for bootstrap
+and in-app installs. It records privacy-safe stage markers in
+`%LOCALAPPDATA%\\<product name>\\logs\\installer.log`; updater stages are written
+as `updater stage=...` entries in
+`%LOCALAPPDATA%\\<bundle identifier>\\logs\\orcacoder.log`.
 
 ## Why these formats
 
