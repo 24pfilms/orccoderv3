@@ -232,7 +232,8 @@ async function main() {
   if (handshake === LOADED_BUT_UNAUTHED) {
     console.log("smoke: bundle loaded cleanly (sidecar reached auth check; no credentials on CI)");
     console.log("SMOKE PASS");
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
   const { port, token } = handshake;
 
@@ -290,7 +291,7 @@ async function main() {
   clearTimeout(exitTimer);
 
   console.log("SMOKE PASS");
-  process.exit(0);
+  process.exitCode = 0;
 }
 
 main().catch((err) => fail(err.message));
