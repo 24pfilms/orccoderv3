@@ -68,13 +68,13 @@ jobs:
           pnpm --filter @kenkaiiii/gg-ai build
           pnpm --filter @kenkaiiii/gg-agent build
           pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter gg-app stage:node
+          pnpm --filter gg-app bundle:sidecar
+          node gg-app/scripts/smoke-sidecar.mjs
           pnpm check
           pnpm --filter gg-app test
           cargo test --locked --manifest-path gg-app/src-tauri/Cargo.toml
           pnpm --filter gg-app build
-          pnpm --filter gg-app stage:node
-          pnpm --filter gg-app bundle:sidecar
-          node gg-app/scripts/smoke-sidecar.mjs
 
       - name: Build isolated unsigned NSIS package
         working-directory: gg-app
