@@ -49,7 +49,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $config = Get-Content gg-app/src-tauri/tauri.test.conf.json -Raw | ConvertFrom-Json
           if ($config.productName -ne 'OrcaCoder Update Test') { throw 'test product name mismatch' }
-          if ($config.version -notmatch '^0\.54\.[01]$') { throw 'test version must be 0.54.0 or 0.54.1' }
+          if ($config.version -notmatch '^0\.54\.[12]$') { throw 'test version must be 0.54.1 or 0.54.2' }
           if ($config.identifier -ne 'com.orcacoder.desktop.updater-test') { throw 'test identifier mismatch' }
           if ($config.bundle.targets.Count -ne 1 -or $config.bundle.targets[0] -ne 'nsis') { throw 'test profile must build only NSIS' }
           if ($config.bundle.createUpdaterArtifacts) { throw 'workflow applies the test signature after packaging' }
@@ -99,14 +99,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory test-release | Out-Null
           $installer = @(Get-ChildItem gg-app/src-tauri/target/release/bundle/nsis/*-setup.exe)
-          Copy-Item $installer[0].FullName test-release/
-          Copy-Item "$($installer[0].FullName).sig" test-release/
-          $signature = (Get-Content "test-release/$($installer[0].Name).sig" -Raw).Trim()
+          $publishedName = "OrcaCoder.Update.Test_$($env:VERSION)_x64-setup.exe"
+          Copy-Item $installer[0].FullName "test-release/$publishedName"
+          Copy-Item "$($installer[0].FullName).sig" "test-release/$publishedName.sig"
+          $signature = (Get-Content "test-release/$publishedName.sig" -Raw).Trim()
           $tag = "test-desktop-v$env:VERSION"
-          $url = "https://github.com/24pfilms/orcacoder-test-releases/releases/download/$tag/$($installer[0].Name)"
+          $url = "https://github.com/24pfilms/orcacoder-test-releases/releases/download/$tag/$publishedName"
           $manifest = [ordered]@{
             version = $env:VERSION
-            notes = if ($env:VERSION -eq '0.54.1') { 'OrcaCoder just updated!' } else { 'Isolated updater bootstrap.' }
+            notes = if ($env:VERSION -eq '0.54.1') { 'Isolated updater bootstrap.' } else { 'OrcaCoder just updated!' }
             pub_date = (Get-Date).ToUniversalTime().ToString('o')
             platforms = [ordered]@{
               'windows-x86_64' = [ordered]@{ signature = $signature; url = $url }
@@ -114,9 +115,13 @@ jobs:
           }
           $manifest | ConvertTo-Json -Depth 5 | Set-Content test-release/latest.json -Encoding utf8NoBOM
           Set-Content test-release/source-sha.txt $env:GITHUB_SHA -NoNewline
-          Get-ChildItem test-release -File | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
-            Set-Content test-release/SHA256SUMS
+          $checksums = Get-ChildItem test-release -File | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" }
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'test-release/SHA256SUMS'),
+            ($checksums -join "`n") + "`n",
+            [Text.UTF8Encoding]::new($false)
+          )
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
