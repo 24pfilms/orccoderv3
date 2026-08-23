@@ -34,19 +34,19 @@
   ${Else}
     ClearErrors
     CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
     ${If} ${Errors}
       !insertmacro ORCA_INSTALLER_LOG "desktop-shortcut-failed" "path=$DESKTOP\${PRODUCTNAME}.lnk"
     ${Else}
+      !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
       !insertmacro ORCA_INSTALLER_LOG "desktop-shortcut-created" "path=$DESKTOP\${PRODUCTNAME}.lnk"
     ${EndIf}
 
     ClearErrors
     CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
     ${If} ${Errors}
       !insertmacro ORCA_INSTALLER_LOG "start-menu-shortcut-failed" "path=$SMPROGRAMS\${PRODUCTNAME}.lnk"
     ${Else}
+      !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
       !insertmacro ORCA_INSTALLER_LOG "start-menu-shortcut-created" "path=$SMPROGRAMS\${PRODUCTNAME}.lnk"
     ${EndIf}
   ${EndIf}
