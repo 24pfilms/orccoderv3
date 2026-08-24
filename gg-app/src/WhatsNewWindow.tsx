@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { theme } from "./theme";
 import { recentChangelog } from "./changelog";
-import { Confetti } from "./Confetti";
 import { ShimmerText } from "./ShimmerText";
 import { Badge } from "./Badge";
 
@@ -90,7 +89,6 @@ export function WhatsNewWindow(): React.ReactElement {
 
   return (
     <div className="whatsnew-window" style={{ background: theme.surface2 }}>
-      <Confetti />
       <div className="modal-head">
         <div className="modal-title">
           <ShimmerText base={theme.primary} bright={theme.secondary}>

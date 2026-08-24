@@ -15,9 +15,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-# Cross-platform smoke matrix. Every push to orca-main and every PR runs build +
-# typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
-# platform-specific regressions before they hit npm.
+# Windows-only while OrcaCoder's supported desktop target is Windows x64.
+# macOS and Linux return only when their platform work is explicitly resumed.
 #
 # We deliberately keep the gg-editor + gg-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
@@ -32,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        os: [windows-2025]
         node: [24.15.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -105,11 +104,8 @@ jobs:
         run: node packages/gg-boss/dist/cli.js --help
         shell: bash
 
-  # Distribution-critical cross-OS job: stages the per-platform Node runtime,
-  # bundles the sidecar, boots it with the bundled runtime (smoke), and runs the
-  # Rust unit tests that gate path/window-chrome resolution. The full
-  # `tauri build` lives in release.yml; this keeps CI fast while still
-  # exercising the per-OS spawn path that breaks installed bundles.
+  # Distribution-critical Windows job: stages the bundled Node runtime, boots
+  # the sidecar, runs Rust path/window tests, and exercises an extracted MSI.
   app:
     name: app · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -119,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        os: [windows-2025]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -142,12 +138,6 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: gg-app/src-tauri
-
-      - name: Linux system deps (tauri)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -172,9 +162,7 @@ jobs:
         run: node gg-app/scripts/smoke-sidecar.mjs
         shell: bash
 
-      # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills;
-      # node_modules carries platform-conditional binaries so one baseline
-      # cannot hold across the matrix).
+      # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills).
       - name: Sidecar size gate
         run: node bench/size-gate.mjs --only sidecar
         shell: bash
@@ -186,19 +174,8 @@ jobs:
         working-directory: gg-app/src-tauri
         run: cargo test
 
-      # Windows-only, and the ONLY job that exercises real installer output.
-      # `smoke-sidecar` above proves the bundled runtime loads, but it launches
-      # the sidecar directly — it cannot catch what actually breaks for a
-      # Windows user who installed the app: the shell failing to find
-      # `ggnode.exe` beside the exe, the sidecar resource missing from the MSI,
-      # or the app starting with no visible window. This builds an MSI,
-      # administratively extracts it (installs nothing), launches it with a
-      # throwaway user profile, and requires a visible window plus a packaged
-      # ggnode child running the packaged bundle.
-      #
-      # Only the Windows matrix leg pays the release-build cost; the macOS and
-      # Linux legs run in parallel and stay fast.
+      # Builds an MSI, extracts it without installing, launches it with a
+      # throwaway profile, and requires a visible window plus packaged sidecar.
       - name: Packaged app smoke (MSI build + launch)
-        if: runner.os == 'Windows'
         working-directory: gg-app
         run: pnpm smoke:packaged

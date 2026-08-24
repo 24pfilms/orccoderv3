@@ -626,6 +626,9 @@ function App(): React.ReactElement {
       }
     : appUpdate;
   useEffect(() => {
+    if (appUpdate.phase === "updated") setUpdatePageOpen(true);
+  }, [appUpdate.phase]);
+  useEffect(() => {
     const blockers: string[] = [];
     if (running || kenRunning) blockers.push("An agent is still running");
     if (autopilotReviewing || planReview) blockers.push("A review is waiting for a decision");

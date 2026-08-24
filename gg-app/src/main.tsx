@@ -12,7 +12,6 @@ import "@fontsource-variable/space-grotesk";
 import "@fontsource-variable/jetbrains-mono";
 import App from "./App";
 import { ZoomController } from "./ZoomController";
-import { WhatsNewModal } from "./WhatsNewModal";
 import { WhatsNewWindow } from "./WhatsNewWindow";
 // Experimental: webcam gaze → window focus. Disabled for now; re-enable by
 // uncommenting this import + the <GazeController /> mount below (and the
@@ -68,7 +67,6 @@ if (new URLSearchParams(window.location.search).get("whatsnew") === "1") {
     <AppUpdateProvider>
       <App />
       <ZoomController />
-      <WhatsNewModal />
       {/* <GazeController /> */}
     </AppUpdateProvider>,
   );
