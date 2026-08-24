@@ -49,7 +49,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $config = Get-Content gg-app/src-tauri/tauri.test.conf.json -Raw | ConvertFrom-Json
           if ($config.productName -ne 'OrcaCoder Update Test') { throw 'test product name mismatch' }
-          if ($config.version -notmatch '^0\.54\.[56]$') { throw 'test version must be 0.54.5 or 0.54.6' }
+          if ($config.version -ne '0.54.7') { throw 'test version must be 0.54.7' }
           if ($config.identifier -ne 'com.orcacoder.desktop.updater-test') { throw 'test identifier mismatch' }
           if ($config.bundle.targets.Count -ne 1 -or $config.bundle.targets[0] -ne 'nsis') { throw 'test profile must build only NSIS' }
           if ($config.bundle.createUpdaterArtifacts) { throw 'workflow applies the test signature after packaging' }
@@ -107,7 +107,7 @@ jobs:
           $url = "https://github.com/24pfilms/orcacoder-test-releases/releases/download/$tag/$publishedName"
           $manifest = [ordered]@{
             version = $env:VERSION
-            notes = if ($env:VERSION -eq '0.54.1') { 'Isolated updater bootstrap.' } else { 'OrcaCoder just updated!' }
+            notes = "A cleaner OrcaCoder update page with improved spacing and release notes.`nA crimson update footer across app windows.`nWindows installer and restart reliability improvements."
             pub_date = (Get-Date).ToUniversalTime().ToString('o')
             platforms = [ordered]@{
               'windows-x86_64' = [ordered]@{ signature = $signature; url = $url }

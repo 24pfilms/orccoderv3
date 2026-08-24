@@ -6,6 +6,7 @@ interface Props {
   folderSet?: boolean;
   providerCount?: number;
   serving?: boolean;
+  action?: React.ReactNode;
 }
 
 /** OrcaCoder's Scarlet hero card. The export name stays stable for upstream merges. */
@@ -13,15 +14,18 @@ export function AsciiLogo({
   folderSet = false,
   providerCount = 0,
   serving = false,
+  action,
 }: Props): React.ReactElement {
   // The installed bundle version, not the source package version: an in-app
   // update replaces the binary without rebuilding this bundle's package.json.
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void getVersion().then((value) => {
-      if (!cancelled) setVersion(value);
-    });
+    void getVersion()
+      .then((value) => {
+        if (!cancelled) setVersion(value);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -42,6 +46,7 @@ export function AsciiLogo({
         <span>AI providers: {providerCount}</span>
         <span className="scarlet-pill-muted">Remote signal: {serving ? "live" : "standby"}</span>
       </div>
+      {action && <div className="scarlet-update-slot">{action}</div>}
     </section>
   );
 }

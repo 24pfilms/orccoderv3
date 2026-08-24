@@ -320,13 +320,15 @@ body {
 }
 
 .app-restoring {
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .app-restoring-status {
   display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
+  justify-content: center;
   gap: 9px;
   color: var(--text-muted);
   font-family: var(--mono);
@@ -3875,10 +3877,9 @@ body {
   text-decoration: none;
 }
 
-/* App-update banner — its own row below the footer so it reads as a distinct,
-   noticeable announcement. Same green gradient as the home-screen update pill
-   (#36c489 → #2dd4bf) with dark text; a light sweep draws the eye. The whole
-   row is the click target that downloads, installs, and restarts. */
+/* App-update footer — a persistent crimson row beneath every app view. The
+   whole row opens the dedicated update page; installation never starts from
+   this compact surface. */
 .update-banner {
   position: relative;
   flex: 0 0 auto;
@@ -3889,8 +3890,8 @@ body {
   width: 100%;
   padding: 8px 18px;
   border: none;
-  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
-  color: #04130d;
+  background: linear-gradient(135deg, #b91c1c 0%, #ef4444 58%, #ff6b5f 100%);
+  color: #fff;
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
@@ -3928,6 +3929,10 @@ body {
 .update-banner:hover:not(.update-banner-busy) {
   filter: brightness(1.08);
 }
+.update-banner:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
+}
 .update-banner-busy {
   cursor: default;
   filter: saturate(0.7) brightness(0.92);
@@ -3937,9 +3942,6 @@ body {
    The fill is absolutely positioned (out of flow); only the centered
    percentage occupies the same line box the label text did. */
 .update-banner-progress {
-  /* The busy filter desaturates to grey — right for a static "busy" row, but
-     it muddied the greens here. Progress keeps the vibrant gradient as the
-     track and sweeps a lighter mint from the same family across it. */
   filter: none;
 }
 .update-banner-fill {
@@ -3947,9 +3949,8 @@ body {
   top: 0;
   bottom: 0;
   left: 0;
-  background: linear-gradient(135deg, #8ff5c6 0%, #a7f3e9 100%);
-  /* Hairline dark leading edge so the fill boundary reads crisply. */
-  box-shadow: 1px 0 0 rgba(4, 19, 13, 0.15);
+  background: linear-gradient(135deg, #ff8d82 0%, #ffb1a9 100%);
+  box-shadow: 1px 0 0 rgba(64, 8, 8, 0.24);
   transition: width 180ms linear;
   pointer-events: none;
 }
@@ -3961,19 +3962,25 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #04130d;
-  box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.55);
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
   animation: update-pulse 1.8s ease-out infinite;
 }
 @keyframes update-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.5);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
   }
   70% {
     box-shadow: 0 0 0 7px transparent;
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-banner::after,
+  .update-banner-dot {
+    animation: none;
   }
 }
 /* Compact blue action for install, progress, retry, and update confirmation. */

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CheckCircle2, Download, MessageCircle, Send, Settings } from "lucide-react";
+import { CheckCircle2, Download, MessageCircle, Settings } from "lucide-react";
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeBackdrop } from "./HomeBackdrop";
 import { SettingsModal } from "./SettingsModal";
 import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
 import { SoundButton } from "./SoundButton";
+import { UpdatePage } from "./UpdatePage";
 import {
   waitForReady,
   getSettings,
@@ -50,6 +51,7 @@ export function HomeScreen({
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [serveBusy, setServeBusy] = useState(false);
   const appUpdate = useAppUpdate();
+  const [updatePageOpen, setUpdatePageOpen] = useState(false);
 
   async function refresh(): Promise<void> {
     // Settings + auth are read NATIVELY (Rust) — do them first, WITHOUT waiting on
@@ -86,6 +88,16 @@ export function HomeScreen({
   useEffect(() => {
     if (refreshSignal > 0) void refresh().catch(() => {});
   }, [refreshSignal]);
+
+  useEffect(() => {
+    if (
+      ["available", "installing", "relaunching", "updated", "install-error"].includes(
+        appUpdate.phase,
+      )
+    ) {
+      setUpdatePageOpen(true);
+    }
+  }, [appUpdate.phase]);
 
   const ready = folderSet && providerCount > 0;
 
@@ -135,145 +147,151 @@ export function HomeScreen({
     }
   }
 
-  return (
-    <div className="home" data-tauri-drag-region>
-      <HomeBackdrop />
-      {appUpdate.phase === "updated" ||
-      (appUpdate.configured &&
-        [
-          "idle",
-          "checking",
-          "check-error",
-          "available",
-          "installing",
-          "relaunching",
-          "install-error",
-        ].includes(appUpdate.phase)) ? (
-        <button
-          className={`home-update${
-            appUpdate.phase === "installing" ? " home-update-progress" : ""
-          }`}
-          disabled={
-            appUpdate.phase === "checking" ||
-            appUpdate.phase === "installing" ||
-            appUpdate.phase === "relaunching"
-          }
-          aria-live="polite"
-          aria-label={
-            appUpdate.phase === "updated"
-              ? "Dismiss update confirmation"
-              : appUpdate.phase === "install-error"
-                ? "Retry update installation"
-                : appUpdate.phase === "check-error"
-                  ? "Retry update check"
-                  : undefined
-          }
-          title={
-            appUpdate.error ??
-            (appUpdate.phase === "updated"
-              ? "Dismiss"
-              : appUpdate.phase === "idle" || appUpdate.phase === "checking"
-                ? "Check for OrcaCoder updates"
-                : `Install OrcaCoder ${appUpdate.version ?? "update"}`)
-          }
-          onClick={() => {
-            if (appUpdate.phase === "updated") return void appUpdate.dismissUpdated();
-            if (appUpdate.phase === "idle" || appUpdate.phase === "check-error") {
-              return void appUpdate.check();
-            }
-            return void appUpdate.install();
-          }}
-        >
-          {appUpdate.phase === "installing" && (
-            <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
-          )}
-          {appUpdate.phase === "updated" ? (
-            <CheckCircle2 size={14} strokeWidth={2.25} aria-hidden="true" />
-          ) : (
-            <Download size={14} strokeWidth={2.25} aria-hidden="true" />
-          )}
-          <span>
-            {appUpdate.phase === "updated"
-              ? "OrcaCoder just updated!"
+  const updateControl =
+    appUpdate.phase === "updated" ||
+    (appUpdate.configured &&
+      [
+        "idle",
+        "checking",
+        "check-error",
+        "available",
+        "installing",
+        "relaunching",
+        "install-error",
+      ].includes(appUpdate.phase)) ? (
+      <button
+        className={`home-update${appUpdate.phase === "installing" ? " home-update-progress" : ""}`}
+        disabled={
+          appUpdate.phase === "checking" ||
+          appUpdate.phase === "installing" ||
+          appUpdate.phase === "relaunching"
+        }
+        aria-live="polite"
+        aria-label={
+          appUpdate.phase === "updated"
+            ? "Dismiss update confirmation"
+            : appUpdate.phase === "install-error"
+              ? "Retry update installation"
               : appUpdate.phase === "check-error"
-                ? "Try update check again"
-                : appUpdate.phase === "idle"
-                  ? "Check for updates"
-                  : appUpdate.phase === "checking"
-                    ? "Checking…"
-                    : appUpdate.phase === "install-error"
-                      ? "Retry install"
-                      : appUpdate.phase === "relaunching"
-                        ? "Restarting…"
-                        : appUpdate.phase === "installing"
-                          ? `Installing… ${appUpdate.progress ?? 0}%`
-                          : "Install update"}
-          </span>
-        </button>
-      ) : null}
+                ? "Retry update check"
+                : undefined
+        }
+        title={
+          appUpdate.error ??
+          (appUpdate.phase === "updated"
+            ? "Dismiss"
+            : appUpdate.phase === "idle" || appUpdate.phase === "checking"
+              ? "Check for OrcaCoder updates"
+              : `Install OrcaCoder ${appUpdate.version ?? "update"}`)
+        }
+        onClick={() => {
+          if (
+            appUpdate.phase === "available" ||
+            appUpdate.phase === "install-error" ||
+            appUpdate.phase === "updated"
+          ) {
+            setUpdatePageOpen(true);
+            return;
+          }
+          if (appUpdate.phase === "idle" || appUpdate.phase === "check-error") {
+            return void appUpdate.check();
+          }
+        }}
+      >
+        {appUpdate.phase === "installing" && (
+          <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
+        )}
+        {appUpdate.phase === "updated" ? (
+          <CheckCircle2 size={14} strokeWidth={2.25} aria-hidden="true" />
+        ) : (
+          <Download size={14} strokeWidth={2.25} aria-hidden="true" />
+        )}
+        <span>
+          {appUpdate.phase === "updated"
+            ? "OrcaCoder just updated!"
+            : appUpdate.phase === "check-error"
+              ? "Try update check again"
+              : appUpdate.phase === "idle"
+                ? "Check for updates"
+                : appUpdate.phase === "checking"
+                  ? "Checking…"
+                  : appUpdate.phase === "install-error"
+                    ? "Retry install"
+                    : appUpdate.phase === "relaunching"
+                      ? "Restarting…"
+                      : appUpdate.phase === "installing"
+                        ? `Installing… ${appUpdate.progress ?? 0}%`
+                        : "Install update"}
+        </span>
+      </button>
+    ) : null;
 
-      <div className="scarlet-deck">
-        <AsciiLogo folderSet={folderSet} providerCount={providerCount} serving={serving} />
-        <aside className="home-actions scarlet-controls" aria-label="Mission controls">
-          <div className="scarlet-panel-head">
-            <div>Mission Controls</div>
-            <span aria-hidden="true" />
-          </div>
+  return (
+    <div className={`home${updatePageOpen ? " home-update-page-open" : ""}`} data-tauri-drag-region>
+      <HomeBackdrop />
+      {updatePageOpen ? (
+        <UpdatePage update={appUpdate} onClose={() => setUpdatePageOpen(false)} />
+      ) : (
+        <div className="scarlet-deck">
+          <AsciiLogo
+            folderSet={folderSet}
+            providerCount={providerCount}
+            serving={serving}
+            action={updateControl}
+          />
+          <aside className="home-actions scarlet-controls" aria-label="Mission controls">
+            <div className="scarlet-panel-head">
+              <div>Mission Controls</div>
+              <span aria-hidden="true" />
+            </div>
 
-          <div className="scarlet-control-buttons">
-            <button
-              className={`btn btn-primary btn-lg home-btn scarlet-primary${ready ? "" : " is-dimmed"}`}
-              aria-disabled={!ready}
-              onClick={() => handleWorkspace(onProjects)}
-            >
-              Enter Pod Dock
-            </button>
-            <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
-              Connect AI Providers
-            </button>
-            <button
-              className="btn btn-ghost btn-lg home-btn scarlet-secondary"
-              title="Manage MCP servers"
-              onClick={() => setShowMcp(true)}
-            >
-              MCP Channels
-            </button>
-            <button
-              className={`btn btn-ghost btn-lg home-btn scarlet-secondary${serving ? " home-serve-active" : ""}`}
-              disabled={serveBusy}
-              onClick={() => void handleServe()}
-            >
-              {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote Pod" : "Remote Pod"}
-            </button>
-          </div>
+            <div className="scarlet-control-buttons">
+              <button
+                className={`btn btn-primary btn-lg home-btn scarlet-primary${ready ? "" : " is-dimmed"}`}
+                aria-disabled={!ready}
+                onClick={() => handleWorkspace(onProjects)}
+              >
+                Enter Pod Dock
+              </button>
+              <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
+                Connect AI Providers
+              </button>
+              <button
+                className="btn btn-ghost btn-lg home-btn scarlet-secondary"
+                title="Manage MCP servers"
+                onClick={() => setShowMcp(true)}
+              >
+                MCP Channels
+              </button>
+              <button
+                className={`btn btn-ghost btn-lg home-btn scarlet-secondary${serving ? " home-serve-active" : ""}`}
+                disabled={serveBusy}
+                onClick={() => void handleServe()}
+              >
+                {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote Pod" : "Remote Pod"}
+              </button>
+            </div>
 
-          <div className="scarlet-iconbar" aria-label="Landing utilities">
-            <SoundButton />
-            <button
-              className={`btn btn-ghost btn-icon home-settings${ready ? "" : " is-dimmed"}`}
-              aria-disabled={!ready}
-              title="Open Orca Chat"
-              onClick={() => handleWorkspace(onChat)}
-            >
-              <MessageCircle size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            <button
-              className="btn btn-ghost btn-icon home-settings"
-              title="Settings"
-              onClick={() => setShowSettings(true)}
-            >
-              <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            <button
-              className="btn btn-ghost btn-icon home-settings"
-              title="Telegram setup"
-              onClick={() => setShowTelegram(true)}
-            >
-              <Send size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-          </div>
-        </aside>
-      </div>
+            <div className="scarlet-iconbar" aria-label="Landing utilities">
+              <SoundButton />
+              <button
+                className="btn btn-ghost btn-icon home-settings"
+                title="Open Orca Chat"
+                onClick={() => handleWorkspace(onChat)}
+              >
+                <MessageCircle size={20} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              <button
+                className="btn btn-ghost btn-icon home-settings"
+                title="Settings"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       <div className="scarlet-footer" aria-label="Made by SquareCircleLabs.com">
         Made with{" "}

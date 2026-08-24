@@ -106,11 +106,12 @@ import { BackButton } from "./BackButton";
 import { Badge } from "./Badge";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
+import { HomeBackdrop } from "./HomeBackdrop";
+import { UpdatePage } from "./UpdatePage";
 import { SettingsModal } from "./SettingsModal";
 import { initialEntryView, type EntryView } from "./app-entry-view";
 import { submitDisposition } from "./submit-disposition";
 import { Toaster } from "./Toaster";
-import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
 import { TitleUsageMeter } from "./TitleUsageMeter";
@@ -388,7 +389,6 @@ function App(): React.ReactElement {
   const [rankCelebrateNonce, setRankCelebrateNonce] = useState<string | null>(null);
   const [xpChips, setXpChips] = useState<Array<{ id: string; label: string }>>([]);
   const lastProgressXpRef = useRef<number | null>(null);
-  const [confettiNonce, setConfettiNonce] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
@@ -611,6 +611,20 @@ function App(): React.ReactElement {
   // Rust owns update checks and installation; this window only reports work that
   // must not be interrupted and renders the shared coordinator state.
   const appUpdate = useAppUpdate();
+  const previewUpdateFooter =
+    import.meta.env.DEV && import.meta.env.VITE_UPDATE_FOOTER_PREVIEW === "true";
+  const previewUpdatePage = import.meta.env.DEV && import.meta.env.VITE_UPDATE_PREVIEW === "true";
+  const [updatePageOpen, setUpdatePageOpen] = useState(previewUpdatePage);
+  const displayedUpdate = previewUpdatePage
+    ? {
+        ...appUpdate,
+        phase: "available" as const,
+        version: "0.55.0",
+        notes:
+          "A clearer update flow with OrcaCoder styling.\nFaster startup and smoother workspace recovery.\nReliability fixes for Windows installation and restart.",
+        install: () => Promise.resolve(),
+      }
+    : appUpdate;
   useEffect(() => {
     const blockers: string[] = [];
     if (running || kenRunning) blockers.push("An agent is still running");
@@ -844,17 +858,7 @@ function App(): React.ReactElement {
     setRankCelebrateNonce(levelUpNonce);
     const clearRank = window.setTimeout(() => setRankCelebrateNonce(null), 2400);
 
-    const crossedTier = Math.floor((levelUp.from - 1) / 5) !== Math.floor((levelUp.to - 1) / 5);
-    let clearConfetti = 0;
-    if (crossedTier) {
-      setConfettiNonce(levelUpNonce);
-      clearConfetti = window.setTimeout(() => setConfettiNonce(null), 1900);
-    }
-
-    return () => {
-      window.clearTimeout(clearRank);
-      if (clearConfetti) window.clearTimeout(clearConfetti);
-    };
+    return () => window.clearTimeout(clearRank);
   }, [levelUp, levelUpNonce, levelUpOrigin]);
 
   // Re-pin to the bottom before every paint — but only while pinned. The live
@@ -2279,6 +2283,43 @@ function App(): React.ReactElement {
     setHydrateNonce((n) => n + 1);
   }
 
+  const updateFooter =
+    appUpdate.phase === "available" || previewUpdateFooter ? (
+      <button
+        className="update-banner"
+        title={`View OrcaCoder ${appUpdate.version ?? "update"}`}
+        onClick={() => {
+          if (!previewUpdateFooter) setUpdatePageOpen(true);
+        }}
+      >
+        <span className="update-banner-dot" aria-hidden="true" />
+        OrcaCoder update ready
+        <Badge>View update</Badge>
+      </button>
+    ) : appUpdate.phase === "installing" ? (
+      <div
+        className="update-banner update-banner-busy update-banner-progress"
+        role="progressbar"
+        aria-valuenow={appUpdate.progress ?? 0}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Downloading update"
+      >
+        <span className="update-banner-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
+        <span className="update-banner-pct">{`${appUpdate.progress ?? 0}%`}</span>
+      </div>
+    ) : null;
+
+  if (updatePageOpen) {
+    return (
+      <div className="home home-update-page-open" data-tauri-drag-region>
+        <HomeBackdrop />
+        <UpdatePage update={displayedUpdate} onClose={() => setUpdatePageOpen(false)} />
+        <Toaster />
+      </div>
+    );
+  }
+
   // Show explicit recovery feedback while Rust resolves this window's durable
   // target. This branch used to paint only the dark background, which looked
   // indistinguishable from a dead/black webview during a slow recovery.
@@ -2290,6 +2331,7 @@ function App(): React.ReactElement {
           <span className="app-restoring-dot" aria-hidden="true" />
           Restoring workspace…
         </div>
+        {updateFooter}
       </div>
     );
   }
@@ -2323,6 +2365,7 @@ function App(): React.ReactElement {
           />
         )}
         {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
+        {(entryView !== "home" || previewUpdateFooter) && updateFooter}
         <Toaster />
       </div>
     );
@@ -2351,6 +2394,7 @@ function App(): React.ReactElement {
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
         {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
+        {updateFooter}
       </div>
     );
   }
@@ -2364,7 +2408,6 @@ function App(): React.ReactElement {
       onDrop={handleWindowDrop}
     >
       <div className="orca-wallpaper" aria-hidden="true" />
-      {confettiNonce && <Confetti key={confettiNonce} />}
 
       <WorkspaceHeader
         workspaceMode={workspaceMode}
@@ -2891,33 +2934,7 @@ function App(): React.ReactElement {
         )}
       </div>
 
-      {appUpdate.phase === "available" && (
-        <button
-          className="update-banner"
-          title={`Update to ${appUpdate.version} — installs and restarts the app`}
-          onClick={() => void appUpdate.install()}
-        >
-          <span className="update-banner-dot" />
-          {"OrcaCoder update ready"}
-          <Badge>Install</Badge>
-        </button>
-      )}
-      {appUpdate.phase === "installing" && (
-        // Same .update-banner box (padding/font) as the available state, so
-        // banner → progress bar swaps content with zero layout shift. The fill
-        // is absolutely positioned; only the centered percentage is in flow.
-        <div
-          className="update-banner update-banner-busy update-banner-progress"
-          role="progressbar"
-          aria-valuenow={appUpdate.progress ?? 0}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Downloading update"
-        >
-          <span className="update-banner-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
-          <span className="update-banner-pct">{`${appUpdate.progress ?? 0}%`}</span>
-        </div>
-      )}
+      {updateFooter}
 
       {workspaceMode === "code" && showInitGit && (
         <InitGitModal
