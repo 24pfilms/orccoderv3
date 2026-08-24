@@ -1,4 +1,5 @@
-import appPackage from "../package.json";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import orcaLogo from "./assets/orca-scarlet.png";
 
 interface Props {
@@ -13,7 +14,19 @@ export function AsciiLogo({
   providerCount = 0,
   serving = false,
 }: Props): React.ReactElement {
-  const versionLabel = `V ${appPackage.version}`;
+  // The installed bundle version, not the source package version: an in-app
+  // update replaces the binary without rebuilding this bundle's package.json.
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getVersion().then((value) => {
+      if (!cancelled) setVersion(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const versionLabel = version ? `V ${version}` : "";
 
   return (
     <section className="ascii-logo scarlet-hero-card" aria-label={`OrcaCoder ${versionLabel}`}>

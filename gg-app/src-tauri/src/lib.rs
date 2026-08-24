@@ -5013,6 +5013,16 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// The relaunched app inherits the overridden `USERPROFILE`, so re-appending the
+/// suffix would nest a new home on every update and orphan the previous state.
+fn updater_test_home(base: &Path) -> PathBuf {
+    const SUFFIX: &str = ".orcacoder-updater-test-home";
+    if base.file_name().and_then(|name| name.to_str()) == Some(SUFFIX) {
+        return base.to_path_buf();
+    }
+    base.join(SUFFIX)
+}
+
 fn prepare_updater_test_home(home: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(home.join("AppData/Local"))?;
     std::fs::create_dir_all(home.join("AppData/Roaming"))
@@ -5022,7 +5032,7 @@ fn prepare_updater_test_home(home: &Path) -> std::io::Result<()> {
 pub fn run() {
     let context = tauri::generate_context!();
     if context.config().identifier == "com.orcacoder.desktop.updater-test" {
-        let test_home = home_dir().join(".orcacoder-updater-test-home");
+        let test_home = updater_test_home(&home_dir());
         prepare_updater_test_home(&test_home).expect("create isolated updater test home");
         std::env::set_var("USERPROFILE", &test_home);
         std::env::set_var("HOME", &test_home);
@@ -5394,6 +5404,12 @@ mod tests {
             Vec::new(),
         ));
         assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn updater_test_home_does_not_nest_on_relaunch() {
+        let first = updater_test_home(Path::new("C:/Users/example"));
+        assert_eq!(updater_test_home(&first), first);
     }
 
     #[test]

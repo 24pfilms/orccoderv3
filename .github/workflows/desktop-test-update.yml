@@ -49,7 +49,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $config = Get-Content gg-app/src-tauri/tauri.test.conf.json -Raw | ConvertFrom-Json
           if ($config.productName -ne 'OrcaCoder Update Test') { throw 'test product name mismatch' }
-          if ($config.version -notmatch '^0\.54\.[45]$') { throw 'test version must be 0.54.4 or 0.54.5' }
+          if ($config.version -notmatch '^0\.54\.[56]$') { throw 'test version must be 0.54.5 or 0.54.6' }
           if ($config.identifier -ne 'com.orcacoder.desktop.updater-test') { throw 'test identifier mismatch' }
           if ($config.bundle.targets.Count -ne 1 -or $config.bundle.targets[0] -ne 'nsis') { throw 'test profile must build only NSIS' }
           if ($config.bundle.createUpdaterArtifacts) { throw 'workflow applies the test signature after packaging' }
