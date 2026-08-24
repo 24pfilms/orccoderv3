@@ -14,25 +14,28 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 21 August 2026
+## Current status — 24 August 2026
 
-| Area                | Status                                                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| Repository          | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version | `0.53.0`, aligned with the imported GG Framework release                                     |
-| Desktop runtime     | Tauri dev executable rebuilt and launched on Windows                                         |
-| Branding            | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
-| Start page          | Scarlet two-panel deck, compact 1024×660 default window, responsive short-height layout      |
-| Appearance          | Scarlet default plus nine persisted palettes; selector beside Autopilot/New                  |
-| Mentor              | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
-| Motion/copy         | Ocean-current empty state with 10 six-second rotating lines per mode                         |
-| Updater             | Intentionally inert until Orca owns a release endpoint and signing key                       |
-| Distribution        | Development build only; no Orca-signed public installer yet                                  |
+| Area                 | Status                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
+| Application version  | `0.53.0`, aligned with the imported GG Framework release                                     |
+| Desktop runtime      | Tauri dev executable rebuilt and launched successfully on Windows                            |
+| Branding             | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
+| Start page           | Scarlet two-panel deck, compact 1024×660 default window, responsive short-height layout      |
+| Appearance           | Scarlet default plus nine persisted palettes; selector beside Autopilot/New                  |
+| Attention theme      | Optional synchronized completion palette across all open OrcaCoder windows                   |
+| Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
+| Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
+| Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
+| Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
+| Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**Latest evidence:** 96 Orca branding and mentor tests, the app TypeScript check, the
-`@kenkaiiii/ggcoder` build, and Rust `cargo check` pass. The broader imported upstream suite
-passes 2,587 of 2,596 active tests; its nine remaining failures are environment-sensitive prompt
-context/budget and LSP timing or local TypeScript-resolution checks outside this branding work.
+**Today's result: successful.** The latest focused verification passed all eight Markdown image
+tests and the `gg-app` TypeScript check. Earlier broad verification passed all 357 `gg-app` tests;
+the Orca branding and mentor checks, `@kenkaiiii/ggcoder` build, and Rust `cargo check` also pass.
+The remaining imported-suite failures are environment-sensitive prompt-budget, LSP timing, or local
+TypeScript-resolution checks outside this branding work.
 
 **Known local warning:** the optional `supademo` extension is missing
 `~/.gg/extensions/supademo/plugin.json`. The warning does not block OrcaCoder startup.
