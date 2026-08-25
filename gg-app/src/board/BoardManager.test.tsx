@@ -24,7 +24,7 @@ describe("BoardManager", () => {
     const onSelect = vi.fn();
     const onCreate = vi.fn();
     render(
-      <BoardManager boards={boards} selectedBoardId="one" disabled={false} onSelect={onSelect} onCreate={onCreate} />,
+      <BoardManager boards={boards} selectedBoardId="one" disabled={false} onSelect={onSelect} onCreate={onCreate} onRename={vi.fn()} />,
     );
     expect(screen.queryByLabelText("Board name")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /One/ }));
@@ -33,7 +33,8 @@ describe("BoardManager", () => {
     fireEvent.change(screen.getByPlaceholderText("Search boards"), { target: { value: "Two" } });
     const list = screen.getByRole("list", { name: "Available boards" });
     expect(within(list).queryByRole("button", { name: /One/ })).toBeNull();
-    fireEvent.click(within(list).getByRole("button", { name: /Two/ }));
+    // Each row now also carries a "Rename …" button, so target the open button.
+    fireEvent.click(within(list).getByRole("button", { name: /^Two/ }));
     expect(onSelect).toHaveBeenCalledWith("two");
 
     fireEvent.click(screen.getByRole("button", { name: /One/ }));

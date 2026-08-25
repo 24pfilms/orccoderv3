@@ -9,6 +9,7 @@ interface BoardManagerProps {
   disabled: boolean;
   onSelect: (boardId: string) => void;
   onCreate: (name: string) => void;
+  onRename: (boardId: string, name: string) => void;
 }
 
 export function BoardManager({
@@ -17,6 +18,7 @@ export function BoardManager({
   disabled,
   onSelect,
   onCreate,
+  onRename,
 }: BoardManagerProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const selected = boards.find((board) => board.boardId === selectedBoardId);
@@ -41,6 +43,7 @@ export function BoardManager({
           disabled={disabled}
           onSelect={onSelect}
           onCreate={onCreate}
+          onRename={onRename}
           onClose={() => setOpen(false)}
         />
       ) : null}

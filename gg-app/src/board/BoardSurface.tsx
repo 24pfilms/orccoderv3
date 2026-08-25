@@ -48,6 +48,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
     externalRevision,
     selectBoard,
     createBoard,
+    renameBoard,
     updateViewport,
     createItem,
     applyMutations,
@@ -69,6 +70,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
           disabled={saveState === "saving"}
           onSelect={(boardId) => void selectBoard(boardId)}
           onCreate={(name) => void createBoard(name)}
+          onRename={(boardId, name) => void renameBoard(boardId, name)}
         />
         <span role="status">
           {error ??

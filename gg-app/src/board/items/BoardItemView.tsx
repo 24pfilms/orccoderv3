@@ -104,16 +104,44 @@ export function BoardItemView({
   }
 
   if (item.itemType === "shape") {
+    // Shapes carry a label, and Mero lets you type straight into one. The editor is the
+    // same centred textarea notes use, overlaid on the shape while editing.
     return (
-      <BoardShape
-        className="board-shape"
-        shape={payload.shape ?? "rectangle"}
-        fill={fill}
-        stroke={stroke}
-        color={color}
-        label={text}
-        fontSize={fontSize}
-      />
+      <div
+        className="board-shape-wrap"
+        onDoubleClick={() => editable && onBeginEditing?.()}
+      >
+        <BoardShape
+          className="board-shape"
+          shape={payload.shape ?? "rectangle"}
+          fill={fill}
+          stroke={stroke}
+          color={color}
+          label={editing ? "" : text}
+          fontSize={fontSize}
+        />
+        {editing ? (
+          <div
+            className="board-item-text board-shape-text"
+            style={{ color, fontSize, fontFamily: `var(--board-font-${fontFamily})` }}
+          >
+            <textarea
+              autoFocus
+              aria-label="Shape text"
+              className="board-item-textarea"
+              value={text}
+              rows={Math.max(1, text.split("\n").length)}
+              onBlur={(event) => {
+                const next = event.relatedTarget as Element | null;
+                if (next?.closest(".board-context-toolbar, .board-toolbar")) return;
+                onEndEditing?.();
+              }}
+              onChange={(event) => onPayloadChange({ ...payload, text: event.currentTarget.value })}
+              onPointerDown={(event) => event.stopPropagation()}
+            />
+          </div>
+        ) : null}
+      </div>
     );
   }
 

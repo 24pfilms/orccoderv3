@@ -28,6 +28,7 @@ interface BoardDocumentState {
   externalRevision: number;
   selectBoard: (boardId: string) => Promise<void>;
   createBoard: (name: string) => Promise<void>;
+  renameBoard: (boardId: string, name: string) => Promise<void>;
   updateViewport: (panX: number, panY: number, zoom: number) => void;
   createItem: (
     itemType: BoardItemType,
@@ -195,6 +196,44 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
       }
     },
     [openBoard, queue],
+  );
+
+  // Renaming goes through the same settings command as viewport persistence, so it
+  // inherits the lease and revision checks. Only the open board can be renamed: the
+  // lease is held per board, and we do not hold one for the others.
+  const renameBoard = useCallback(
+    async (targetBoardId: string, nextName: string) => {
+      const current = committedRef.current;
+      const currentLease = leaseRef.current;
+      const trimmed = nextName.trim();
+      if (!trimmed) return;
+      if (!current || current.board.boardId !== targetBoardId) {
+        setError("Open a board before renaming it");
+        return;
+      }
+      if (!currentLease?.editable || currentLease.leaseEpoch === null) {
+        setError("The board is read only");
+        return;
+      }
+      try {
+        await queue.flush("surface-switch");
+        const next = await boardRepository.updateSettings(
+          targetBoardId,
+          currentLease.leaseEpoch,
+          committedRef.current?.board.revision ?? current.board.revision,
+          { name: trimmed },
+        );
+        acceptDocument(next);
+        setBoards((boards) =>
+          boards.map((board) =>
+            board.boardId === targetBoardId ? { ...board, name: trimmed } : board,
+          ),
+        );
+      } catch {
+        setError("Board could not be renamed");
+      }
+    },
+    [acceptDocument, queue],
   );
 
   const updateViewport = useCallback(
@@ -528,6 +567,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     externalRevision,
     selectBoard,
     createBoard,
+    renameBoard,
     updateViewport,
     createItem,
     applyMutations,
