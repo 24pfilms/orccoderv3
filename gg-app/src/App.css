@@ -301,6 +301,9 @@ body,
 
 body {
   overflow: hidden;
+  /* Base colour lives here, not on .app. `.app` isolates a stacking context, so an
+     opaque background there paints over the .orca-wallpaper layer inside it. */
+  background: var(--bg);
 }
 
 .app {
@@ -2193,6 +2196,18 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Reads as a card sitting ON the palette wallpaper: translucent glass so the gradient
+     shows through, inset so colour breathes around all four sides, and rounded to match
+     the app's other surfaces. */
+  margin: 10px 12px 6px;
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 16px;
+  box-shadow:
+    0 18px 44px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
   /* Clips the overlay's 1px bleed below (see `.ken-power-overlay`) so it never
      spills onto the chat-head border or the tool panel/footer beyond this
      frame. */
@@ -6000,7 +6015,8 @@ button.img-open:focus-visible {
 .app {
   position: relative;
   isolation: isolate;
-  background: var(--bg);
+  /* Transparent on purpose — see the note on `body`. */
+  background: transparent;
 }
 .home-appearance {
   position: absolute;
