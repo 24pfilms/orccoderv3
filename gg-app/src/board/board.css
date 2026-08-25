@@ -1135,36 +1135,7 @@
 
 /* Embedded YouTube player. Pointer input is refused until the item is selected so the
    first click selects (and drag still works) rather than landing on the player controls. */
-.board-video-item {
-  position: relative;
-  overflow: hidden;
-  border-radius: 6px;
-  background: #000;
-}
 
-.board-video-item iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  pointer-events: none;
-}
-
-.board-video-item[data-playing] iframe {
-  pointer-events: auto;
-}
-
-.board-video-hint {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 3px 7px;
-  border-radius: 5px;
-  background: rgb(0 0 0 / 62%);
-  color: #fff;
-  font-family: var(--mono);
-  font-size: 10px;
-  pointer-events: none;
-}
 
 /* ── Prompt dialog (YouTube URL / generation prompt) ───────────────────── */
 .board-prompt-backdrop {
@@ -1423,70 +1394,242 @@
 }
 
 /* ── Orca busy indicator ───────────────────────────────────────────────────
-   The ring sweeps like a normal spinner; the orca glides and banks inside it. */
+   A thin track with an accent arc sweeping round it, and an orca gliding inside. */
 .orca-spinner {
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 6px 0 2px;
+  gap: 8px;
 }
 
 .orca-spinner svg {
-  width: 64px;
-  height: 64px;
-  overflow: visible;
-  color: var(--text);
+  width: 52px;
+  height: 52px;
 }
 
-.orca-spinner-ring {
+.orca-spinner-track {
   fill: none;
-  stroke: color-mix(in srgb, var(--primary) 70%, transparent);
-  stroke-width: 2.5;
+  stroke: color-mix(in srgb, var(--border) 90%, transparent);
+  stroke-width: 2;
+}
+
+.orca-spinner-arc {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
   stroke-linecap: round;
-  stroke-dasharray: 42 122;
-  transform-origin: 32px 32px;
-  animation: orca-ring 1.5s linear infinite;
+  stroke-dasharray: 30 121;
+  transform-origin: 28px 28px;
+  animation: orca-arc 1.4s linear infinite;
 }
 
 .orca-spinner-body {
-  transform-origin: 32px 32px;
-  animation: orca-swim 2.6s ease-in-out infinite;
+  fill: var(--text);
+  transform-origin: 28px 28px;
+  animation: orca-swim 3s ease-in-out infinite;
+}
+
+.orca-spinner-eye {
+  fill: var(--bg);
 }
 
 .orca-spinner span {
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
-@keyframes orca-ring {
+@keyframes orca-arc {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* Glide forward, bank into the turn, glide back — a lazy circuit rather than a spin. */
+/* Glide forward, bank into the turn, glide back — a lazy circuit, not a spin. */
 @keyframes orca-swim {
-  0% {
-    transform: translateX(-5px) rotate(-7deg);
+  0%,
+  100% {
+    transform: translateX(-3px) rotate(-6deg);
   }
   50% {
-    transform: translateX(5px) rotate(6deg);
-  }
-  100% {
-    transform: translateX(-5px) rotate(-7deg);
+    transform: translateX(3px) rotate(5deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orca-spinner-ring,
+  .orca-spinner-arc,
   .orca-spinner-body {
     animation: none;
   }
+}
 
-  .orca-spinner-ring {
-    stroke-dasharray: none;
-    opacity: 0.5;
-  }
+/* Compact prompt dialog */
+.board-prompt {
+  width: min(392px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 16px;
+}
+
+.board-prompt h2 {
+  font-size: 14px;
+}
+
+.board-prompt label {
+  gap: 5px;
+  font-size: 11px;
+}
+
+.board-prompt input,
+.board-prompt textarea {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* The player holds 16:9 however the item is resized, letterboxed inside the item rather
+   than stretched, and stays inert until the shield is clicked. */
+
+
+/* An item waiting on its generated picture: just the orca, sized to the item. */
+.board-asset-generating {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 8px;
+}
+/* ── YouTube embed ─────────────────────────────────────────────────────────
+   Ported from Mero: the player never takes pointer input until it is handed control by
+   a double-click, because an iframe swallows everything inside its own frame — including
+   the inner half of the resize handles. Escape gives control back. */
+.board-video-item {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+}
+
+.board-video-frame {
+  position: relative;
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.board-video-item iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.board-video-item[data-playing] iframe {
+  pointer-events: auto;
+}
+
+.board-video-shield {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 4%);
+  cursor: move;
+  transition: background 160ms ease;
+}
+
+.board-video-shield:hover {
+  background: rgb(0 0 0 / 22%);
+}
+
+.board-video-shield span {
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.board-video-shield:hover span {
+  opacity: 1;
+}
+
+.board-video-hint {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* ── Canvas settings ───────────────────────────────────────────────────────
+   Lives in the board header; dot spacing is a stored per-board setting. */
+.board-canvas-settings {
+  position: relative;
+}
+
+.board-canvas-settings > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.board-canvas-settings > button:hover,
+.board-canvas-settings > button[aria-expanded="true"] {
+  color: color-mix(in srgb, var(--primary) 70%, var(--text));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.board-canvas-settings > button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.board-canvas-settings-panel {
+  position: absolute;
+  z-index: 44;
+  top: calc(100% + 8px);
+  left: 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
+  border-radius: 11px;
+  box-shadow:
+    0 12px 34px rgb(0 0 0 / 46%),
+    0 0 18px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.board-canvas-settings-panel label {
+  display: grid;
+  grid-template-columns: auto 132px 24px;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.board-canvas-settings-panel output {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: right;
 }

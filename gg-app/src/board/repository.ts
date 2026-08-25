@@ -56,6 +56,8 @@ export interface BoardLease {
 }
 
 export interface BoardAsset {
+  pixelWidth: number;
+  pixelHeight: number;
   assetId: string;
   mimeType: "image/png" | "image/jpeg";
   byteLength: number;

@@ -30,6 +30,7 @@ interface BoardDocumentState {
   createBoard: (name: string) => Promise<void>;
   renameBoard: (boardId: string, name: string) => Promise<void>;
   updateViewport: (panX: number, panY: number, zoom: number) => void;
+  setDotDensity: (dotDensity: number) => void;
   createItem: (
     itemType: BoardItemType,
     at?: BoardPoint,
@@ -45,7 +46,26 @@ interface BoardDocumentState {
   downloadItemImage: (itemId: string) => Promise<void>;
   /** Resolves null on success, or the failure reason to show the user. */
   generateImage: (prompt: string, at: BoardPoint) => Promise<string | null>;
+  /** Items whose picture is still being generated, so the canvas can show progress. */
+  generatingItemIds: string[];
   takeOver: () => Promise<void>;
+}
+
+/** Longest edge a newly attached image is scaled to, in board units. */
+const IMAGE_FIT_EDGE = 420;
+
+/**
+ * Box that matches the image's aspect ratio. Without this an image is letterboxed inside
+ * whatever geometry the item was created with (200x160 by default), which leaves wide
+ * bands of empty item around a landscape or portrait picture.
+ */
+function fitToImage(pixelWidth: number, pixelHeight: number): { width: number; height: number } {
+  if (!(pixelWidth > 0) || !(pixelHeight > 0)) return { width: 200, height: 160 };
+  const scale = IMAGE_FIT_EDGE / Math.max(pixelWidth, pixelHeight);
+  return {
+    width: Math.max(24, Math.round(pixelWidth * scale)),
+    height: Math.max(24, Math.round(pixelHeight * scale)),
+  };
 }
 
 function itemSize(itemType: BoardItemType): { width: number; height: number } {
@@ -70,6 +90,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
   const [saveState, setSaveState] = useState<BoardSaveState>("saved");
   const [error, setError] = useState<string | null>(null);
   const [externalRevision, setExternalRevision] = useState(0);
+  const [generatingItemIds, setGeneratingItemIds] = useState<string[]>([]);
   const queue = useMemo(() => new BoardSaveQueue(coordinator, setSaveState), [coordinator]);
   const committedRef = useRef<BoardDocument | null>(null);
   const leaseRef = useRef(lease);
@@ -170,6 +191,42 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
       );
     };
   }, [boardId, lease?.editable, lease?.leaseEpoch, queue]);
+
+  /**
+   * Canvas dot spacing. Applied locally at once so dragging the slider feels immediate,
+   * and coalesced through the save queue under a single key so a drag is one write rather
+   * than one per pixel — the same treatment viewport persistence gets.
+   */
+  const setDotDensity = useCallback(
+    (dotDensity: number) => {
+      const next = Math.max(4, Math.min(48, Math.round(dotDensity)));
+      const committed = committedRef.current;
+      if (committed) {
+        const preview = { ...committed, dotDensity: next };
+        committedRef.current = preview;
+        setDocument(preview);
+      }
+      queue.enqueue("settings", async () => {
+        const current = committedRef.current;
+        const currentLease = leaseRef.current;
+        if (!current || !currentLease?.editable || currentLease.leaseEpoch === null) return;
+        localMutationRef.current = true;
+        try {
+          acceptDocument(
+            await boardRepository.updateSettings(
+              current.board.boardId,
+              currentLease.leaseEpoch,
+              current.board.revision,
+              { dotDensity: next },
+            ),
+          );
+        } finally {
+          localMutationRef.current = false;
+        }
+      });
+    },
+    [acceptDocument, queue],
+  );
 
   const selectBoard = useCallback(
     async (nextBoardId: string) => {
@@ -332,7 +389,8 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
       const current = committedRef.current;
       if (!current) return null;
       const itemId = crypto.randomUUID();
-      const size = itemSize(itemType);
+      // A YouTube embed is 16:9; giving it the generic image box would letterbox it.
+      const size = initialPayload?.videoId ? { width: 480, height: 270 } : itemSize(itemType);
       const payload = {
         ...defaultItemPayload(itemType),
         ...(shape ? { shape } : {}),
@@ -437,13 +495,20 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         const fresh = await boardRepository.get(current.board.boardId);
         const freshItem = fresh.items.find((candidate) => candidate.itemId === itemId);
         if (!freshItem) return false;
+        const fitted = fitToImage(asset.pixelWidth, asset.pixelHeight);
         const next = await boardRepository.updateItem(
           current.board.boardId,
           itemId,
           currentLease.leaseEpoch,
           fresh.board.revision,
           freshItem.revision,
-          { payload: { ...readItemPayload(freshItem.payload), assetId: asset.assetId } },
+          {
+            payload: { ...readItemPayload(freshItem.payload), assetId: asset.assetId },
+            // Keep the item centred where it was while taking the image's shape.
+            x: freshItem.x + (freshItem.width - fitted.width) / 2,
+            y: freshItem.y + (freshItem.height - fitted.height) / 2,
+            ...fitted,
+          },
         );
         acceptDocument(next);
         return true;
@@ -504,6 +569,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     async (prompt: string, at: BoardPoint) => {
       const itemId = await createItem("image", at);
       if (!itemId) return "Could not create the image item.";
+      setGeneratingItemIds((current) => [...current, itemId]);
       try {
         await queue.flush("surface-switch");
         const current = committedRef.current;
@@ -522,6 +588,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         const fresh = await boardRepository.get(current.board.boardId);
         const item = fresh.items.find((candidate) => candidate.itemId === itemId);
         if (!item) return "The image item disappeared while generating.";
+        const generated = fitToImage(asset.pixelWidth, asset.pixelHeight);
         acceptDocument(
           await boardRepository.updateItem(
             current.board.boardId,
@@ -529,7 +596,12 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
             currentLease.leaseEpoch,
             fresh.board.revision,
             item.revision,
-            { payload: { ...readItemPayload(item.payload), assetId: asset.assetId, alt: prompt } },
+            {
+              payload: { ...readItemPayload(item.payload), assetId: asset.assetId, alt: prompt },
+              x: item.x + (item.width - generated.width) / 2,
+              y: item.y + (item.height - generated.height) / 2,
+              ...generated,
+            },
           ),
         );
         return null;
@@ -543,6 +615,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         return reason;
       } finally {
         localMutationRef.current = false;
+        setGeneratingItemIds((current) => current.filter((id) => id !== itemId));
       }
     },
     [acceptDocument, applyMutations, createItem, queue],
@@ -569,6 +642,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     createBoard,
     renameBoard,
     updateViewport,
+    setDotDensity,
     createItem,
     applyMutations,
     previewItems,
@@ -578,6 +652,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     exportBoard,
     downloadItemImage,
     generateImage,
+    generatingItemIds,
     takeOver,
   };
 }

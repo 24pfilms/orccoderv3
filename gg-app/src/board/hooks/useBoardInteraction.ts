@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { handleBoardKeyDown } from "../interactions/boardKeyboard";
 import {
   boundsForItems,
@@ -133,6 +133,18 @@ export function useBoardInteraction({
     [items, selectedIds],
   );
   const selectionBounds = selectedItems.length ? boundsForItems(selectedItems) : null;
+
+  // Escape leaves an active editor even when focus has moved off the canvas — which is
+  // exactly what happens once a video player takes control, and the on-screen hint tells
+  // the viewer to press it.
+  useEffect(() => {
+    if (!editingId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEditingId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editingId]);
 
   const setGesture = useCallback((next: BoardGesture) => {
     gestureRef.current = next;
@@ -454,11 +466,16 @@ export function useBoardInteraction({
   const onItemPointerDown = useCallback(
     (event: React.PointerEvent, itemId: string) => {
       if (tool.kind !== "select") return;
-      // A press on the item being edited belongs to that editor (text cursor, player
-      // controls). A press on any OTHER item leaves editing and proceeds — bailing out
-      // whenever anything was being edited made the whole board unmovable.
-      if (editingId === itemId) return;
-      if (editingId) setEditingId(null);
+      // A press INSIDE an active editor belongs to it — a text cursor, or a video player
+      // that has been handed control. A press anywhere else on the same item (a video's
+      // surround, for instance) is still the board's, so the item stays selectable and
+      // draggable while it plays. A press on any other item leaves editing entirely.
+      const pressTarget = event.target instanceof Element ? event.target : null;
+      const insideEditor = pressTarget?.closest(
+        ".board-item-textarea, .board-video-frame, .board-frame input",
+      );
+      if (editingId === itemId && insideEditor) return;
+      if (editingId && editingId !== itemId) setEditingId(null);
       event.stopPropagation();
       const additive = event.ctrlKey || event.metaKey || event.shiftKey;
       const nextIds = additive

@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { BoardCanvas } from "./BoardCanvas";
+import { BoardCanvasSettings } from "./BoardCanvasSettings";
 import { BoardManager } from "./BoardManager";
 import type { BoardFlushCoordinator } from "./flush";
 import { useBoardDocument } from "./hooks/useBoardDocument";
@@ -50,6 +51,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
     createBoard,
     renameBoard,
     updateViewport,
+    setDotDensity,
     createItem,
     applyMutations,
     previewItems,
@@ -59,6 +61,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
     exportBoard,
     downloadItemImage,
     generateImage,
+    generatingItemIds,
     takeOver,
   } = useBoardDocument(flushCoordinator);
   return (
@@ -71,6 +74,11 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
           onSelect={(boardId) => void selectBoard(boardId)}
           onCreate={(name) => void createBoard(name)}
           onRename={(boardId, name) => void renameBoard(boardId, name)}
+        />
+        <BoardCanvasSettings
+          dotDensity={document?.dotDensity ?? 16}
+          disabled={!lease?.editable}
+          onDotDensityChange={setDotDensity}
         />
         <span role="status">
           {error ??
@@ -100,6 +108,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
           onExport={(format) => void exportBoard(format)}
           onDownloadImage={(itemId) => void downloadItemImage(itemId)}
           onGenerateImage={generateImage}
+          generatingItemIds={generatingItemIds}
         />
       ) : (
         <div className="board-surface-empty">{error ?? "Loading board…"}</div>

@@ -34,6 +34,7 @@ interface BoardCanvasProps {
   resolveAssetUrl?: (assetId: string) => string | null;
   onDownloadImage?: (itemId: string) => void;
   onGenerateImage?: (prompt: string, at: BoardPoint) => Promise<string | null>;
+  generatingItemIds?: string[];
   onExport: (format: BoardExportFormat) => void;
 }
 
@@ -51,6 +52,7 @@ export function BoardCanvas({
   resolveAssetUrl,
   onDownloadImage,
   onGenerateImage,
+  generatingItemIds = [],
   onExport,
 }: BoardCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -144,7 +146,7 @@ export function BoardCanvas({
                 item={item}
                 editable={editable}
                 editing={interaction.editingId === item.itemId}
-                selected={selected}
+                generating={generatingItemIds.includes(item.itemId)}
                 onBeginEditing={() => interaction.setEditingId(item.itemId)}
                 onEndEditing={() => interaction.setEditingId(null)}
                 onPayloadChange={(payload) => onItemPayloadChange(item.itemId, payload)}
@@ -273,23 +275,25 @@ export function BoardCanvas({
                 setPromptHint("That does not look like a YouTube link. Paste the full video URL.");
                 return;
               }
-              void onCreateItem("image", prompt.at, undefined, { alt: "YouTube video", videoId });
+              void onCreateItem("image", prompt.at, undefined, {
+                alt: "YouTube video",
+                videoId,
+              });
               setPrompt(null);
               return;
             }
             if (!onGenerateImage) return;
-            setPromptBusy(true);
-            setPromptHint("Generating — this usually takes a few seconds.");
-            void onGenerateImage(value, prompt.at)
-              .then((failure) => {
-                if (failure) {
-                  setPromptHint(failure);
-                } else {
-                  setPrompt(null);
-                  setPromptHint(null);
-                }
-              })
-              .finally(() => setPromptBusy(false));
+            // Close immediately: the orca swims on the canvas where the picture will
+            // land, and the image pops in when it arrives. A failure reopens the dialog
+            // with the reason so the prompt is not lost.
+            setPrompt(null);
+            setPromptHint(null);
+            void onGenerateImage(value, prompt.at).then((failure) => {
+              if (failure) {
+                setPrompt({ kind: "generate", at: prompt.at });
+                setPromptHint(failure);
+              }
+            });
           }}
         />
       ) : null}

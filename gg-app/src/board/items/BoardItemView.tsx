@@ -1,4 +1,5 @@
 import { BoardShape } from "./BoardShape";
+import { OrcaSpinner } from "../OrcaSpinner";
 import type { BoardItem } from "../repository";
 import {
   boardAssetUrl,
@@ -11,7 +12,7 @@ interface BoardItemViewProps {
   item: BoardItem;
   editable: boolean;
   editing?: boolean;
-  selected?: boolean;
+  generating?: boolean;
   onBeginEditing?: () => void;
   onEndEditing?: () => void;
   onPayloadChange: (payload: ItemPayload) => void;
@@ -23,7 +24,7 @@ export function BoardItemView({
   item,
   editable,
   editing = false,
-  selected = false,
+  generating = false,
   onBeginEditing,
   onEndEditing,
   onPayloadChange,
@@ -221,20 +222,39 @@ export function BoardItemView({
       // The player stays inert until double-clicked. An iframe swallows pointer input into
       // its own document, which would eat the inner half of the resize handles and turn
       // every resize into a drag, so board gestures always win until you activate it.
-      <div
-        className="board-asset-item board-video-item"
-        data-playing={editing || undefined}
-        onDoubleClick={() => editable && onBeginEditing?.()}
-      >
-        <iframe
-          src={embedUrl}
-          title={typeof payload.alt === "string" && payload.alt ? payload.alt : "YouTube video"}
-          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowFullScreen
-        />
-        {!editing && selected ? (
-          <span className="board-video-hint">Double-click to play</span>
-        ) : null}
+      <div className="board-video-item" data-playing={editing || undefined}>
+        <div className="board-video-frame">
+          <iframe
+            src={embedUrl}
+            title={typeof payload.alt === "string" && payload.alt ? payload.alt : "YouTube video"}
+            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+          />
+          {editing ? (
+            // Mero's contract: once the player has control, Escape is the way out, and it
+            // says so on screen rather than leaving the viewer stuck.
+            <span className="board-video-hint">Press ESC to move video</span>
+          ) : (
+            // A full-cover shield, as Mero does it: press to select and drag the video,
+            // double-click to hand control to the player. Events deliberately bubble to
+            // the item, so dragging works exactly like any other board item.
+            <div
+              className="board-video-shield"
+              role="presentation"
+              onDoubleClick={() => editable && onBeginEditing?.()}
+            >
+              <span>Double-click to play</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (generating) {
+    return (
+      <div className="board-asset-item board-asset-generating">
+        <OrcaSpinner />
       </div>
     );
   }

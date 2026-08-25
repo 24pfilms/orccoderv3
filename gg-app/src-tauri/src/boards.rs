@@ -1637,9 +1637,15 @@ pub(crate) struct BoardAsset {
     byte_length: i64,
     url: String,
     board_revision: i64,
+    /// Pixel dimensions, so the caller can size the item to the image instead of
+    /// letterboxing it inside whatever box the item happened to be created with.
+    pixel_width: u32,
+    pixel_height: u32,
 }
 
 struct ValidatedImage {
+    width: u32,
+    height: u32,
     bytes: Vec<u8>,
     sha256: String,
     mime_type: &'static str,
@@ -1713,6 +1719,8 @@ fn read_validated_image(path: &Path) -> Result<ValidatedImage, BoardStoreError> 
     })?;
     let sha256 = sha256_hex(&bytes);
     Ok(ValidatedImage {
+        width,
+        height,
         bytes,
         sha256,
         mime_type,
@@ -1881,7 +1889,15 @@ async fn import_image_from_path(
         ).map_err(BoardStoreError::database)?;
         if changed != 1 { return Err(BoardStoreError::new("board_write_conflict", "Board revision changed while importing an asset")); }
         transaction.commit().map_err(BoardStoreError::database)?;
-        Ok(BoardAsset { asset_id: asset_id.clone(), mime_type: image.0.mime_type.to_string(), byte_length: image.0.bytes.len() as i64, url: format!("board-asset://{asset_id}"), board_revision: expected_revision + 1 })
+        Ok(BoardAsset {
+            asset_id: asset_id.clone(),
+            mime_type: image.0.mime_type.to_string(),
+            byte_length: image.0.bytes.len() as i64,
+            url: format!("board-asset://{asset_id}"),
+            board_revision: expected_revision + 1,
+            pixel_width: image.0.width,
+            pixel_height: image.0.height,
+        })
     }).await?;
     emit_changed(
         &emitter,
