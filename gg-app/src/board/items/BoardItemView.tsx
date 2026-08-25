@@ -114,6 +114,11 @@ export function BoardItemView({
     const title = typeof payload.title === "string" ? payload.title : "Frame";
     return (
       <div className="board-frame" style={{ borderColor: color }}>
+        {/* Mero makes only the border a grab target so the interior stays click-through
+            and items inside (or beneath) a frame remain selectable. */}
+        {(["top", "bottom", "left", "right"] as const).map((edge) => (
+          <span key={edge} className="board-frame-edge" data-edge={edge} aria-hidden="true" />
+        ))}
         {editing ? (
           <input
             autoFocus

@@ -66,6 +66,13 @@
   display: none;
 }
 
+/* A non-visible overflow on one axis forces the other to clip too, so the shape and
+   export menus (which open above/below the bar) were cut off entirely. Let the bar
+   overflow while a menu is open; it goes back to scrolling when the menu closes. */
+.board-toolbar-scroll:has([role="menu"]) {
+  overflow: visible;
+}
+
 .board-tool-group {
   position: relative;
   display: flex;
@@ -477,9 +484,45 @@
   pointer-events: none;
 }
 
-.board-item[data-item-type="frame"] .board-frame,
+/* Only the border zones and the title are interactive. A frame's interior must stay
+   click-through: it is a large, nearly transparent box, and making the whole thing
+   clickable let it swallow every press over its area, including on items beneath it. */
+.board-item[data-item-type="frame"] .board-frame-edge,
 .board-item[data-item-type="frame"] .board-frame-title {
   pointer-events: auto;
+}
+
+.board-frame-edge {
+  position: absolute;
+  cursor: move;
+}
+
+.board-frame-edge[data-edge="top"] {
+  top: -8px;
+  right: -8px;
+  left: -8px;
+  height: 16px;
+}
+
+.board-frame-edge[data-edge="bottom"] {
+  right: -8px;
+  bottom: -8px;
+  left: -8px;
+  height: 16px;
+}
+
+.board-frame-edge[data-edge="left"] {
+  top: 8px;
+  bottom: 8px;
+  left: -8px;
+  width: 16px;
+}
+
+.board-frame-edge[data-edge="right"] {
+  top: 8px;
+  right: -8px;
+  bottom: 8px;
+  width: 16px;
 }
 
 .board-item-text {
