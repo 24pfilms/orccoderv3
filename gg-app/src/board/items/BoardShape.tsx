@@ -12,16 +12,30 @@ interface BoardShapeProps {
   className?: string;
 }
 
+/**
+ * A shape's rim is the same hue as its fill, mixed toward white. One colour control then
+ * drives both, and a recoloured shape keeps a rim that belongs to it — a fixed white or
+ * blue outline looks wrong the moment the fill changes.
+ */
+function deriveRim(fill: string): string {
+  return fill === "transparent"
+    ? "currentColor"
+    : `color-mix(in srgb, ${fill} 58%, white)`;
+}
+
 export function BoardShape({
   shape,
   fill = "transparent",
-  stroke = "currentColor",
+  stroke,
   color = "currentColor",
   label,
   fontSize = 14,
   className,
 }: BoardShapeProps): React.ReactElement {
-  const markerId = `board-arrow-${useId().replace(/:/g, "")}`;
+  const rim = stroke ?? deriveRim(fill);
+  const rawId = useId().replace(/:/g, "");
+  const markerId = `board-arrow-${rawId}`;
+  const sheenId = `board-sheen-${rawId}`;
   const isLine = isLinearShape(shape);
   const polygon = SHAPE_POLYGONS[shape];
   let geometry: React.ReactNode;
@@ -64,12 +78,36 @@ export function BoardShape({
           orient="auto-start-reverse"
           markerUnits="strokeWidth"
         >
-          <path d="M0 0L10 5L0 10Z" fill={stroke} stroke="none" />
+          <path d="M0 0L10 5L0 10Z" fill={rim} stroke="none" />
         </marker>
+        {/* A light-from-above sheen laid over the flat fill. Kept as a neutral
+            white/black overlay so it works with any fill colour the user picks. */}
+        <linearGradient id={sheenId} x1="0" y1="0" x2="0" y2="1">
+          {/* Opacity is set in CSS, not here: var() does not resolve inside SVG
+              presentation attributes, only in CSS declarations. */}
+          <stop className="board-sheen-top" offset="0%" stopColor="#fff" />
+          <stop className="board-sheen-mid" offset="45%" stopColor="#fff" />
+          <stop className="board-sheen-bottom" offset="100%" stopColor="#000" />
+        </linearGradient>
       </defs>
-      <g fill={isLine ? "none" : fill} stroke={stroke} strokeWidth="2">
+      {/* non-scaling-stroke keeps the outline an even weight however the shape is
+          stretched; without it a wide rectangle renders fat vertical edges and thin
+          horizontal ones. Round joins soften the polygon corners. */}
+      <g
+        fill={isLine ? "none" : fill}
+        style={{ stroke: rim }}
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      >
         {geometry}
       </g>
+      {isLine ? null : (
+        <g fill={`url(#${sheenId})`} stroke="none" style={{ pointerEvents: "none" }}>
+          {geometry}
+        </g>
+      )}
       {label ? (
         <text
           x="50"

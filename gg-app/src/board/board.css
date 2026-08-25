@@ -1380,3 +1380,14 @@
   padding: 8px 10px;
   background: transparent;
 }
+
+/* Shape sheen and rim weight. Tuned by eye against real shapes on the dark canvas; the
+   variables stay overridable so the values can be adjusted without touching geometry. */
+.board-shape > g {
+  stroke-width: var(--board-shape-stroke, 0.75);
+}
+
+.board-sheen-top { stop-opacity: var(--board-sheen-top, 0.41); }
+.board-sheen-mid { stop-opacity: var(--board-sheen-mid, 0.18); }
+.board-sheen-bottom { stop-opacity: var(--board-sheen-bottom, 0.09); }
+

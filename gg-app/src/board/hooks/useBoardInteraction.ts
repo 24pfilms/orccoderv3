@@ -173,10 +173,11 @@ export function useBoardInteraction({
   const changeColor = useCallback(
     (color: string) => void updateSelection("Change color", (item) => {
       const payload = item.payload && typeof item.payload === "object" ? item.payload as Record<string, unknown> : {};
-      return {
-        ...item,
-        payload: item.itemType === "shape" ? { ...payload, fill: color } : { ...payload, color },
-      };
+      if (item.itemType !== "shape") return { ...item, payload: { ...payload, color } };
+      // Drop any stored rim so it re-derives from the new fill; otherwise a recoloured
+      // shape keeps the outline of the colour it used to be.
+      const { stroke: _previousRim, ...rest } = payload;
+      return { ...item, payload: { ...rest, fill: color } };
     }),
     [updateSelection],
   );

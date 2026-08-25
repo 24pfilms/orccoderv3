@@ -79,7 +79,10 @@ export function defaultItemPayload(itemType: BoardItemType): ItemPayload {
     case "text":
       return { text: "Start typing", color: "#e5e7eb", fontSize: 28, fontFamily: "sans" };
     case "shape":
-      return { shape: "rectangle", fill: "#7db7ff", stroke: "#345a88", color: "#10243b" };
+      // No `stroke`: the rim derives from the fill (see BoardShape.deriveRim), so
+      // recolouring a shape moves its outline with it. Storing one here would pin every
+      // new shape to a blue rim no matter what colour it was later given.
+      return { shape: "rectangle", fill: "#3f6fd8", color: "#f2f6ff" };
     case "frame":
       return { title: "Frame", color: "#7f8ca3", childIds: [] };
     case "arrow":
