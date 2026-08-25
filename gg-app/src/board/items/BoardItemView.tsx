@@ -44,7 +44,10 @@ export function BoardItemView({
     const label = item.itemType === "sticky_note" ? "Sticky note" : "Text item";
     const style = {
       color,
-      fontSize: item.itemType === "text" ? fontSize : undefined,
+      // Sticky notes are offered the font-size control too (see `supportsFont` in
+      // BoardSelectionChrome), so honour the payload here instead of silently dropping
+      // it for notes — the value was being saved and then ignored on render.
+      fontSize,
       fontFamily: `var(--board-font-${fontFamily})`,
       backgroundColor:
         item.itemType === "sticky_note"
@@ -52,16 +55,20 @@ export function BoardItemView({
           : "transparent",
     };
     return editing ? (
-      <textarea
-        autoFocus
-        aria-label={label}
-        className={`board-item-text board-item-${item.itemType}`}
-        value={text}
-        style={style}
-        onBlur={onEndEditing}
-        onChange={(event) => onPayloadChange({ ...payload, text: event.currentTarget.value })}
-        onPointerDown={(event) => event.stopPropagation()}
-      />
+      // Mero centres the editor by wrapping a content-sized textarea in a centring box;
+      // styling the textarea itself as the box leaves its text stuck at the top.
+      <div className={`board-item-text board-item-${item.itemType}`} style={style}>
+        <textarea
+          autoFocus
+          aria-label={label}
+          className="board-item-textarea"
+          value={text}
+          rows={Math.max(1, text.split("\n").length)}
+          onBlur={onEndEditing}
+          onChange={(event) => onPayloadChange({ ...payload, text: event.currentTarget.value })}
+          onPointerDown={(event) => event.stopPropagation()}
+        />
+      </div>
     ) : (
       <div
         role="textbox"

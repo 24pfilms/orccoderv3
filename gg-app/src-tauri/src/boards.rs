@@ -807,7 +807,10 @@ pub(crate) struct BoardItemPatch {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+// `rename_all` renames the VARIANTS of an enum, not the fields inside them, so the
+// variant fields need `rename_all_fields` to match the camelCase payload the frontend
+// sends. Without it every mutation was rejected with "missing field `item_id`".
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub(crate) enum BoardItemMutation {
     Create {
         item_id: String,

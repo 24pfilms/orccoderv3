@@ -19,10 +19,14 @@ export function useBoardViewport(
   const viewportRef = useRef(viewport);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Depend on the values, not the object identity: callers build a fresh literal
+  // every render, so an identity dependency re-ran this effect forever.
+  const { panX: initialPanX, panY: initialPanY, zoom: initialZoom } = initial;
   useEffect(() => {
-    setViewportState(initial);
-    viewportRef.current = initial;
-  }, [initial]);
+    const next = { panX: initialPanX, panY: initialPanY, zoom: initialZoom };
+    setViewportState(next);
+    viewportRef.current = next;
+  }, [initialPanX, initialPanY, initialZoom]);
 
   useEffect(
     () => () => {

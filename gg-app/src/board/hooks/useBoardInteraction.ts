@@ -28,6 +28,27 @@ import {
   useBoardMutationHistory,
 } from "./useBoardMutationHistory";
 
+// Movement (in screen pixels) before a press on an item becomes a drag and takes the
+// pointer. Below this the press stays a click, so double-click-to-edit still works.
+const DRAG_CAPTURE_THRESHOLD_PX = 3;
+
+// Interactive chrome that lives inside the canvas element and owns its own input.
+// A canvas gesture must never start from a press on any of it.
+const BOARD_CHROME_SELECTOR = [
+  "button",
+  "input",
+  "select",
+  "textarea",
+  ".board-toolbar",
+  ".board-zoom-controls",
+  ".board-minimap",
+  ".board-context-toolbar",
+  ".board-selection-box",
+  ".board-resize-handle",
+  ".board-rotate-handle",
+  ".board-rotate-stem",
+].join(", ");
+
 interface BoardInteractionOptions {
   document: BoardDocument;
   editable: boolean;
@@ -277,6 +298,11 @@ export function useBoardInteraction({
     (event: React.PointerEvent<HTMLDivElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+      // The toolbar, zoom cluster, minimap, and selection handles render INSIDE the
+      // canvas element. Without this guard a press on them still starts a canvas
+      // gesture and captures the pointer, so the release retargets to the canvas and
+      // no `click` is ever dispatched on the control the user actually pressed.
+      if (event.target instanceof Element && event.target.closest(BOARD_CHROME_SELECTOR)) return;
       const screen = localPoint(event, canvas);
       if (event.button === 1 || spacePressed.current) {
         event.preventDefault();
@@ -324,7 +350,9 @@ export function useBoardInteraction({
       if (!editable || additive) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      canvas.setPointerCapture?.(event.pointerId);
+      // Capture is deferred to the first real movement (see onPointerMove). Capturing on
+      // press retargets the release to the canvas, which suppresses click and dblclick on
+      // the item itself and made double-click-to-edit impossible.
       setGesture({
         kind: "drag",
         pointerId: event.pointerId,
@@ -398,6 +426,14 @@ export function useBoardInteraction({
       } else if (current.kind === "drag") {
         const dx = world.x - current.start.x;
         const dy = world.y - current.start.y;
+        // Take the pointer only once this is genuinely a drag, so a plain press keeps its
+        // click/dblclick on the item (double-click-to-edit).
+        if (
+          !canvas.hasPointerCapture?.(event.pointerId) &&
+          Math.hypot(dx, dy) * viewport.zoom > DRAG_CAPTURE_THRESHOLD_PX
+        ) {
+          canvas.setPointerCapture?.(event.pointerId);
+        }
         const moving = new Map(current.items.map((item) => [item.itemId, { ...item, x: item.x + dx, y: item.y + dy }]));
         previewItems(document.items.map((item) => moving.get(item.itemId) ?? item));
       } else if (current.kind === "resize") {

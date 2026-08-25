@@ -245,6 +245,16 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         return result;
       } catch {
         setError("Board changes could not be saved. Your preview is retained.");
+        // Re-read the committed board so the next edit carries fresh revisions. Without
+        // this the local copy stays stale and every following write conflicts too.
+        const stale = committedRef.current;
+        if (stale) {
+          try {
+            acceptDocument(await boardRepository.get(stale.board.boardId));
+          } catch {
+            // Leave the retained preview in place if the refresh itself fails.
+          }
+        }
         return null;
       }
     },
