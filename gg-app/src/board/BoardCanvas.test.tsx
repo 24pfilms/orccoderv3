@@ -59,4 +59,41 @@ describe("BoardCanvas", () => {
     });
     expect(props.onCreateItem).toHaveBeenCalledWith("sticky_note", { x: 100, y: 100 }, undefined);
   });
+
+  it("carries the last colour onto the next shape of that type", async () => {
+    const props = canvasProps();
+    const shape = {
+      itemId: "shape-1", boardId: "board", itemType: "shape" as const, x: 0, y: 0,
+      width: 100, height: 100, zIndex: 0, rotation: 0,
+      payload: { shape: "rectangle" }, revision: 0,
+      createdAt: "0", updatedAt: "0", deletedAt: null,
+    };
+    render(<BoardCanvas {...props} document={{ ...document, items: [shape] }} />);
+
+    // Select it, recolour it, then place a new shape.
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByLabelText("rectangle shape").closest("[data-board-item]")!, {
+        button: 0,
+        pointerId: 1,
+      });
+    });
+    fireEvent.change(screen.getByLabelText("Selection color"), { target: { value: "#ff0000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Shapes" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rectangle" }));
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByLabelText("Board canvas"), {
+        button: 0,
+        pointerId: 2,
+        clientX: 200,
+        clientY: 200,
+      });
+    });
+
+    expect(props.onCreateItem).toHaveBeenCalledWith(
+      "shape",
+      { x: 200, y: 200 },
+      "rectangle",
+      { fill: "#ff0000" },
+    );
+  });
 });

@@ -208,7 +208,6 @@ export function BoardCanvas({
         onBringToFront={interaction.bringToFront}
         onSendToBack={interaction.sendToBack}
         onDuplicate={() => void interaction.duplicateSelection()}
-        onDelete={() => void interaction.deleteSelection()}
       />
       <BoardToolbar
         tool={interaction.tool}

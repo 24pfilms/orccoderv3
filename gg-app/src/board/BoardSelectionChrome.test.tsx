@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { BoardItem } from "./repository";
 import { BoardSelectionChrome } from "./BoardSelectionChrome";
@@ -12,7 +12,6 @@ const selected: BoardItem = {
 
 describe("BoardSelectionChrome", () => {
   it("keeps its contextual controls inside the viewport and exposes every manipulation", () => {
-    const onDelete = vi.fn();
     const { container } = render(
       <BoardSelectionChrome
         bounds={{ x: -100, y: -100, width: 100, height: 50 }}
@@ -27,13 +26,13 @@ describe("BoardSelectionChrome", () => {
         onBringToFront={vi.fn()}
         onSendToBack={vi.fn()}
         onDuplicate={vi.fn()}
-        onDelete={onDelete}
       />,
     );
     expect((container.querySelector(".board-context-toolbar") as HTMLElement).style.left).toBe("8px");
     expect(screen.getByRole("button", { name: "Rotate selection" })).toBeTruthy();
     expect(container.querySelectorAll(".board-resize-handle")).toHaveLength(4);
-    fireEvent.click(screen.getByRole("button", { name: "Delete selection" }));
-    expect(onDelete).toHaveBeenCalledOnce();
+    // Delete is intentionally absent here: the Delete key and the right-click menu both
+    // cover it, so the selection toolbar stays compact.
+    expect(screen.queryByRole("button", { name: "Delete selection" })).toBeNull();
   });
 });

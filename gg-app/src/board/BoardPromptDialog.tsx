@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { OrcaSpinner } from "./OrcaSpinner";
 
 interface BoardPromptDialogProps {
   title: string;
@@ -87,7 +88,11 @@ export function BoardPromptDialog({
             />
           )}
         </label>
-        {hint ? <p className="board-prompt-hint">{hint}</p> : null}
+        {busy ? (
+          <OrcaSpinner label={hint ?? "Working…"} />
+        ) : hint ? (
+          <p className="board-prompt-hint">{hint}</p>
+        ) : null}
         <footer>
           <button type="button" className="modal-btn" disabled={busy} onClick={onCancel}>
             Cancel

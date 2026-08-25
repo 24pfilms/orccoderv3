@@ -20,7 +20,7 @@ import type {
   BoardViewport,
   ResizeHandle,
 } from "../interactions/types";
-import { readItemPayload } from "../items/itemPayload";
+import { readItemPayload, type ItemPayload } from "../items/itemPayload";
 import type { BoardDocument, BoardItem, BoardItemType } from "../repository";
 import {
   BoardClipboard,
@@ -62,6 +62,7 @@ interface BoardInteractionOptions {
     itemType: BoardItemType,
     at?: BoardPoint,
     shape?: Extract<BoardTool, { kind: "place" }>["shape"],
+    initialPayload?: ItemPayload,
   ) => Promise<string | null>;
   applyMutations: (mutations: BoardMutation[]) => Promise<BoardDocument | null>;
   previewItems: (items: BoardItem[]) => void;
@@ -119,6 +120,12 @@ export function useBoardInteraction({
   const gestureRef = useRef<BoardGesture>(gesture);
   const spacePressed = useRef(false);
   const clipboard = useRef(new BoardClipboard());
+  /**
+   * Last colour the user applied, per item type. A new item starts from whatever they
+   * were last working in rather than snapping back to the built-in default — placing
+   * three shapes in a row should not mean recolouring three times.
+   */
+  const lastColor = useRef<Partial<Record<BoardItemType, string>>>({});
   const history = useBoardMutationHistory({ document, externalRevision, applyMutations });
   const items = useMemo(() => activeItems(document), [document]);
   const selectedItems = useMemo(
@@ -145,7 +152,17 @@ export function useBoardInteraction({
 
   const placeItem = useCallback(
     async (at: BoardPoint, placement: Extract<BoardTool, { kind: "place" }>) => {
-      const itemId = await createItem(placement.itemType, at, placement.shape);
+      // Carry the last colour forward. Shapes colour their fill; everything else
+      // colours its text.
+      const remembered = lastColor.current[placement.itemType];
+      const initialPayload = remembered
+        ? placement.itemType === "shape"
+          ? { fill: remembered }
+          : { color: remembered }
+        : undefined;
+      const itemId = initialPayload
+        ? await createItem(placement.itemType, at, placement.shape, initialPayload)
+        : await createItem(placement.itemType, at, placement.shape);
       setTool({ kind: "select" });
       if (!itemId) return;
       setSelectedIds([itemId]);
@@ -172,6 +189,7 @@ export function useBoardInteraction({
 
   const changeColor = useCallback(
     (color: string) => void updateSelection("Change color", (item) => {
+      lastColor.current[item.itemType] = color;
       const payload = item.payload && typeof item.payload === "object" ? item.payload as Record<string, unknown> : {};
       if (item.itemType !== "shape") return { ...item, payload: { ...payload, color } };
       // Drop any stored rim so it re-derives from the new fill; otherwise a recoloured

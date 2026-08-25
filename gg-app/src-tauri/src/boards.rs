@@ -1982,18 +1982,37 @@ async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreErro
     let text = response.text().await.map_err(|_| {
         BoardStoreError::new("board_generate_failed", "Image response could not be read")
     })?;
+    // The model can answer with text instead of an image — most often a refusal. Collect
+    // any assistant text so a decline is reported in its own words rather than as a bare
+    // "no image", which reads like a bug when it is actually an answer.
+    let mut spoken = String::new();
     for line in text.lines() {
         let Some(payload) = line.strip_prefix("data: ") else { continue };
         if payload.trim() == "[DONE]" {
             break;
         }
         let Ok(event) = serde_json::from_str::<serde_json::Value>(payload) else { continue };
+        if let Some(delta) = event.get("delta").and_then(|value| value.as_str()) {
+            if event.get("type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("output_text"))
+            {
+                spoken.push_str(delta);
+            }
+        }
         let item = event.get("item");
-        let is_image = item
-            .and_then(|item| item.get("type"))
-            .and_then(|value| value.as_str())
-            == Some("image_generation_call");
-        if !is_image {
+        let item_type = item.and_then(|item| item.get("type")).and_then(|value| value.as_str());
+        if item_type == Some("message") {
+            if let Some(parts) = item.and_then(|item| item.get("content")).and_then(|c| c.as_array())
+            {
+                for part in parts {
+                    for key in ["text", "refusal"] {
+                        if let Some(value) = part.get(key).and_then(|v| v.as_str()) {
+                            spoken.push_str(value);
+                        }
+                    }
+                }
+            }
+        }
+        if item_type != Some("image_generation_call") {
             continue;
         }
         if let Some(result) = item.and_then(|item| item.get("result")).and_then(|v| v.as_str()) {
@@ -2004,9 +2023,18 @@ async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreErro
                 });
         }
     }
+    let spoken = spoken.trim();
     Err(BoardStoreError::new(
-        "board_generate_failed",
-        "The image service returned no image",
+        "board_generate_declined",
+        if spoken.is_empty() {
+            "The image service returned no image".to_string()
+        } else {
+            let mut reason: String = spoken.chars().take(300).collect();
+            if spoken.chars().count() > 300 {
+                reason.push('…');
+            }
+            reason
+        },
     ))
 }
 

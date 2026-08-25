@@ -5,7 +5,6 @@ import {
   Plus,
   RotateCw,
   SendToBack,
-  Trash2,
 } from "lucide-react";
 import type { BoardBounds, BoardViewport, ResizeHandle } from "./interactions/types";
 import type { BoardItem } from "./repository";
@@ -32,7 +31,6 @@ interface BoardSelectionChromeProps {
   onBringToFront: () => void;
   onSendToBack: () => void;
   onDuplicate: () => void;
-  onDelete: () => void;
 }
 
 export function BoardSelectionChrome({
@@ -48,7 +46,6 @@ export function BoardSelectionChrome({
   onBringToFront,
   onSendToBack,
   onDuplicate,
-  onDelete,
 }: BoardSelectionChromeProps): React.ReactElement | null {
   if (!bounds || selectedItems.length === 0) return null;
   const screen = {
@@ -57,9 +54,11 @@ export function BoardSelectionChrome({
     width: bounds.width * viewport.zoom,
     height: bounds.height * viewport.zoom,
   };
-  const toolbarWidth = 330;
-  const toolbarLeft = Math.max(8, Math.min(canvasSize.width - toolbarWidth - 8, screen.left + screen.width / 2 - toolbarWidth / 2));
-  const toolbarTop = Math.max(8, Math.min(canvasSize.height - 52, screen.top > 64 ? screen.top - 52 : screen.top + screen.height + 10));
+  // Centre on the selection with a CSS translate instead of subtracting an assumed
+  // width: the toolbar's real width changes with which controls apply to the selection,
+  // so a hard-coded number always left it slightly off-centre.
+  const toolbarCenter = Math.max(8, Math.min(canvasSize.width - 8, screen.left + screen.width / 2));
+  const toolbarTop = Math.max(8, Math.min(canvasSize.height - 40, screen.top > 50 ? screen.top - 40 : screen.top + screen.height + 10));
   const supportsFont = selectedItems.every((item) => item.itemType === "text" || item.itemType === "sticky_note" || item.itemType === "shape");
   const supportsColor = selectedItems.every((item) => item.itemType !== "image");
   const currentPayload = selectedItems[0]?.payload as { color?: unknown; fill?: unknown; fontSize?: unknown } | undefined;
@@ -102,7 +101,7 @@ export function BoardSelectionChrome({
         className="board-context-toolbar"
         role="toolbar"
         aria-label="Selection formatting"
-        style={{ left: toolbarLeft, top: toolbarTop }}
+        style={{ left: toolbarCenter, top: toolbarTop, transform: "translateX(-50%)" }}
         onPointerDown={(event) => event.stopPropagation()}
       >
         {supportsColor ? (
@@ -150,9 +149,6 @@ export function BoardSelectionChrome({
         </button>
         <button type="button" aria-label="Duplicate selection" title="Duplicate" disabled={!editable} onClick={onDuplicate}>
           <Copy aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="Delete selection" title="Delete" disabled={!editable} onClick={onDelete}>
-          <Trash2 aria-hidden="true" />
         </button>
       </div>
     </>
