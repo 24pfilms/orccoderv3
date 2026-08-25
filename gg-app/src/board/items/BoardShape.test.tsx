@@ -18,11 +18,10 @@ const shapes: BoardShapeType[] = [
 
 describe("BoardShape", () => {
   it.each(shapes)("renders characterized %s geometry", (shape) => {
-    const { container } = render(<BoardShape shape={shape} label="Safe <text>" />);
+    const { container } = render(<BoardShape shape={shape} />);
     expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
       `${shape.replace("_", " ")} shape`,
     );
-    expect(container.textContent).toContain("Safe <text>");
     expect(container.querySelector("script")).toBeNull();
   });
 

@@ -6,9 +6,6 @@ interface BoardShapeProps {
   shape: BoardShapeType;
   fill?: string;
   stroke?: string;
-  color?: string;
-  label?: string;
-  fontSize?: number;
   className?: string;
 }
 
@@ -27,9 +24,6 @@ export function BoardShape({
   shape,
   fill = "transparent",
   stroke,
-  color = "currentColor",
-  label,
-  fontSize = 14,
   className,
 }: BoardShapeProps): React.ReactElement {
   const rim = stroke ?? deriveRim(fill);
@@ -108,20 +102,6 @@ export function BoardShape({
           {geometry}
         </g>
       )}
-      {label ? (
-        <text
-          x="50"
-          y="50"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill={color}
-          stroke="none"
-          fontSize={fontSize}
-          style={{ pointerEvents: "none", userSelect: "none" }}
-        >
-          {label}
-        </text>
-      ) : null}
     </svg>
   );
 }

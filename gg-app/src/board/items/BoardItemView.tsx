@@ -116,10 +116,18 @@ export function BoardItemView({
           shape={payload.shape ?? "rectangle"}
           fill={fill}
           stroke={stroke}
-          color={color}
-          label={editing ? "" : text}
-          fontSize={fontSize}
         />
+        {!editing && text ? (
+          // Rendered as HTML, not SVG text: the shape's viewBox is stretched with
+          // preserveAspectRatio="none", which would squash the glyphs, and SVG text does
+          // not inherit the app's font either.
+          <div
+            className="board-shape-label"
+            style={{ color, fontSize, fontFamily: `var(--board-font-${fontFamily})` }}
+          >
+            {text}
+          </div>
+        ) : null}
         {editing ? (
           <div
             className="board-item-text board-shape-text"
@@ -173,14 +181,20 @@ export function BoardItemView({
   }
 
   if (item.itemType === "arrow") {
+    const arrowLabel = typeof payload.label === "string" ? payload.label : "";
     return (
-      <BoardShape
-        className="board-arrow"
-        shape={payload.shape === "double_arrow" || payload.shape === "line" ? payload.shape : "arrow"}
-        stroke={color}
-        color={color}
-        label={payload.label}
-      />
+      <div className="board-shape-wrap">
+        <BoardShape
+          className="board-arrow"
+          shape={payload.shape === "double_arrow" || payload.shape === "line" ? payload.shape : "arrow"}
+          stroke={color}
+        />
+        {arrowLabel ? (
+          <div className="board-shape-label" style={{ color, fontSize }}>
+            {arrowLabel}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
