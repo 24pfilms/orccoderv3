@@ -10,7 +10,7 @@ import { useBoardInteraction } from "./hooks/useBoardInteraction";
 import { useBoardViewport } from "./hooks/useBoardViewport";
 import { parseYouTubeUrl, type ItemPayload } from "./items/itemPayload";
 import { BoardItemView } from "./items/BoardItemView";
-import { zoomAtPoint } from "./interactions/geometry";
+import { screenToWorld, zoomAtPoint } from "./interactions/geometry";
 import type { BoardMutation, BoardPoint, BoardShapeType } from "./interactions/types";
 import type { BoardDocument, BoardItem, BoardItemType } from "./repository";
 import type { BoardExportFormat } from "./export";
@@ -35,6 +35,7 @@ interface BoardCanvasProps {
   onDownloadImage?: (itemId: string) => void;
   onGenerateImage?: (prompt: string, at: BoardPoint) => Promise<string | null>;
   generatingItemIds?: string[];
+  onDropImageFiles?: (files: File[], at: BoardPoint) => Promise<void>;
   onExport: (format: BoardExportFormat) => void;
 }
 
@@ -53,6 +54,7 @@ export function BoardCanvas({
   onDownloadImage,
   onGenerateImage,
   generatingItemIds = [],
+  onDropImageFiles,
   onExport,
 }: BoardCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -60,6 +62,7 @@ export function BoardCanvas({
   const [prompt, setPrompt] = useState<{ kind: "video" | "generate"; at: BoardPoint } | null>(null);
   const [promptHint, setPromptHint] = useState<string | null>(null);
   const [promptBusy, setPromptBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -102,6 +105,37 @@ export function BoardCanvas({
       onKeyUp={interaction.onKeyUp}
       onBlur={interaction.resetSpace}
       onContextMenu={interaction.onContextMenu}
+      data-drop-active={dragOver || undefined}
+      onDragOver={(event) => {
+        if (!editable || !onDropImageFiles) return;
+        // Claim the drop before the app-wide suppressor that stops the webview
+        // navigating to a dropped file.
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "copy";
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+        setDragOver(false);
+      }}
+      onDrop={(event) => {
+        if (!editable || !onDropImageFiles) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(false);
+        const files = Array.from(event.dataTransfer.files);
+        if (files.length === 0) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        // Reuse the canvas's own screen->world conversion so a drop lands under the
+        // cursor at any pan and zoom, exactly like a click does. Fall back to the middle
+        // of the view when the drop carries no usable coordinates, so files still land
+        // somewhere sensible rather than at NaN.
+        const screen = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+          ? { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+          : { x: bounds.width / 2, y: bounds.height / 2 };
+        void onDropImageFiles(files, screenToWorld(screen, viewportState.viewport));
+      }}
       onWheel={(event) => {
         event.preventDefault();
         const bounds = event.currentTarget.getBoundingClientRect();

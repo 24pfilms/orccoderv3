@@ -60,6 +60,45 @@ describe("BoardCanvas", () => {
     expect(props.onCreateItem).toHaveBeenCalledWith("sticky_note", { x: 100, y: 100 }, undefined);
   });
 
+  it("forwards dropped image files to the board", async () => {
+    const onDropImageFiles = vi.fn().mockResolvedValue(undefined);
+    const props = canvasProps();
+    render(
+      <BoardCanvas
+        {...props}
+        document={{ ...document, items: [], panX: 40, panY: 20, zoom: 2 }}
+        onDropImageFiles={onDropImageFiles}
+      />,
+    );
+    const canvas = screen.getByLabelText("Board canvas");
+    const file = new File(["x"], "photo.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.drop(canvas, {
+        clientX: 240,
+        clientY: 120,
+        dataTransfer: { files: [file], types: ["Files"] },
+      });
+    });
+    expect(onDropImageFiles).toHaveBeenCalledOnce();
+    const [files, at] = onDropImageFiles.mock.calls[0];
+    expect(files[0].name).toBe("photo.png");
+    // The point is produced by screenToWorld, which is unit-tested separately; here we
+    // only need it to be a real world coordinate rather than undefined.
+    expect(Number.isFinite(at.x) && Number.isFinite(at.y)).toBe(true);
+  });
+
+  it("ignores a drop with no files", async () => {
+    const onDropImageFiles = vi.fn().mockResolvedValue(undefined);
+    const props = canvasProps();
+    render(<BoardCanvas {...props} document={{ ...document, items: [] }} onDropImageFiles={onDropImageFiles} />);
+    await act(async () => {
+      fireEvent.drop(screen.getByLabelText("Board canvas"), {
+        dataTransfer: { files: [], types: [] },
+      });
+    });
+    expect(onDropImageFiles).not.toHaveBeenCalled();
+  });
+
   it("carries the last colour onto the next shape of that type", async () => {
     const props = canvasProps();
     const shape = {

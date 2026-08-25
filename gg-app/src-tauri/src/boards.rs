@@ -1909,6 +1909,70 @@ async fn import_image_from_path(
     Ok(asset)
 }
 
+/// Import raw image bytes onto an existing item — used by drag-and-drop from the desktop,
+/// where the webview hands us the file contents rather than a path we may read.
+///
+/// The bytes are staged to disk and then taken through the very same helper the file
+/// picker uses, so a dropped file gets identical magic-byte sniffing, raster limits,
+/// storage cap, and lease/revision authorization. Nothing is trusted for arriving by drop.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn board_asset_import_bytes(
+    app: AppHandle,
+    window: WebviewWindow,
+    windows: State<'_, super::Windows>,
+    board_id: String,
+    item_id: String,
+    bytes: Vec<u8>,
+    lease_epoch: i64,
+    expected_revision: i64,
+) -> Result<BoardAsset, BoardStoreError> {
+    if !board_mode_enabled() {
+        return Err(BoardStoreError::new(
+            "board_mode_disabled",
+            "Board Mode is disabled in this build",
+        ));
+    }
+    validate_id(&board_id)?;
+    validate_id(&item_id)?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_ASSET_BYTES {
+        return Err(BoardStoreError::new(
+            "board_asset_invalid",
+            "Dropped image is empty or too large",
+        ));
+    }
+    let project = project_context(&window, &windows)?;
+    let window_label = window.label().to_string();
+    let store_root = super::home_dir().join(".gg/boards");
+    let staged = tauri::async_runtime::spawn_blocking(move || {
+        let dir = store_root.join("incoming");
+        std::fs::create_dir_all(&dir).map_err(|_| {
+            BoardStoreError::new("board_asset_invalid", "Could not stage the dropped image")
+        })?;
+        let path = dir.join(format!("{}.bin", uuid::Uuid::new_v4()));
+        std::fs::write(&path, &bytes).map_err(|_| {
+            BoardStoreError::new("board_asset_invalid", "Could not stage the dropped image")
+        })?;
+        Ok::<_, BoardStoreError>(path)
+    })
+    .await
+    .map_err(|_| BoardStoreError::new("board_asset_invalid", "Staging worker failed"))??;
+    let result = import_image_from_path(
+        app,
+        project,
+        window_label,
+        board_id,
+        item_id,
+        "image".to_string(),
+        lease_epoch,
+        expected_revision,
+        staged.clone(),
+    )
+    .await;
+    let _ = std::fs::remove_file(&staged);
+    result
+}
+
 /// Codex backend endpoint. ChatGPT OAuth tokens are rejected by
 /// api.openai.com/v1/images/*, but they work here, and the backend routes the Responses
 /// API's built-in `image_generation` tool to gpt-image-2. This mirrors the contract the

@@ -46,6 +46,7 @@ interface BoardDocumentState {
   downloadItemImage: (itemId: string) => Promise<void>;
   /** Resolves null on success, or the failure reason to show the user. */
   generateImage: (prompt: string, at: BoardPoint) => Promise<string | null>;
+  dropImageFiles: (files: File[], at: BoardPoint) => Promise<void>;
   /** Items whose picture is still being generated, so the canvas can show progress. */
   generatingItemIds: string[];
   takeOver: () => Promise<void>;
@@ -621,6 +622,72 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     [acceptDocument, applyMutations, createItem, queue],
   );
 
+  /**
+   * Drop images from the desktop onto the canvas. Each file becomes its own item, laid
+   * out in a short cascade from the drop point so a multi-file drop does not stack
+   * everything in one spot, and sized to the picture once the bytes are validated.
+   */
+  const dropImageFiles = useCallback(
+    async (files: File[], at: BoardPoint) => {
+      const images = files.filter((file) => /^image\/(png|jpeg)$/.test(file.type));
+      if (images.length === 0) {
+        if (files.length > 0) setError("Only PNG and JPEG images can be dropped on a board");
+        return;
+      }
+      for (const [index, file] of images.entries()) {
+        const offset = index * 24;
+        const itemId = await createItem("image", { x: at.x + offset, y: at.y + offset });
+        if (!itemId) return;
+        setGeneratingItemIds((current) => [...current, itemId]);
+        try {
+          await queue.flush("surface-switch");
+          const current = committedRef.current;
+          const currentLease = leaseRef.current;
+          if (!current || !currentLease?.editable || currentLease.leaseEpoch === null) return;
+          localMutationRef.current = true;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const asset = await boardRepository.importAssetBytes(
+            current.board.boardId,
+            itemId,
+            bytes,
+            currentLease.leaseEpoch,
+            current.board.revision,
+          );
+          const fresh = await boardRepository.get(current.board.boardId);
+          const item = fresh.items.find((candidate) => candidate.itemId === itemId);
+          if (!item) return;
+          const fitted = fitToImage(asset.pixelWidth, asset.pixelHeight);
+          acceptDocument(
+            await boardRepository.updateItem(
+              current.board.boardId,
+              itemId,
+              currentLease.leaseEpoch,
+              fresh.board.revision,
+              item.revision,
+              {
+                payload: {
+                  ...readItemPayload(item.payload),
+                  assetId: asset.assetId,
+                  alt: file.name,
+                },
+                x: item.x + (item.width - fitted.width) / 2,
+                y: item.y + (item.height - fitted.height) / 2,
+                ...fitted,
+              },
+            ),
+          );
+        } catch {
+          setError(`${file.name} could not be added to the board`);
+          await applyMutations([{ kind: "softDelete", itemId, expectedItemRevision: 0 }]);
+        } finally {
+          localMutationRef.current = false;
+          setGeneratingItemIds((current) => current.filter((id) => id !== itemId));
+        }
+      }
+    },
+    [acceptDocument, applyMutations, createItem, queue],
+  );
+
   const takeOver = useCallback(async () => {
     const current = committedRef.current;
     if (!current || !lease?.expired) return;
@@ -653,6 +720,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     downloadItemImage,
     generateImage,
     generatingItemIds,
+    dropImageFiles,
     takeOver,
   };
 }

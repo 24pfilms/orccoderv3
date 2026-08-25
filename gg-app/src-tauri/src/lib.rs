@@ -5327,6 +5327,7 @@ pub fn run() {
             boards::board_backup_create,
             boards::board_backup_choose_and_preview,
             boards::board_restore_apply,
+            boards::board_asset_import_bytes,
             boards::board_image_generate,
             boards::board_lease_acquire,
             boards::board_lease_release,

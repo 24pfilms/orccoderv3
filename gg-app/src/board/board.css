@@ -1633,3 +1633,16 @@
   font-size: 11px;
   text-align: right;
 }
+
+/* Dropping images from the desktop. The whole canvas is the target; the ring makes it
+   obvious the board will take the file rather than the window navigating to it. */
+.board-canvas[data-drop-active]::after {
+  position: absolute;
+  z-index: 36;
+  inset: 8px;
+  border: 2px dashed color-mix(in srgb, var(--primary) 65%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  content: "";
+  pointer-events: none;
+}

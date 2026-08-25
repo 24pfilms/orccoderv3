@@ -62,6 +62,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
     downloadItemImage,
     generateImage,
     generatingItemIds,
+    dropImageFiles,
     takeOver,
   } = useBoardDocument(flushCoordinator);
   return (
@@ -109,6 +110,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
           onDownloadImage={(itemId) => void downloadItemImage(itemId)}
           onGenerateImage={generateImage}
           generatingItemIds={generatingItemIds}
+          onDropImageFiles={dropImageFiles}
         />
       ) : (
         <div className="board-surface-empty">{error ?? "Loading board…"}</div>
