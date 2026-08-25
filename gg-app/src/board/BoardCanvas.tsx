@@ -8,6 +8,7 @@ import { BoardToolbar } from "./BoardToolbar";
 import { BoardZoomControls } from "./BoardZoomControls";
 import { useBoardInteraction } from "./hooks/useBoardInteraction";
 import { useBoardViewport } from "./hooks/useBoardViewport";
+import { useFullscreen } from "./useFullscreen";
 import { parseYouTubeUrl, type ItemPayload } from "./items/itemPayload";
 import { BoardItemView } from "./items/BoardItemView";
 import { screenToWorld, zoomAtPoint } from "./interactions/geometry";
@@ -63,6 +64,7 @@ export function BoardCanvas({
   const [promptHint, setPromptHint] = useState<string | null>(null);
   const [promptBusy, setPromptBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [fullscreen, toggleFullscreen] = useFullscreen();
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -232,6 +234,8 @@ export function BoardCanvas({
         onZoomOut={() => viewportState.zoomBy(1 / 1.2, { x: canvasSize.width / 2, y: canvasSize.height / 2 })}
         onActualSize={() => viewportState.setViewport(zoomAtPoint(viewportState.viewport, { x: canvasSize.width / 2, y: canvasSize.height / 2 }, 1))}
         onFit={() => viewportState.fitItems(activeItems, canvasSize)}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
       <BoardSelectionChrome
         bounds={interaction.selectionBounds}

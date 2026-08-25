@@ -1565,13 +1565,21 @@ function App(): React.ReactElement {
       .onCloseRequested(async (event) => {
         event.preventDefault();
         if (closingAfterBoardFlushRef.current) return;
-        if (!(await flushBoard("window-close"))) return;
+        // Flush pending board writes first, but NEVER let a failed flush hold the window
+        // open: this used to `return` on failure, which left the window permanently
+        // unclosable with nothing on screen explaining why. The save queue keeps failed
+        // work for the explicit retry path, so closing does not discard it.
+        const flushed = await flushBoard("window-close");
         closingAfterBoardFlushRef.current = true;
         try {
           await getCurrentWindow().destroy();
         } catch {
           closingAfterBoardFlushRef.current = false;
-          setStatus("window close failed; Board changes remain available");
+          setStatus(
+            flushed
+              ? "window close failed"
+              : "window close failed; some Board changes are still unsaved",
+          );
         }
       })
       .then((stop) => {
