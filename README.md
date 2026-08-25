@@ -8,6 +8,10 @@
   <strong>Creative development, engineered end to end.</strong>
 </p>
 
+<p align="center">
+  <img src="docs/images/orcacoder-sessions.png" alt="Six OrcaCoder windows working different projects at once, each in its own palette" width="1200">
+</p>
+
 OrcaCoder V3 is a self-contained, Windows-first AI creative-development workstation built
 from the MIT-licensed [GG Framework](https://github.com/KenKaiii/gg-framework). It preserves
 the upstream coding workflow while adding the Scarlet Orca identity, public **Orca / @Orca**
@@ -28,7 +32,7 @@ ComfyUI, and Houdini workflows.
 | Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
 | Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
 | Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
-| Board Mode           | Mero board ported behind a production-off flag; editing, video, and generation verified      |
+| Board Mode           | Mero board ported behind a production-off flag; editing, video, generation, export verified  |
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
@@ -43,6 +47,10 @@ persisting board items is confirmed working in the running desktop app.
 `~/.gg/extensions/supademo/plugin.json`. The warning does not block OrcaCoder startup.
 
 ## Board Mode
+
+<p align="center">
+  <img src="docs/images/orcacoder-board.png" alt="OrcaCoder Board Mode: sticky notes, text, shapes, a generated image and an embedded video on an infinite canvas" width="1200">
+</p>
 
 An infinite whiteboard ported from [Mero](https://github.com/24pfilms/Mero), running on a native
 SQLite store with fenced single-editor leases, compare-and-swap revisions, content-addressed
@@ -70,26 +78,32 @@ pnpm --dir gg-app dev
 
 ### What works
 
-Sticky notes, text, shapes, arrows, frames, and pen drawing; images via the native picker;
-selection, marquee, drag, resize, rotate, and double-click text editing; font size, colour, layer
-order, duplicate, delete, and votes; a right-click menu including maximize/minimize/download for
-images; undo and redo; zoom, fit, and minimap; PNG/JPG/PDF/CSV export. Everything persists through
-the lease and revision layer, and a second window on the same board opens read-only with an
-explicit takeover.
+Sticky notes, text, shapes with typed labels, arrows, frames, and pen drawing; images via the
+native picker; selection, marquee, drag, resize, rotate, and double-click editing; colour, font
+size, layer order, duplicate, delete, and votes; a right-click menu on items and on empty canvas;
+undo and redo; zoom, fit, minimap, and adjustable dot spacing; board rename; PNG/JPG/PDF/CSV
+export. Everything persists through the lease and revision layer, and a second window on the same
+board opens read-only with an explicit takeover.
+
+A new item inherits the last colour used for that item type, and images are sized to the picture
+rather than letterboxed inside a default box.
 
 **Generate an image.** Right-click empty canvas → *Generate image…*, describe what you want, and
-the result lands on the board. It uses the ChatGPT OAuth credential the app already holds — no
-API key and no second sign-in — through the same Codex endpoint and `image_generation` tool the
-`ggcoder` agent uses, so it costs ChatGPT subscription quota rather than API billing. The request
-runs in Rust, not the webview, so the board itself still makes no outbound calls, and the returned
-bytes pass through exactly the same validation as a file you pick by hand: magic-byte sniffing,
-raster limits, the storage cap, and lease authorization.
+the dialog closes straight away: a placeholder appears where the picture will land with an orca
+swimming in it, and the image pops in when it arrives. It uses the ChatGPT OAuth credential the
+app already holds — no API key, no second sign-in — through the same Codex endpoint and
+`image_generation` tool the `ggcoder` agent uses, so it spends ChatGPT subscription quota rather
+than API billing. The request runs in Rust, not the webview, so the board itself still makes no
+outbound calls, and the returned bytes pass the same validation as a file picked by hand:
+magic-byte sniffing, raster limits, the storage cap, and lease authorization. If the model
+declines, it says so in its own words and your prompt is kept.
 
-**Embed a YouTube video.** Right-click empty canvas → *Add YouTube video…* and paste any YouTube
-link. The player is inert until you double-click it, so board gestures (select, drag, resize)
-always win — an iframe otherwise swallows pointer input and turns every resize into a drag. Videos
-embed through `youtube-nocookie.com`, and the CSP is opened to those two player hosts and nothing
-else. This is the one deliberate narrowing of the board's no-remote-content invariant.
+**Embed a YouTube video.** Right-click empty canvas → *Add YouTube video…* and paste any link.
+Videos are created 16:9 and hold that ratio however the item is resized. Following Mero, the
+player stays inert behind a shield so the video drags and resizes like any other item; double-click
+hands control to the player, and Escape takes it back. Embeds go through `youtube-nocookie.com`,
+and the CSP is opened to those two player hosts and nothing else — the one deliberate narrowing of
+the board's no-remote-content invariant.
 
 ### Not yet ported
 
@@ -104,13 +118,22 @@ OpenAI credential the app already owns (above); the others could follow the same
 
 ### A note on testing
 
-Nineteen defects were fixed on 25 August 2026, and the Board suite was green before, during, and
-after every one of them. The tests mock the repository, so each layer looked correct on its own
-while disagreeing with its neighbour — a serde attribute that renamed enum variants but not their
-fields, a payload allow-list that permitted `fontSize` on text but not on notes, a custom URI
-scheme that WebView2 will not load, pointer capture that stole clicks from the toolbar, and
-`overflow-x: auto` on a parent that clipped a menu out of existence. End-to-end coverage against
-the real binary is the gap worth closing next.
+Around thirty defects were fixed on 25 August 2026, and the Board suite was green before, during,
+and after every one of them. The tests mock the repository, so each layer looked correct on its own
+while disagreeing with its neighbour. A representative sample: a serde attribute that renamed enum
+variants but not their fields, so every save was rejected; a payload allow-list that permitted
+`fontSize` on text but not on notes; a custom URI scheme WebView2 will not load; pointer capture
+that stole clicks from the toolbar and from the resize handles; `overflow-x: auto` on a parent that
+clipped a menu out of existence; and an HTTP client built with no TLS backend, so Rust could not
+make an HTTPS request at all.
+
+Three of them were CSS referring to things that do not exist — `--font-sans`, `--accent`, `--line`,
+`--surface-0`, `--danger`, and a `.sr-only` class scoped to another component. An undefined custom
+property invalidates its whole declaration silently, so the board rendered in Times with no borders
+and with screen-reader-only labels visible on screen. **When something on the board looks wrong
+rather than broken, check the token names first.**
+
+End-to-end coverage against the real binary is the gap worth closing next.
 
 ## Self-contained Orca sources
 
