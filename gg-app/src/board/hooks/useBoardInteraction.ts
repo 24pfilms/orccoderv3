@@ -397,6 +397,9 @@ export function useBoardInteraction({
         return;
       }
       setSelectedIds([]);
+      // Leave editing (a note's text cursor, a video's active player) when the canvas
+      // itself is pressed, otherwise the board stays stuck in that mode.
+      setEditingId(null);
       if (tool.kind === "select") {
         canvas.setPointerCapture?.(event.pointerId);
         setGesture({ kind: "marquee", pointerId: event.pointerId, start: world, current: world });
@@ -431,7 +434,12 @@ export function useBoardInteraction({
 
   const onItemPointerDown = useCallback(
     (event: React.PointerEvent, itemId: string) => {
-      if (tool.kind !== "select" || editingId) return;
+      if (tool.kind !== "select") return;
+      // A press on the item being edited belongs to that editor (text cursor, player
+      // controls). A press on any OTHER item leaves editing and proceeds — bailing out
+      // whenever anything was being edited made the whole board unmovable.
+      if (editingId === itemId) return;
+      if (editingId) setEditingId(null);
       event.stopPropagation();
       const additive = event.ctrlKey || event.metaKey || event.shiftKey;
       const nextIds = additive
