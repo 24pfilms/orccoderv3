@@ -33,6 +33,7 @@ interface BoardDocumentState {
     itemType: BoardItemType,
     at?: BoardPoint,
     shape?: BoardShapeType,
+    initialPayload?: ItemPayload,
   ) => Promise<string | null>;
   applyMutations: (mutations: BoardMutation[]) => Promise<BoardDocument | null>;
   previewItems: (items: BoardItem[]) => void;
@@ -281,12 +282,21 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
   );
 
   const createItem = useCallback(
-    async (itemType: BoardItemType, at: BoardPoint = { x: 0, y: 0 }, shape?: BoardShapeType) => {
+    async (
+      itemType: BoardItemType,
+      at: BoardPoint = { x: 0, y: 0 },
+      shape?: BoardShapeType,
+      initialPayload?: ItemPayload,
+    ) => {
       const current = committedRef.current;
       if (!current) return null;
       const itemId = crypto.randomUUID();
       const size = itemSize(itemType);
-      const payload = { ...defaultItemPayload(itemType), ...(shape ? { shape } : {}) };
+      const payload = {
+        ...defaultItemPayload(itemType),
+        ...(shape ? { shape } : {}),
+        ...(initialPayload ?? {}),
+      };
       const newItem = {
         itemId,
         boardId: current.board.boardId,

@@ -1,11 +1,17 @@
 import { BoardShape } from "./BoardShape";
 import type { BoardItem } from "../repository";
-import { boardAssetUrl, readItemPayload, type ItemPayload } from "./itemPayload";
+import {
+  boardAssetUrl,
+  readItemPayload,
+  youTubeEmbedUrl,
+  type ItemPayload,
+} from "./itemPayload";
 
 interface BoardItemViewProps {
   item: BoardItem;
   editable: boolean;
   editing?: boolean;
+  selected?: boolean;
   onBeginEditing?: () => void;
   onEndEditing?: () => void;
   onPayloadChange: (payload: ItemPayload) => void;
@@ -17,6 +23,7 @@ export function BoardItemView({
   item,
   editable,
   editing = false,
+  selected = false,
   onBeginEditing,
   onEndEditing,
   onPayloadChange,
@@ -163,6 +170,30 @@ export function BoardItemView({
           strokeLinejoin="round"
         />
       </svg>
+    );
+  }
+
+  const embedUrl = typeof payload.videoId === "string" ? youTubeEmbedUrl(payload.videoId) : null;
+  if (embedUrl) {
+    return (
+      // The player stays inert until double-clicked. An iframe swallows pointer input into
+      // its own document, which would eat the inner half of the resize handles and turn
+      // every resize into a drag, so board gestures always win until you activate it.
+      <div
+        className="board-asset-item board-video-item"
+        data-playing={editing || undefined}
+        onDoubleClick={() => editable && onBeginEditing?.()}
+      >
+        <iframe
+          src={embedUrl}
+          title={typeof payload.alt === "string" && payload.alt ? payload.alt : "YouTube video"}
+          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+        />
+        {!editing && selected ? (
+          <span className="board-video-hint">Double-click to play</span>
+        ) : null}
+      </div>
     );
   }
 

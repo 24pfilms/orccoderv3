@@ -906,7 +906,11 @@ fn validate_payload(
             "_provenance",
         ],
         "arrow" => &["label", "color", "shape", "_provenance"],
-        "image" => &["assetId", "alt", "_provenance"],
+        // `videoId` carries an embedded YouTube player. It is kept on the image type so
+        // this needs no schema migration; the CHECK constraint on item_type cannot be
+        // altered without a table rebuild, which the migration runner gates behind a
+        // recovery backup.
+        "image" => &["assetId", "alt", "videoId", "_provenance"],
         "drawing" => &["assetId", "color", "points", "strokeWidth", "_provenance"],
         _ => {
             return Err(BoardStoreError::new(
@@ -963,6 +967,13 @@ fn validate_payload(
             .as_f64()
             .is_some_and(|size| size.is_finite() && (8.0..=256.0).contains(&size))
     });
+    // A YouTube id is interpolated straight into the player URL, so constrain it to the
+    // exact shape YouTube uses and nothing else.
+    let valid_video_id = object.get("videoId").is_none_or(|value| {
+        value.as_str().is_some_and(|id| {
+            id.len() == 11 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+    });
     let valid_font_family = object.get("fontFamily").is_none_or(|value| {
         value
             .as_str()
@@ -1014,6 +1025,7 @@ fn validate_payload(
         || !valid_color("stroke")
         || !valid_asset
         || !valid_shape
+        || !valid_video_id
         || !valid_font_size
         || !valid_font_family
         || !valid_child_ids

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BoardContextMenu } from "./BoardContextMenu";
+import { BoardPromptDialog } from "./BoardPromptDialog";
 import { BoardSelectionChrome } from "./BoardSelectionChrome";
 import { BoardExportMenu } from "./BoardExportMenu";
 import { BoardMinimap } from "./BoardMinimap";
@@ -7,7 +8,7 @@ import { BoardToolbar } from "./BoardToolbar";
 import { BoardZoomControls } from "./BoardZoomControls";
 import { useBoardInteraction } from "./hooks/useBoardInteraction";
 import { useBoardViewport } from "./hooks/useBoardViewport";
-import type { ItemPayload } from "./items/itemPayload";
+import { parseYouTubeUrl, type ItemPayload } from "./items/itemPayload";
 import { BoardItemView } from "./items/BoardItemView";
 import { zoomAtPoint } from "./interactions/geometry";
 import type { BoardMutation, BoardPoint, BoardShapeType } from "./interactions/types";
@@ -23,6 +24,7 @@ interface BoardCanvasProps {
     itemType: BoardItemType,
     at?: BoardPoint,
     shape?: BoardShapeType,
+    initialPayload?: ItemPayload,
   ) => Promise<string | null>;
   onApplyMutations: (mutations: BoardMutation[]) => Promise<BoardDocument | null>;
   onPreviewItems: (items: BoardItem[]) => void;
@@ -31,6 +33,7 @@ interface BoardCanvasProps {
   onImportAsset: (itemId: string, role: "image" | "drawing") => Promise<boolean>;
   resolveAssetUrl?: (assetId: string) => string | null;
   onDownloadImage?: (itemId: string) => void;
+  onGenerateImage?: (prompt: string, at: BoardPoint) => Promise<boolean>;
   onExport: (format: BoardExportFormat) => void;
 }
 
@@ -47,10 +50,14 @@ export function BoardCanvas({
   onImportAsset,
   resolveAssetUrl,
   onDownloadImage,
+  onGenerateImage,
   onExport,
 }: BoardCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [prompt, setPrompt] = useState<{ kind: "video" | "generate"; at: BoardPoint } | null>(null);
+  const [promptHint, setPromptHint] = useState<string | null>(null);
+  const [promptBusy, setPromptBusy] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -137,6 +144,7 @@ export function BoardCanvas({
                 item={item}
                 editable={editable}
                 editing={interaction.editingId === item.itemId}
+                selected={selected}
                 onBeginEditing={() => interaction.setEditingId(item.itemId)}
                 onEndEditing={() => interaction.setEditingId(null)}
                 onPayloadChange={(payload) => onItemPayloadChange(item.itemId, payload)}
@@ -228,6 +236,62 @@ export function BoardCanvas({
           onMaximizeImage={interaction.maximizeImage}
           onMinimizeImage={interaction.minimizeImage}
           onDownloadImage={onDownloadImage}
+          onAddVideo={() => {
+            setPromptHint(null);
+            setPrompt({ kind: "video", at: interaction.contextMenu?.world ?? { x: 0, y: 0 } });
+          }}
+          onGenerateImage={
+            onGenerateImage
+              ? () => {
+                  setPromptHint(null);
+                  setPrompt({ kind: "generate", at: interaction.contextMenu?.world ?? { x: 0, y: 0 } });
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {prompt ? (
+        <BoardPromptDialog
+          title={prompt.kind === "video" ? "Add YouTube video" : "Generate image"}
+          label={prompt.kind === "video" ? "YouTube URL" : "Describe the image"}
+          placeholder={
+            prompt.kind === "video"
+              ? "https://www.youtube.com/watch?v=…"
+              : "A cutaway diagram of a submarine, technical illustration"
+          }
+          confirmLabel={prompt.kind === "video" ? "Add" : "Generate"}
+          multiline={prompt.kind === "generate"}
+          hint={promptHint}
+          busy={promptBusy}
+          onCancel={() => {
+            setPrompt(null);
+            setPromptBusy(false);
+          }}
+          onSubmit={(value) => {
+            if (prompt.kind === "video") {
+              const videoId = parseYouTubeUrl(value);
+              if (!videoId) {
+                setPromptHint("That does not look like a YouTube link. Paste the full video URL.");
+                return;
+              }
+              void onCreateItem("image", prompt.at, undefined, { alt: "YouTube video", videoId });
+              setPrompt(null);
+              return;
+            }
+            if (!onGenerateImage) return;
+            setPromptBusy(true);
+            setPromptHint("Generating — this usually takes a few seconds.");
+            void onGenerateImage(value, prompt.at)
+              .then((ok) => {
+                if (ok) {
+                  setPrompt(null);
+                  setPromptHint(null);
+                } else {
+                  setPromptHint("Generation failed. Check you are signed in to OpenAI, then retry.");
+                }
+              })
+              .finally(() => setPromptBusy(false));
+          }}
         />
       ) : null}
     </div>

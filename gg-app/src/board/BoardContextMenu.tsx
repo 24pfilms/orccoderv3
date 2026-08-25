@@ -7,7 +7,9 @@ import {
   Minimize2,
   SendToBack,
   ThumbsUp,
+  Sparkles,
   Trash2,
+  MonitorPlay,
 } from "lucide-react";
 import type { BoardItem } from "./repository";
 
@@ -24,6 +26,8 @@ interface BoardContextMenuProps {
   onMaximizeImage: (itemId: string) => void;
   onMinimizeImage: (itemId: string) => void;
   onDownloadImage?: (itemId: string) => void;
+  onAddVideo?: () => void;
+  onGenerateImage?: () => void;
 }
 
 const MENU_MARGIN = 8;
@@ -41,6 +45,8 @@ export function BoardContextMenu({
   onMaximizeImage,
   onMinimizeImage,
   onDownloadImage,
+  onAddVideo,
+  onGenerateImage,
 }: BoardContextMenuProps): React.ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
@@ -77,6 +83,7 @@ export function BoardContextMenu({
   };
 
   const onlyItem = selectedItems.length === 1 ? selectedItems[0] : null;
+  const empty = selectedItems.length === 0;
   const notes = selectedItems.filter((item) => item.itemType === "sticky_note");
   const image = onlyItem?.itemType === "image" ? onlyItem : null;
 
@@ -89,48 +96,85 @@ export function BoardContextMenu({
       style={{ left: position.x, top: position.y }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <button type="button" role="menuitem" onClick={run(onBringToFront)}>
-        <BringToFront aria-hidden="true" />
-        Bring to front
-      </button>
-      <button type="button" role="menuitem" onClick={run(onSendToBack)}>
-        <SendToBack aria-hidden="true" />
-        Send to back
-      </button>
-      <button type="button" role="menuitem" onClick={run(onDuplicate)}>
-        <Copy aria-hidden="true" />
-        Duplicate
-      </button>
-      {notes.length > 0 ? (
-        <button type="button" role="menuitem" onClick={run(onAddVote)}>
-          <ThumbsUp aria-hidden="true" />
-          Add vote
-        </button>
-      ) : null}
-      {image ? (
+      {empty ? (
         <>
-          <span className="board-context-menu-divider" aria-hidden="true" />
-          <button type="button" role="menuitem" onClick={run(() => onMaximizeImage(image.itemId))}>
-            <Maximize2 aria-hidden="true" />
-            Maximize
-          </button>
-          <button type="button" role="menuitem" onClick={run(() => onMinimizeImage(image.itemId))}>
-            <Minimize2 aria-hidden="true" />
-            Minimize
-          </button>
-          {onDownloadImage ? (
-            <button type="button" role="menuitem" onClick={run(() => onDownloadImage(image.itemId))}>
-              <Download aria-hidden="true" />
-              Download image
+          {onGenerateImage ? (
+            <button type="button" role="menuitem" onClick={run(onGenerateImage)}>
+              <Sparkles aria-hidden="true" />
+              Generate image…
+            </button>
+          ) : null}
+          {onAddVideo ? (
+            <button type="button" role="menuitem" onClick={run(onAddVideo)}>
+              <MonitorPlay aria-hidden="true" />
+              Add YouTube video…
             </button>
           ) : null}
         </>
       ) : null}
-      <span className="board-context-menu-divider" aria-hidden="true" />
-      <button type="button" role="menuitem" className="board-context-menu-danger" onClick={run(onDelete)}>
-        <Trash2 aria-hidden="true" />
-        Delete
-      </button>
+      {empty ? null : (
+        <>
+          <button type="button" role="menuitem" onClick={run(onBringToFront)}>
+            <BringToFront aria-hidden="true" />
+            Bring to front
+          </button>
+          <button type="button" role="menuitem" onClick={run(onSendToBack)}>
+            <SendToBack aria-hidden="true" />
+            Send to back
+          </button>
+          <button type="button" role="menuitem" onClick={run(onDuplicate)}>
+            <Copy aria-hidden="true" />
+            Duplicate
+          </button>
+          {notes.length > 0 ? (
+            <button type="button" role="menuitem" onClick={run(onAddVote)}>
+              <ThumbsUp aria-hidden="true" />
+              Add vote
+            </button>
+          ) : null}
+          {image ? (
+            <>
+              <span className="board-context-menu-divider" aria-hidden="true" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(() => onMaximizeImage(image.itemId))}
+              >
+                <Maximize2 aria-hidden="true" />
+                Maximize
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(() => onMinimizeImage(image.itemId))}
+              >
+                <Minimize2 aria-hidden="true" />
+                Minimize
+              </button>
+              {onDownloadImage ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={run(() => onDownloadImage(image.itemId))}
+                >
+                  <Download aria-hidden="true" />
+                  Download image
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          <span className="board-context-menu-divider" aria-hidden="true" />
+          <button
+            type="button"
+            role="menuitem"
+            className="board-context-menu-danger"
+            onClick={run(onDelete)}
+          >
+            <Trash2 aria-hidden="true" />
+            Delete
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -876,3 +876,100 @@
   font-size: 11px;
   text-align: center;
 }
+
+/* Embedded YouTube player. Pointer input is refused until the item is selected so the
+   first click selects (and drag still works) rather than landing on the player controls. */
+.board-video-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+}
+
+.board-video-item iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.board-video-item[data-playing] iframe {
+  pointer-events: auto;
+}
+
+.board-video-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* ── Prompt dialog (YouTube URL / generation prompt) ───────────────────── */
+.board-prompt-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+.board-prompt {
+  display: grid;
+  width: min(460px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 50%);
+}
+
+.board-prompt h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.board-prompt label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.board-prompt input,
+.board-prompt textarea {
+  width: 100%;
+  padding: 9px 11px;
+  color: var(--text);
+  font: inherit;
+  background: var(--surface-0);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.board-prompt input:focus,
+.board-prompt textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  outline: none;
+}
+
+.board-prompt-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.board-prompt footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

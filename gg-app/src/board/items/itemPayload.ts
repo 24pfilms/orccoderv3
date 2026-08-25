@@ -20,6 +20,8 @@ export interface ItemPayload {
   votes?: number;
   assetId?: string;
   alt?: string;
+  /** YouTube video id for an embedded player (carried on an image item). */
+  videoId?: string;
   childIds?: string[];
   points?: DrawingPoint[];
   strokeWidth?: number;
@@ -50,6 +52,24 @@ export function boardAssetUrl(assetId: unknown, userAgent = navigator.userAgent)
   return /windows/i.test(userAgent)
     ? `http://board-asset.localhost/${encoded}`
     : `board-asset://${encoded}`;
+}
+
+/**
+ * Extract a YouTube video id from any of the URL shapes YouTube hands out
+ * (watch?v=, youtu.be/, /embed/, /v/, /shorts/). Returns null when the input is not a
+ * recognizable YouTube link, so callers can reject it rather than embed nothing.
+ */
+export function parseYouTubeUrl(url: string): string | null {
+  const match = url
+    .trim()
+    .match(/(?:youtu\.be\/|\/embed\/|\/shorts\/|\/v\/|[?&]v=)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/);
+  return match ? match[1] : null;
+}
+
+export function youTubeEmbedUrl(videoId: string): string | null {
+  return /^[A-Za-z0-9_-]{11}$/.test(videoId)
+    ? `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=0&controls=1&modestbranding=1&rel=0`
+    : null;
 }
 
 export function defaultItemPayload(itemType: BoardItemType): ItemPayload {

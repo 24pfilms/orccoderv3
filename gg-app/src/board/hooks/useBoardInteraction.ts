@@ -113,7 +113,9 @@ export function useBoardInteraction({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [gesture, setGestureState] = useState<BoardGesture>({ kind: "idle" });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<
+    { x: number; y: number; world: BoardPoint } | null
+  >(null);
   const gestureRef = useRef<BoardGesture>(gesture);
   const spacePressed = useRef(false);
   const clipboard = useRef(new BoardClipboard());
@@ -413,10 +415,16 @@ export function useBoardInteraction({
       if (target?.closest(BOARD_CHROME_SELECTOR)) return;
       const itemId = target?.closest("[data-board-item]")?.getAttribute("data-board-item");
       if (itemId && !selectedIds.includes(itemId)) setSelectedIds([itemId]);
-      if (!itemId && selectedIds.length === 0) return;
-      setContextMenu({ x: event.clientX, y: event.clientY });
+      // An empty-canvas right-click keeps its own menu (add video, generate image), so it
+      // clears the selection rather than showing actions for items you did not click.
+      if (!itemId) setSelectedIds([]);
+      const canvas = canvasRef.current;
+      const world = canvas
+        ? screenToWorld(localPoint(event, canvas), viewport)
+        : { x: 0, y: 0 };
+      setContextMenu({ x: event.clientX, y: event.clientY, world });
     },
-    [editable, selectedIds],
+    [canvasRef, editable, selectedIds, viewport],
   );
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
