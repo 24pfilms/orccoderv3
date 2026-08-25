@@ -767,3 +767,69 @@
   place-content: center;
   justify-items: start;
 }
+
+/* ── Right-click menu ─────────────────────────────────────────────────────
+   Fixed to the viewport (not the world) so it never scales with zoom. */
+.board-context-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.board-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-context-menu button:hover,
+.board-context-menu button:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.board-context-menu button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.8;
+}
+
+.board-context-menu-danger {
+  color: var(--danger, #f87171);
+}
+
+.board-context-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.board-font-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.board-font-size output {
+  min-width: 22px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+}

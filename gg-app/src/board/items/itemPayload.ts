@@ -23,6 +23,8 @@ export interface ItemPayload {
   childIds?: string[];
   points?: DrawingPoint[];
   strokeWidth?: number;
+  /** Where a maximized image came from, so Minimize can restore it. */
+  restoreBounds?: { x: number; y: number; width: number; height: number };
   _provenance?: Record<string, unknown>;
 }
 
@@ -32,10 +34,22 @@ export function readItemPayload(payload: unknown): ItemPayload {
     : {};
 }
 
-export function boardAssetUrl(assetId: unknown): string | null {
-  return typeof assetId === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(assetId)
-    ? `board-asset://${encodeURIComponent(assetId)}`
-    : null;
+/**
+ * Custom-scheme URL for a board asset.
+ *
+ * Windows WebView2 does not load a bare `scheme://` URL: Tauri serves registered
+ * protocols there as `http://<scheme>.localhost/<path>` (which is why the Rust side
+ * already allow-lists the `board-asset.localhost` host). Using the bare form on Windows
+ * renders every board image as a broken icon.
+ */
+export function boardAssetUrl(assetId: unknown, userAgent = navigator.userAgent): string | null {
+  if (typeof assetId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(assetId)) {
+    return null;
+  }
+  const encoded = encodeURIComponent(assetId);
+  return /windows/i.test(userAgent)
+    ? `http://board-asset.localhost/${encoded}`
+    : `board-asset://${encoded}`;
 }
 
 export function defaultItemPayload(itemType: BoardItemType): ItemPayload {

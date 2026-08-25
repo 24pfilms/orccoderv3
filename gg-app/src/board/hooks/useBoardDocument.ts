@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { encodeBoardExport, type BoardExportFormat } from "../export";
 import type { BoardFlushCoordinator } from "../flush";
-import { defaultItemPayload, readItemPayload, type ItemPayload } from "../items/itemPayload";
+import {
+  boardAssetUrl,
+  defaultItemPayload,
+  readItemPayload,
+  type ItemPayload,
+} from "../items/itemPayload";
 import { nearestContainingFrame } from "../interactions/geometry";
 import type { BoardMutation, BoardPoint, BoardShapeType } from "../interactions/types";
 import {
@@ -35,6 +40,7 @@ interface BoardDocumentState {
   updateItemPayload: (itemId: string, payload: ItemPayload) => void;
   importItemAsset: (itemId: string, role: "image" | "drawing") => Promise<boolean>;
   exportBoard: (format: BoardExportFormat) => Promise<void>;
+  downloadItemImage: (itemId: string) => Promise<void>;
   takeOver: () => Promise<void>;
 }
 
@@ -228,11 +234,24 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         if (!current || !currentLease?.editable || currentLease.leaseEpoch === null) return;
         localMutationRef.current = true;
         try {
+          // Callers capture `expectedItemRevision` when the action is BUILT, but any of
+          // our own writes in between (typing, a drag commit, a frame update) advance it,
+          // so by execution time the expectation is stale and the write is rejected.
+          // Re-anchor against the locally committed document — our own confirmed state.
+          // Concurrency with other windows is still guarded by the board revision below.
+          const committedRevisions = new Map(
+            current.items.map((item) => [item.itemId, item.revision]),
+          );
+          const anchored = mutations.map((mutation) =>
+            "expectedItemRevision" in mutation && committedRevisions.has(mutation.itemId)
+              ? { ...mutation, expectedItemRevision: committedRevisions.get(mutation.itemId)! }
+              : mutation,
+          );
           result = await boardRepository.applyItems(
             current.board.boardId,
             currentLease.leaseEpoch,
             current.board.revision,
-            mutations,
+            anchored,
           );
           acceptDocument(result);
           setError(null);
@@ -361,13 +380,19 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
           current.board.revision,
         );
         if (!asset) return false;
+        // Both the flush above and the import itself can advance revisions, so the
+        // pre-flush snapshot is stale by now. Re-read the committed board and keep the
+        // item's existing payload instead of resetting it to defaults.
+        const fresh = await boardRepository.get(current.board.boardId);
+        const freshItem = fresh.items.find((candidate) => candidate.itemId === itemId);
+        if (!freshItem) return false;
         const next = await boardRepository.updateItem(
           current.board.boardId,
           itemId,
           currentLease.leaseEpoch,
-          asset.boardRevision,
-          item.revision,
-          { payload: { ...defaultItemPayload(item.itemType), assetId: asset.assetId } },
+          fresh.board.revision,
+          freshItem.revision,
+          { payload: { ...readItemPayload(freshItem.payload), assetId: asset.assetId } },
         );
         acceptDocument(next);
         return true;
@@ -394,6 +419,28 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
       }
     },
     [queue],
+  );
+
+  // Reuses the audited export destination picker rather than a browser download, which a
+  // Tauri webview blocks. Bytes come from the authorized board-asset:// URL.
+  const downloadItemImage = useCallback(
+    async (itemId: string) => {
+      const current = committedRef.current;
+      const item = current?.items.find((candidate) => candidate.itemId === itemId);
+      const assetId = item ? readItemPayload(item.payload).assetId : undefined;
+      if (!current || !assetId) return;
+      try {
+        const url = boardAssetUrl(assetId);
+        if (!url) return;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`asset ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        await boardRepository.export(current.board.boardId, "png", bytes);
+      } catch {
+        setError("Image could not be downloaded");
+      }
+    },
+    [],
   );
 
   const takeOver = useCallback(async () => {
@@ -423,6 +470,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     updateItemPayload,
     importItemAsset,
     exportBoard,
+    downloadItemImage,
     takeOver,
   };
 }

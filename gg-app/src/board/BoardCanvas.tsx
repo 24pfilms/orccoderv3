@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BoardContextMenu } from "./BoardContextMenu";
 import { BoardSelectionChrome } from "./BoardSelectionChrome";
 import { BoardExportMenu } from "./BoardExportMenu";
 import { BoardMinimap } from "./BoardMinimap";
@@ -29,6 +30,7 @@ interface BoardCanvasProps {
   onItemPayloadChange: (itemId: string, payload: ItemPayload) => void;
   onImportAsset: (itemId: string, role: "image" | "drawing") => Promise<boolean>;
   resolveAssetUrl?: (assetId: string) => string | null;
+  onDownloadImage?: (itemId: string) => void;
   onExport: (format: BoardExportFormat) => void;
 }
 
@@ -44,6 +46,7 @@ export function BoardCanvas({
   onItemPayloadChange,
   onImportAsset,
   resolveAssetUrl,
+  onDownloadImage,
   onExport,
 }: BoardCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -89,7 +92,7 @@ export function BoardCanvas({
       onKeyDown={interaction.onKeyDown}
       onKeyUp={interaction.onKeyUp}
       onBlur={interaction.resetSpace}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={interaction.onContextMenu}
       onWheel={(event) => {
         event.preventDefault();
         const bounds = event.currentTarget.getBoundingClientRect();
@@ -211,6 +214,22 @@ export function BoardCanvas({
       >
         <BoardExportMenu disabled={false} onExport={onExport} />
       </BoardToolbar>
+      {interaction.contextMenu ? (
+        <BoardContextMenu
+          x={interaction.contextMenu.x}
+          y={interaction.contextMenu.y}
+          selectedItems={interaction.selectedItems}
+          onClose={interaction.closeContextMenu}
+          onBringToFront={interaction.bringToFront}
+          onSendToBack={interaction.sendToBack}
+          onDuplicate={() => void interaction.duplicateSelection()}
+          onAddVote={interaction.addVote}
+          onDelete={() => void interaction.deleteSelection()}
+          onMaximizeImage={interaction.maximizeImage}
+          onMinimizeImage={interaction.minimizeImage}
+          onDownloadImage={onDownloadImage}
+        />
+      ) : null}
     </div>
   );
 }

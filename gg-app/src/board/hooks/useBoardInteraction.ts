@@ -20,6 +20,7 @@ import type {
   BoardViewport,
   ResizeHandle,
 } from "../interactions/types";
+import { readItemPayload } from "../items/itemPayload";
 import type { BoardDocument, BoardItem, BoardItemType } from "../repository";
 import {
   BoardClipboard,
@@ -112,6 +113,7 @@ export function useBoardInteraction({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [gesture, setGestureState] = useState<BoardGesture>({ kind: "idle" });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const gestureRef = useRef<BoardGesture>(gesture);
   const spacePressed = useRef(false);
   const clipboard = useRef(new BoardClipboard());
@@ -183,6 +185,73 @@ export function useBoardInteraction({
       payload: { ...(item.payload as object), fontSize },
     })),
     [updateSelection],
+  );
+
+  const addVote = useCallback(
+    () => void updateSelection("Add vote", (item) => {
+      const payload = item.payload && typeof item.payload === "object"
+        ? (item.payload as Record<string, unknown>)
+        : {};
+      const votes = typeof payload.votes === "number" ? payload.votes : 0;
+      return { ...item, payload: { ...payload, votes: votes + 1 } };
+    }),
+    [updateSelection],
+  );
+
+  // Maximize fits the image inside the visible canvas (keeping aspect ratio) and stores
+  // where it came from; minimize restores that. Mirrors Mero's originalSize/originalPosition.
+  const maximizeImage = useCallback(
+    (itemId: string) => {
+      const canvas = canvasRef.current;
+      const item = items.find((candidate) => candidate.itemId === itemId);
+      if (!canvas || !item || !item.height) return;
+      const bounds = canvas.getBoundingClientRect();
+      const margin = 50;
+      const maxWidth = (bounds.width - margin * 2) / viewport.zoom;
+      const maxHeight = (bounds.height - margin * 2) / viewport.zoom;
+      if (maxWidth <= 0 || maxHeight <= 0) return;
+      const aspect = item.width / item.height;
+      let width = maxWidth;
+      let height = maxWidth / aspect;
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = maxHeight * aspect;
+      }
+      const centre = screenToWorld({ x: bounds.width / 2, y: bounds.height / 2 }, viewport);
+      const payload = readItemPayload(item.payload);
+      void history.execute(
+        updateHistoryEntry("Maximize image", [item], [
+          {
+            ...item,
+            x: centre.x - width / 2,
+            y: centre.y - height / 2,
+            width,
+            height,
+            payload: {
+              ...payload,
+              restoreBounds: { x: item.x, y: item.y, width: item.width, height: item.height },
+            },
+          },
+        ]),
+      );
+    },
+    [canvasRef, history, items, viewport],
+  );
+
+  const minimizeImage = useCallback(
+    (itemId: string) => {
+      const item = items.find((candidate) => candidate.itemId === itemId);
+      const payload = item ? readItemPayload(item.payload) : null;
+      const restore = payload?.restoreBounds;
+      if (!item || !restore) return;
+      const { restoreBounds: _discarded, ...rest } = payload;
+      void history.execute(
+        updateHistoryEntry("Minimize image", [item], [
+          { ...item, x: restore.x, y: restore.y, width: restore.width, height: restore.height, payload: rest },
+        ]),
+      );
+    },
+    [history, items],
   );
 
   const moveLayer = useCallback(
@@ -333,6 +402,24 @@ export function useBoardInteraction({
     },
     [canvasRef, editable, placeItem, setGesture, tool, viewport],
   );
+
+  // Right-click selects what is under the pointer (unless it is already part of the
+  // selection) and opens the menu there, matching Mero's `selectItemOnly` behaviour.
+  const onContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (!editable) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(BOARD_CHROME_SELECTOR)) return;
+      const itemId = target?.closest("[data-board-item]")?.getAttribute("data-board-item");
+      if (itemId && !selectedIds.includes(itemId)) setSelectedIds([itemId]);
+      if (!itemId && selectedIds.length === 0) return;
+      setContextMenu({ x: event.clientX, y: event.clientY });
+    },
+    [editable, selectedIds],
+  );
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   const onItemPointerDown = useCallback(
     (event: React.PointerEvent, itemId: string) => {
@@ -545,6 +632,12 @@ export function useBoardInteraction({
     resetSpace: () => {
       spacePressed.current = false;
     },
+    contextMenu,
+    onContextMenu,
+    closeContextMenu,
+    addVote,
+    maximizeImage,
+    minimizeImage,
     onCanvasPointerDown,
     onItemPointerDown,
     onPointerMove,

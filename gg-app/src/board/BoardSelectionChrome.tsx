@@ -1,12 +1,23 @@
 import {
   BringToFront,
   Copy,
+  Minus,
+  Plus,
   RotateCw,
   SendToBack,
   Trash2,
 } from "lucide-react";
 import type { BoardBounds, BoardViewport, ResizeHandle } from "./interactions/types";
 import type { BoardItem } from "./repository";
+
+// Mero's font-size bounds and step, applied as a delta rather than a fixed list.
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 200;
+const FONT_SIZE_STEP = 2;
+
+function clampFontSize(size: number): number {
+  return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.round(size)));
+}
 
 interface BoardSelectionChromeProps {
   bounds: BoardBounds | null;
@@ -52,6 +63,9 @@ export function BoardSelectionChrome({
   const supportsFont = selectedItems.every((item) => item.itemType === "text" || item.itemType === "sticky_note" || item.itemType === "shape");
   const supportsColor = selectedItems.every((item) => item.itemType !== "image");
   const currentPayload = selectedItems[0]?.payload as { color?: unknown; fill?: unknown; fontSize?: unknown } | undefined;
+  const currentFontSize = typeof currentPayload?.fontSize === "number"
+    ? clampFontSize(currentPayload.fontSize)
+    : 16;
   const color = typeof currentPayload?.color === "string"
     ? currentPayload.color
     : typeof currentPayload?.fill === "string"
@@ -103,17 +117,30 @@ export function BoardSelectionChrome({
           </label>
         ) : null}
         {supportsFont ? (
-          <label>
-            <span className="sr-only">Font size</span>
-            <select
-              aria-label="Font size"
+          // Stepper rather than a <select>: native WebView2 select popups can open
+          // without ever accepting a selection (the app documents this elsewhere), so the
+          // dropdown silently did nothing. Mero uses a delta control clamped to 8..200.
+          <span className="board-font-size" role="group" aria-label="Font size">
+            <button
+              type="button"
+              aria-label="Decrease font size"
+              title="Decrease font size"
               disabled={!editable}
-              value={typeof currentPayload?.fontSize === "number" ? currentPayload.fontSize : 16}
-              onChange={(event) => onFontSizeChange(Number(event.currentTarget.value))}
+              onClick={() => onFontSizeChange(clampFontSize(currentFontSize - FONT_SIZE_STEP))}
             >
-              {[12, 16, 20, 24, 32, 48, 64].map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-          </label>
+              <Minus aria-hidden="true" />
+            </button>
+            <output aria-live="off">{currentFontSize}</output>
+            <button
+              type="button"
+              aria-label="Increase font size"
+              title="Increase font size"
+              disabled={!editable}
+              onClick={() => onFontSizeChange(clampFontSize(currentFontSize + FONT_SIZE_STEP))}
+            >
+              <Plus aria-hidden="true" />
+            </button>
+          </span>
         ) : null}
         <button type="button" aria-label="Bring to front" title="Bring to front" disabled={!editable} onClick={onBringToFront}>
           <BringToFront aria-hidden="true" />

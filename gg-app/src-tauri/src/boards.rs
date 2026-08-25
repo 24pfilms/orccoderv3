@@ -868,7 +868,18 @@ fn validate_payload(
         )
     })?;
     let allowed: &[&str] = match item_type {
-        "sticky_note" => &["text", "color", "backgroundColor", "votes", "_provenance"],
+        // fontSize/fontFamily are characterized Mero sticky-note properties and the
+        // selection toolbar offers them for notes; omitting them here made the validator
+        // fail the whole mutation closed, so font changes on a note silently never saved.
+        "sticky_note" => &[
+            "text",
+            "color",
+            "backgroundColor",
+            "fontSize",
+            "fontFamily",
+            "votes",
+            "_provenance",
+        ],
         "text" => &[
             "text",
             "color",

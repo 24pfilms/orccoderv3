@@ -64,7 +64,15 @@ export function BoardItemView({
           className="board-item-textarea"
           value={text}
           rows={Math.max(1, text.split("\n").length)}
-          onBlur={onEndEditing}
+          onBlur={(event) => {
+            // Reaching for the selection toolbar (font size, colour, layers) blurs the
+            // editor. Ending editing there re-renders the chrome mid-click, so the
+            // control never receives its change event. Keep editing when focus moves
+            // into board chrome rather than away from the item.
+            const next = event.relatedTarget as Element | null;
+            if (next?.closest(".board-context-toolbar, .board-toolbar")) return;
+            onEndEditing?.();
+          }}
           onChange={(event) => onPayloadChange({ ...payload, text: event.currentTarget.value })}
           onPointerDown={(event) => event.stopPropagation()}
         />
