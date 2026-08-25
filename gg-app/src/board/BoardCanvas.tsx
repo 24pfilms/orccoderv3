@@ -149,6 +149,8 @@ export function BoardCanvas({
       onPointerUp={(event) => void interaction.onPointerUp(event)}
       onPointerCancel={(event) => void interaction.onPointerUp(event)}
     >
+      {/* Slow light pass over the grid. Sits under the world so it never touches items. */}
+      <div className="board-sheen" aria-hidden="true" />
       <div
         className="board-canvas-world"
         style={{

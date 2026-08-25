@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Grid2x2 } from "lucide-react";
+import { LIGHT_PASS_DEFAULTS, useLightPass } from "./useLightPass";
 
 interface BoardCanvasSettingsProps {
   dotDensity: number;
@@ -14,6 +15,7 @@ export function BoardCanvasSettings({
   onDotDensityChange,
 }: BoardCanvasSettingsProps): React.ReactElement {
   const [open, setOpen] = useState(false);
+  const [light, setLight] = useLightPass();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,6 +65,60 @@ export function BoardCanvasSettings({
             />
             <output>{Math.round(dotDensity)}</output>
           </label>
+
+          <hr />
+
+          <label>
+            <span>Light tint</span>
+            <input
+              type="color"
+              value={light.tint}
+              onChange={(event) => {
+                const tint = event.currentTarget.value;
+                setLight({ tint });
+              }}
+            />
+          </label>
+
+          <label>
+            <span>Light strength</span>
+            <input
+              type="range"
+              min={0}
+              max={0.5}
+              step={0.01}
+              value={light.opacity}
+              onChange={(event) => {
+                const opacity = Number(event.currentTarget.value);
+                setLight({ opacity });
+              }}
+            />
+            <output>{Math.round(light.opacity * 100)}%</output>
+          </label>
+
+          <label>
+            <span>Light speed</span>
+            <input
+              type="range"
+              min={8}
+              max={120}
+              step={1}
+              value={light.speed}
+              onChange={(event) => {
+                const speed = Number(event.currentTarget.value);
+                setLight({ speed });
+              }}
+            />
+            <output>{light.speed}s</output>
+          </label>
+
+          <button
+            type="button"
+            className="board-canvas-settings-reset"
+            onClick={() => setLight(LIGHT_PASS_DEFAULTS)}
+          >
+            Reset light
+          </button>
         </div>
       ) : null}
     </div>
