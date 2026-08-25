@@ -122,6 +122,14 @@ export const boardRepository = {
     bytes: Uint8Array,
   ): Promise<boolean> =>
     invoke("board_export_choose_destination", { boardId, format, bytes: Array.from(bytes) }),
+  generateImage: (
+    boardId: string,
+    itemId: string,
+    prompt: string,
+    leaseEpoch: number,
+    expectedRevision: number,
+  ): Promise<BoardAsset> =>
+    invoke("board_image_generate", { boardId, itemId, prompt, leaseEpoch, expectedRevision }),
   importAsset: (
     boardId: string,
     itemId: string,

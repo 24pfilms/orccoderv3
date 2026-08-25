@@ -57,6 +57,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
     importItemAsset,
     exportBoard,
     downloadItemImage,
+    generateImage,
     takeOver,
   } = useBoardDocument(flushCoordinator);
   return (
@@ -96,6 +97,7 @@ function BoardContent({ flushCoordinator }: { flushCoordinator: BoardFlushCoordi
           onImportAsset={importItemAsset}
           onExport={(format) => void exportBoard(format)}
           onDownloadImage={(itemId) => void downloadItemImage(itemId)}
+          onGenerateImage={generateImage}
         />
       ) : (
         <div className="board-surface-empty">{error ?? "Loading board…"}</div>

@@ -1812,6 +1812,28 @@ pub(crate) async fn board_asset_choose_and_import(
     let path = selected.into_path().map_err(|_| {
         BoardStoreError::new("board_asset_invalid", "Selected image path is invalid")
     })?;
+    import_image_from_path(
+        app, project, window_label, board_id, item_id, role, lease_epoch, expected_revision, path,
+    )
+    .await
+    .map(Some)
+}
+
+/// Validate an image on disk, store it content-addressed, and link it to a board item.
+/// Shared by the file-picker import and by generated images so both go through the same
+/// MIME sniffing, raster limits, storage cap, and lease/revision authorization.
+#[allow(clippy::too_many_arguments)]
+async fn import_image_from_path(
+    app: AppHandle,
+    project: ProjectContext,
+    window_label: String,
+    board_id: String,
+    item_id: String,
+    role: String,
+    lease_epoch: i64,
+    expected_revision: i64,
+    path: std::path::PathBuf,
+) -> Result<BoardAsset, BoardStoreError> {
     let store_root = super::home_dir().join(".gg/boards");
     let image = tauri::async_runtime::spawn_blocking(move || {
         let image = read_validated_image(&path)?;
@@ -1868,7 +1890,189 @@ pub(crate) async fn board_asset_choose_and_import(
             revision: asset.board_revision,
         },
     );
-    Ok(Some(asset))
+    Ok(asset)
+}
+
+/// Codex backend endpoint. ChatGPT OAuth tokens are rejected by
+/// api.openai.com/v1/images/*, but they work here, and the backend routes the Responses
+/// API's built-in `image_generation` tool to gpt-image-2. This mirrors the contract the
+/// ggcoder `generate_image` tool already uses.
+const CODEX_RESPONSES_ENDPOINT: &str = "https://chatgpt.com/backend-api/codex/responses";
+const IMAGE_GEN_MODEL: &str = "gpt-5.5";
+const MAX_IMAGE_PROMPT_CHARS: usize = 4_000;
+
+/// Read the ChatGPT OAuth access token (and account id) the desktop app already stores.
+fn openai_oauth_credentials() -> Result<(String, Option<String>), BoardStoreError> {
+    let path = super::home_dir().join(".gg").join("auth.json");
+    let raw = std::fs::read_to_string(&path).map_err(|_| {
+        BoardStoreError::new("openai_not_connected", "Sign in to OpenAI to generate images")
+    })?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|_| {
+        BoardStoreError::new("openai_not_connected", "Stored OpenAI credentials are unreadable")
+    })?;
+    let entry = parsed.get("openai").ok_or_else(|| {
+        BoardStoreError::new("openai_not_connected", "Sign in to OpenAI to generate images")
+    })?;
+    let token = entry
+        .get("accessToken")
+        .and_then(|value| value.as_str())
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            BoardStoreError::new("openai_not_connected", "Sign in to OpenAI to generate images")
+        })?;
+    let account_id = entry
+        .get("accountId")
+        .and_then(|value| value.as_str())
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
+    Ok((token.to_string(), account_id))
+}
+
+/// Stream the Codex response and pull the base64 image out of the
+/// `image_generation_call` output item.
+async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreError> {
+    use base64::Engine as _;
+    let (token, account_id) = openai_oauth_credentials()?;
+    let body = serde_json::json!({
+        "model": IMAGE_GEN_MODEL,
+        "store": false,
+        "stream": true,
+        "instructions": "Generate the image the user requested.",
+        "input": [{ "role": "user", "content": [{ "type": "input_text", "text": prompt }] }],
+        "tools": [{ "type": "image_generation", "output_format": "png", "action": "generate" }],
+        "tool_choice": "auto",
+        "reasoning": { "effort": "low" },
+    });
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|_| BoardStoreError::new("board_generate_failed", "HTTP client unavailable"))?;
+    // Match the header set the working Codex provider sends. The backend rejects
+    // requests that do not look like the Codex client, so Accept, OpenAI-Beta,
+    // originator, and User-Agent all matter — an unknown originator is refused.
+    let mut request = client
+        .post(CODEX_RESPONSES_ENDPOINT)
+        .header("Content-Type", "application/json")
+        .header("Accept", "text/event-stream")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("OpenAI-Beta", "responses=experimental")
+        .header("originator", "ggcoder")
+        .header("User-Agent", "ggcoder (windows; x86_64)");
+    if let Some(account) = account_id {
+        request = request.header("chatgpt-account-id", account);
+    }
+    let response = request.json(&body).send().await.map_err(|_| {
+        BoardStoreError::new("board_generate_failed", "Could not reach the image service")
+    })?;
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let detail = response.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&detail)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("detail")
+                    .and_then(|d| d.as_str())
+                    .or_else(|| value.get("error").and_then(|e| e.get("message")).and_then(|m| m.as_str()))
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("Image service returned {status}"));
+        return Err(BoardStoreError::new("board_generate_failed", message));
+    }
+    let text = response.text().await.map_err(|_| {
+        BoardStoreError::new("board_generate_failed", "Image response could not be read")
+    })?;
+    for line in text.lines() {
+        let Some(payload) = line.strip_prefix("data: ") else { continue };
+        if payload.trim() == "[DONE]" {
+            break;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(payload) else { continue };
+        let item = event.get("item");
+        let is_image = item
+            .and_then(|item| item.get("type"))
+            .and_then(|value| value.as_str())
+            == Some("image_generation_call");
+        if !is_image {
+            continue;
+        }
+        if let Some(result) = item.and_then(|item| item.get("result")).and_then(|v| v.as_str()) {
+            return base64::engine::general_purpose::STANDARD
+                .decode(result)
+                .map_err(|_| {
+                    BoardStoreError::new("board_generate_failed", "Generated image was malformed")
+                });
+        }
+    }
+    Err(BoardStoreError::new(
+        "board_generate_failed",
+        "The image service returned no image",
+    ))
+}
+
+/// Generate an image from a prompt and attach it to an existing image item. The network
+/// call happens here rather than in the webview, so the board runtime itself still makes
+/// no outbound requests.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn board_image_generate(
+    app: AppHandle,
+    window: WebviewWindow,
+    windows: State<'_, super::Windows>,
+    board_id: String,
+    item_id: String,
+    prompt: String,
+    lease_epoch: i64,
+    expected_revision: i64,
+) -> Result<BoardAsset, BoardStoreError> {
+    if !board_mode_enabled() {
+        return Err(BoardStoreError::new(
+            "board_mode_disabled",
+            "Board Mode is disabled in this build",
+        ));
+    }
+    validate_id(&board_id)?;
+    validate_id(&item_id)?;
+    let prompt = prompt.trim().to_string();
+    if prompt.is_empty() || prompt.chars().count() > MAX_IMAGE_PROMPT_CHARS {
+        return Err(BoardStoreError::new(
+            "board_input_invalid",
+            "Image prompt is empty or too long",
+        ));
+    }
+    let project = project_context(&window, &windows)?;
+    let window_label = window.label().to_string();
+    let bytes = request_generated_image(&prompt).await?;
+    // Land the bytes on disk so the generated image goes through exactly the same
+    // validation as a picked file: magic-byte sniffing, raster limits, and the store cap.
+    let store_root = super::home_dir().join(".gg/boards");
+    let staged = tauri::async_runtime::spawn_blocking(move || {
+        let dir = store_root.join("incoming");
+        std::fs::create_dir_all(&dir).map_err(|_| {
+            BoardStoreError::new("board_generate_failed", "Could not stage the generated image")
+        })?;
+        let path = dir.join(format!("{}.png", uuid::Uuid::new_v4()));
+        std::fs::write(&path, &bytes).map_err(|_| {
+            BoardStoreError::new("board_generate_failed", "Could not stage the generated image")
+        })?;
+        Ok::<_, BoardStoreError>(path)
+    })
+    .await
+    .map_err(|_| BoardStoreError::new("board_generate_failed", "Staging worker failed"))??;
+    let result = import_image_from_path(
+        app,
+        project,
+        window_label,
+        board_id,
+        item_id,
+        "image".to_string(),
+        lease_epoch,
+        expected_revision,
+        staged.clone(),
+    )
+    .await;
+    let _ = std::fs::remove_file(&staged);
+    result
 }
 
 fn validate_export_bytes(format: &str, bytes: &[u8]) -> Result<&'static str, BoardStoreError> {

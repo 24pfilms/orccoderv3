@@ -42,6 +42,8 @@ interface BoardDocumentState {
   importItemAsset: (itemId: string, role: "image" | "drawing") => Promise<boolean>;
   exportBoard: (format: BoardExportFormat) => Promise<void>;
   downloadItemImage: (itemId: string) => Promise<void>;
+  /** Resolves null on success, or the failure reason to show the user. */
+  generateImage: (prompt: string, at: BoardPoint) => Promise<string | null>;
   takeOver: () => Promise<void>;
 }
 
@@ -453,6 +455,56 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     [],
   );
 
+  // Creates the item first so the canvas shows where the image will land, then fills it.
+  // A failure removes the placeholder rather than leaving an empty box behind.
+  const generateImage = useCallback(
+    async (prompt: string, at: BoardPoint) => {
+      const itemId = await createItem("image", at);
+      if (!itemId) return "Could not create the image item.";
+      try {
+        await queue.flush("surface-switch");
+        const current = committedRef.current;
+        const currentLease = leaseRef.current;
+        if (!current || !currentLease?.editable || currentLease.leaseEpoch === null) {
+          return "The board is read only.";
+        }
+        localMutationRef.current = true;
+        const asset = await boardRepository.generateImage(
+          current.board.boardId,
+          itemId,
+          prompt,
+          currentLease.leaseEpoch,
+          current.board.revision,
+        );
+        const fresh = await boardRepository.get(current.board.boardId);
+        const item = fresh.items.find((candidate) => candidate.itemId === itemId);
+        if (!item) return "The image item disappeared while generating.";
+        acceptDocument(
+          await boardRepository.updateItem(
+            current.board.boardId,
+            itemId,
+            currentLease.leaseEpoch,
+            fresh.board.revision,
+            item.revision,
+            { payload: { ...readItemPayload(item.payload), assetId: asset.assetId, alt: prompt } },
+          ),
+        );
+        return null;
+      } catch (error) {
+        const reason =
+          typeof error === "object" && error && "message" in error
+            ? String((error as { message: unknown }).message)
+            : "Image generation failed";
+        setError(reason);
+        await applyMutations([{ kind: "softDelete", itemId, expectedItemRevision: 0 }]);
+        return reason;
+      } finally {
+        localMutationRef.current = false;
+      }
+    },
+    [acceptDocument, applyMutations, createItem, queue],
+  );
+
   const takeOver = useCallback(async () => {
     const current = committedRef.current;
     if (!current || !lease?.expired) return;
@@ -481,6 +533,7 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
     importItemAsset,
     exportBoard,
     downloadItemImage,
+    generateImage,
     takeOver,
   };
 }

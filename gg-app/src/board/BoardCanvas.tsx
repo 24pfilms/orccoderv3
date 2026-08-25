@@ -33,7 +33,7 @@ interface BoardCanvasProps {
   onImportAsset: (itemId: string, role: "image" | "drawing") => Promise<boolean>;
   resolveAssetUrl?: (assetId: string) => string | null;
   onDownloadImage?: (itemId: string) => void;
-  onGenerateImage?: (prompt: string, at: BoardPoint) => Promise<boolean>;
+  onGenerateImage?: (prompt: string, at: BoardPoint) => Promise<string | null>;
   onExport: (format: BoardExportFormat) => void;
 }
 
@@ -282,12 +282,12 @@ export function BoardCanvas({
             setPromptBusy(true);
             setPromptHint("Generating — this usually takes a few seconds.");
             void onGenerateImage(value, prompt.at)
-              .then((ok) => {
-                if (ok) {
+              .then((failure) => {
+                if (failure) {
+                  setPromptHint(failure);
+                } else {
                   setPrompt(null);
                   setPromptHint(null);
-                } else {
-                  setPromptHint("Generation failed. Check you are signed in to OpenAI, then retry.");
                 }
               })
               .finally(() => setPromptBusy(false));
