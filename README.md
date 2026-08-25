@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/orcacoder-sessions.png" alt="Six OrcaCoder windows working different projects at once, each in its own palette" width="1200">
+  <img src="docs/images/orcacoder-sessions.jpg" alt="Six OrcaCoder windows working different projects at once, each in its own palette" width="1200">
 </p>
 
 OrcaCoder V3 is a self-contained, Windows-first AI creative-development workstation built
