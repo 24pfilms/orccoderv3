@@ -17,7 +17,7 @@ it("arms every item tool, exposes shape choices, and remains keyboard accessible
       onRedo={vi.fn()}
     />,
   );
-  for (const label of ["Select", "Sticky note", "Text", "Shapes", "Frame", "Arrow", "Image", "Pen"]) {
+  for (const label of ["Select", "Sticky note", "Text", "Shapes", "Frame", "Arrow", "Import image", "Pen"]) {
     expect(screen.getByRole("button", { name: label })).toBeTruthy();
   }
   fireEvent.click(screen.getByRole("button", { name: "Sticky note" }));

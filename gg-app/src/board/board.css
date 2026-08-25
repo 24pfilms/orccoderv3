@@ -35,12 +35,14 @@
   font-size: 10px;
 }
 
+/* All bottom chrome shares one baseline; they previously sat at 20px / 12px / 12px with
+   different heights, which read as misalignment. */
 .board-toolbar {
   position: absolute;
   z-index: 30;
   left: 50%;
-  bottom: 20px;
-  max-width: min(calc(100% - 320px), 760px);
+  bottom: 16px;
+  max-width: min(calc(100% - 380px), 760px);
   transform: translateX(-50%);
 }
 
@@ -49,17 +51,25 @@
   bottom: auto;
 }
 
+/* Glassmorphism, after Mero's toolbar: translucent dark plate, heavy backdrop blur, an
+   accent-tinted hairline, and a layered shadow that lifts it off the canvas. Mero used
+   its blue; this uses the Orca accent so the board matches the rest of the app. */
 .board-toolbar-scroll {
   display: flex;
   align-items: center;
-  min-height: 52px;
-  padding: 5px;
+  min-height: 50px;
+  padding: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 14px;
-  box-shadow: 0 12px 36px rgb(0 0 0 / 32%);
+  background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--accent) 16%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
 }
 
 .board-toolbar-scroll::-webkit-scrollbar {
@@ -102,16 +112,23 @@
   border-radius: 9px;
 }
 
+.board-toolbar .board-tool-button {
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
 .board-toolbar .board-tool-button:hover:not(:disabled),
-.board-toolbar .board-tool-button:focus-visible,
-.board-toolbar .board-tool-button[data-active="true"] {
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+.board-toolbar .board-tool-button:focus-visible {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 .board-toolbar .board-tool-button[data-active="true"] {
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow:
+    0 0 11px color-mix(in srgb, var(--accent) 34%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .board-toolbar .board-tool-button:focus-visible {
@@ -140,17 +157,26 @@
 
 .board-shape-menu {
   position: absolute;
-  z-index: 40;
+  z-index: 44;
   bottom: calc(100% + 10px);
   left: 0;
   display: grid;
   width: 190px;
   padding: 6px;
   gap: 2px;
-  background: var(--surface-1);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  box-shadow: 0 16px 40px rgb(0 0 0 / 38%);
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 18px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.board-toolbar[data-position="top"] .board-shape-menu {
+  top: calc(100% + 10px);
+  bottom: auto;
 }
 
 .board-shape-menu button {
@@ -181,19 +207,52 @@
   position: relative;
 }
 
+/* The toolbar is anchored to the BOTTOM of the canvas, so its menus must open upward or
+   they land below the window edge. Flipped back down only when the bar sits at the top. */
 .board-export-menu [role="menu"] {
   position: absolute;
-  z-index: 4;
-  top: calc(100% + 6px);
+  z-index: 44;
   right: 0;
+  bottom: calc(100% + 10px);
   display: grid;
-  min-width: 88px;
-  padding: 4px;
+  min-width: 104px;
+  padding: 5px;
   gap: 3px;
-  background: var(--surface-1);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 18px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.board-toolbar[data-position="top"] .board-export-menu [role="menu"] {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.board-export-menu [role="menu"] button {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: left;
+  background: transparent;
+  border: 0;
   border-radius: 7px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+
+.board-export-menu [role="menu"] button:hover,
+.board-export-menu [role="menu"] button:focus-visible {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  outline: none;
 }
 
 .board-manager {
@@ -322,17 +381,30 @@
 .board-manager-panel footer button { min-height: 36px; padding: 0 12px; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px; }
 .board-manager-panel footer .is-primary { color: var(--surface-0); background: var(--accent); border-color: var(--accent); font-weight: 650; }
 
-.board-minimap {
+/* Minimap sits on the shared bottom baseline and can be collapsed to a single chip. */
+.board-minimap-shell {
   position: absolute;
-  left: 12px;
-  bottom: 12px;
-  width: 160px;
-  height: 108px;
+  z-index: 25;
+  left: 16px;
+  bottom: 16px;
+}
+
+.board-minimap {
+  position: relative;
+  display: block;
+  width: 168px;
+  height: 112px;
   padding: 0;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--accent) 16%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
 }
 
 .board-minimap-item {
@@ -575,14 +647,48 @@
   outline: none;
 }
 
+/* Paper feel rather than a flat rectangle: a faint top-light gradient, a hairline inner
+   highlight, and a two-stop shadow (tight contact + soft ambient) so notes sit ON the
+   canvas instead of floating above it. */
 .board-item-sticky_note {
   position: relative;
   color: #202124;
   font-family: var(--font-sans);
   font-size: 15px;
-  border: 1px solid rgb(0 0 0 / 8%);
-  border-radius: 3px;
-  box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
+  line-height: 1.4;
+  border: 0;
+  border-radius: 6px;
+  background-image: linear-gradient(
+    170deg,
+    rgb(255 255 255 / 26%) 0%,
+    rgb(255 255 255 / 6%) 34%,
+    rgb(0 0 0 / 5%) 100%
+  );
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 22%),
+    0 10px 24px -6px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 38%);
+}
+
+.board-item[data-selected] .board-item-sticky_note {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 24%),
+    0 14px 30px -6px rgb(0 0 0 / 40%),
+    inset 0 1px 0 rgb(255 255 255 / 42%);
+}
+
+/* Shapes: crisper edges and a touch of depth without the cartoon outline. */
+.board-shape svg,
+.board-shape {
+  filter: drop-shadow(0 2px 6px rgb(0 0 0 / 28%));
+}
+
+.board-arrow {
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 32%));
+}
+
+.board-item-text {
+  letter-spacing: 0.01em;
 }
 
 .board-note-votes {
@@ -747,16 +853,22 @@
 .board-zoom-controls {
   position: absolute;
   z-index: 25;
-  right: 12px;
-  bottom: 12px;
+  right: 16px;
+  bottom: 16px;
   display: flex;
-  min-height: 38px;
+  min-height: 50px;
   align-items: center;
-  padding: 3px;
+  padding: 6px;
   color: var(--text-muted);
-  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--accent) 16%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
   box-shadow: 0 8px 24px rgb(0 0 0 / 26%);
 }
 
@@ -1001,4 +1113,59 @@
 
 .board-rotate-handle:active {
   cursor: grabbing;
+}
+
+.board-minimap-toggle {
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  right: -9px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 40%);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease;
+  cursor: pointer;
+}
+
+.board-minimap-shell:hover .board-minimap-toggle,
+.board-minimap-toggle:focus-visible {
+  opacity: 1;
+}
+
+.board-minimap-toggle:hover {
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+}
+
+.board-minimap-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Collapsed state: a small chip on the same baseline, always visible. */
+.board-minimap-collapsed {
+  position: absolute;
+  z-index: 25;
+  top: auto;
+  right: auto;
+  left: 16px;
+  bottom: 16px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  opacity: 1;
+}
+
+.board-minimap-collapsed svg {
+  width: 16px;
+  height: 16px;
 }

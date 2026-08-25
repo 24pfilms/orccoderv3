@@ -2694,6 +2694,12 @@ fn protocol_response(
         .header("X-Content-Type-Options", "nosniff")
         .header("Content-Security-Policy", "default-src 'none'")
         .header("Cache-Control", "private, max-age=31536000, immutable")
+        // Without this the webview treats board assets as cross-origin, which taints any
+        // canvas they are drawn on and makes toBlob() refuse — breaking PNG/JPG/PDF
+        // export of any board containing an image. The scheme is intercepted inside the
+        // webview and never reaches the network, and the handler above already authorizes
+        // each asset against the requesting window's project.
+        .header("Access-Control-Allow-Origin", "*")
         .body(body)
         .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }

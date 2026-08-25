@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Download } from "lucide-react";
 import type { BoardExportFormat } from "./export";
 
 export function BoardExportMenu({
@@ -13,12 +14,15 @@ export function BoardExportMenu({
     <div className="board-export-menu">
       <button
         type="button"
+        className="board-tool-button"
+        aria-label="Export board"
         aria-expanded={open}
         aria-controls="board-export-formats"
+        title="Export"
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
-        Export
+        <Download aria-hidden="true" />
       </button>
       {open && (
         <div id="board-export-formats" role="menu" aria-label="Export format">

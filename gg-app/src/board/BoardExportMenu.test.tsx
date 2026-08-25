@@ -6,7 +6,7 @@ import { BoardExportMenu } from "./BoardExportMenu";
 it("offers every local export format through a keyboard-visible menu", () => {
   const onExport = vi.fn();
   render(<BoardExportMenu disabled={false} onExport={onExport} />);
-  const trigger = screen.getByRole("button", { name: "Export" });
+  const trigger = screen.getByRole("button", { name: "Export board" });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(trigger);
   expect(trigger.getAttribute("aria-expanded")).toBe("true");

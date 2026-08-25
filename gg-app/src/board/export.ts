@@ -1,6 +1,6 @@
 import type { BoardDocument, BoardItem } from "./repository";
 import { boundsForItems } from "./interactions/geometry";
-import { readItemPayload } from "./items/itemPayload";
+import { boardAssetUrl, readItemPayload } from "./items/itemPayload";
 import { drawCanvasArrowheads, isLinearShape, traceBoardShape } from "./items/shapeGeometry";
 
 export type BoardExportFormat = "png" | "jpg" | "pdf" | "csv";
@@ -81,10 +81,16 @@ function drawText(
 }
 
 async function loadAuthorizedImage(assetId: string): Promise<HTMLImageElement> {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(assetId)) throw new Error("Board asset ID is invalid");
+  // Must go through boardAssetUrl: WebView2 cannot load a bare `board-asset://` URL, so
+  // building the URL by hand here made every export containing an image fail to decode.
+  const url = boardAssetUrl(assetId);
+  if (!url) throw new Error("Board asset ID is invalid");
   const image = new Image();
+  // Pairs with Access-Control-Allow-Origin on the board-asset protocol: without an
+  // explicit CORS request the drawn image taints the canvas and toBlob() throws.
+  image.crossOrigin = "anonymous";
   image.decoding = "async";
-  image.src = `board-asset://${encodeURIComponent(assetId)}`;
+  image.src = url;
   await image.decode();
   return image;
 }

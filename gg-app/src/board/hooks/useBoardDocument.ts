@@ -426,8 +426,12 @@ export function useBoardDocument(coordinator: BoardFlushCoordinator): BoardDocum
         if (!current) return;
         const bytes = await encodeBoardExport(current, format);
         await boardRepository.export(current.board.boardId, format, bytes);
-      } catch {
-        setError("Board export failed");
+      } catch (error) {
+        setError(
+          `Board export failed: ${
+            error instanceof Error ? error.message : "the board could not be encoded"
+          }`,
+        );
       }
     },
     [queue],

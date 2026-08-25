@@ -118,7 +118,7 @@ export function BoardToolbar({
           ) : null}
           {button("Frame", { kind: "place", itemType: "frame" }, <Frame aria-hidden="true" />, "F")}
           {button("Arrow", { kind: "place", itemType: "arrow" }, <MoveRight aria-hidden="true" />, "A")}
-          {button("Image", { kind: "place", itemType: "image" }, <Image aria-hidden="true" />, "I")}
+          {button("Import image", { kind: "place", itemType: "image" }, <Image aria-hidden="true" />, "I")}
           {button("Pen", { kind: "pen", color: "#e5e7eb" }, <Pencil aria-hidden="true" />, "P")}
         </div>
         <span className="board-toolbar-divider" aria-hidden="true" />

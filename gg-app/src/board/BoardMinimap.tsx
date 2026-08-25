@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Map as MapIcon, X } from "lucide-react";
 import { boundsForItems, projectToMinimap, screenToWorld } from "./interactions/geometry";
 import type { BoardBounds, BoardPoint, BoardViewport } from "./interactions/types";
 import type { BoardItem } from "./repository";
@@ -25,7 +27,24 @@ export function BoardMinimap({
   canvasSize,
   onRecenter,
 }: BoardMinimapProps): React.ReactElement | null {
+  // Collapsed by default: the minimap is a lookup tool, not something to keep on
+  // screen, and an always-visible panel crowds the canvas.
+  const [collapsed, setCollapsed] = useState(true);
   if (items.length === 0 || canvasSize.width <= 0 || canvasSize.height <= 0) return null;
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="board-minimap-toggle board-minimap-collapsed"
+        aria-label="Show minimap"
+        title="Show minimap"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setCollapsed(false)}
+      >
+        <MapIcon aria-hidden="true" />
+      </button>
+    );
+  }
   const itemContent = boundsForItems(items);
   const viewportWorld: BoardBounds = {
     ...screenToWorld({ x: 0, y: 0 }, viewport),
@@ -46,6 +65,17 @@ export function BoardMinimap({
   };
 
   return (
+    <div className="board-minimap-shell">
+      <button
+        type="button"
+        className="board-minimap-toggle"
+        aria-label="Hide minimap"
+        title="Hide minimap"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setCollapsed(true)}
+      >
+        <X aria-hidden="true" />
+      </button>
     <button
       type="button"
       className="board-minimap"
@@ -74,5 +104,6 @@ export function BoardMinimap({
       })}
       <span className="board-minimap-viewport" style={{ left: viewportProjection.x, top: viewportProjection.y, width: viewportProjection.width, height: viewportProjection.height }} />
     </button>
+    </div>
   );
 }
