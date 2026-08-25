@@ -2441,7 +2441,9 @@ body {
   max-width: min(620px, 78%);
   /* Push the bubble to the right edge (user on right, assistant on left). */
   background: transparent;
-  color: var(--user-text);
+  /* White rather than --user-text: the token still drives the composer and the queued
+     states, so it is left alone and only the bubble is overridden. */
+  color: #fff;
   border-radius: var(--radius-card);
   padding: 6px 12px;
   margin: 8px 0 8px auto;
@@ -2452,7 +2454,7 @@ body {
      instead of a slab of grey sitting on it. The border was already reserved here so the
      queued state could recolor it without shifting the box by 2px — it is simply visible
      now rather than transparent. */
-  border: 1px solid color-mix(in srgb, var(--user-text) 42%, transparent);
+  border: 1px solid rgb(255 255 255 / 42%);
 }
 /* `@Ken` prompt bubble: tinted in Ken's color (matching his replies + the input
    highlight) so the transcript shows this message went to the mentor, not GG
