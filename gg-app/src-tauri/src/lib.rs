@@ -35,6 +35,7 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 
+mod boards;
 mod updater;
 
 /// The single shared Node daemon process. Every window's `AgentSession` lives
@@ -69,6 +70,19 @@ enum WorkspaceMode {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+enum WindowSurface {
+    Board,
+    #[default]
+    #[serde(other)]
+    Workspace,
+}
+
+fn is_workspace_surface(surface: &WindowSurface) -> bool {
+    *surface == WindowSurface::Workspace
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum ChatAgent {
     Therapist,
     Research,
@@ -83,6 +97,8 @@ enum ChatAgent {
 struct WindowSession {
     session_id: Option<String>,
     mode: WorkspaceMode,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
     chat_agent: ChatAgent,
     cwd: Option<PathBuf>,
     session_path: Option<String>,
@@ -107,6 +123,14 @@ struct AppExiting(AtomicBool);
 #[derive(Clone, serde::Serialize)]
 struct RestoreEntry {
     mode: WorkspaceMode,
+    #[serde(default, skip_serializing_if = "is_workspace_surface")]
+    surface: WindowSurface,
+    #[serde(
+        rename = "selectedBoardId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    selected_board_id: Option<String>,
     #[serde(rename = "chatAgent")]
     chat_agent: ChatAgent,
     cwd: String,
@@ -1930,6 +1954,14 @@ fn app_create_project(name: String, base_dir: Option<String>) -> Result<serde_js
 struct WorkspaceEntry {
     #[serde(default)]
     mode: WorkspaceMode,
+    #[serde(default, skip_serializing_if = "is_workspace_surface")]
+    surface: WindowSurface,
+    #[serde(
+        rename = "selectedBoardId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    selected_board_id: Option<String>,
     #[serde(rename = "chatAgent", default)]
     chat_agent: ChatAgent,
     cwd: String,
@@ -1969,14 +2001,17 @@ fn read_workspace() -> Workspace {
         .unwrap_or_default()
 }
 
-fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("file path has no parent")?;
     std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_nanos();
-    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("state");
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("state");
     let temp = dir.join(format!(".{name}-{}-{nonce}.tmp", std::process::id()));
     let result = (|| -> Result<(), String> {
         let mut file = std::fs::OpenOptions::new()
@@ -2090,6 +2125,8 @@ fn snapshot_workspace(app: &tauri::AppHandle) -> Result<(), String> {
         }
         entries.push(WorkspaceEntry {
             mode: inst.mode,
+            surface: inst.surface,
+            selected_board_id: inst.selected_board_id.clone(),
             chat_agent: inst.chat_agent,
             cwd,
             session_path: inst.session_path.clone(),
@@ -2138,6 +2175,68 @@ fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
     let state: State<RestoreTargets> = webview.state();
     let map = state.map.lock().unwrap();
     restore_target(&map, webview.label())
+}
+
+fn valid_selected_board_id(selected_board_id: Option<&str>) -> bool {
+    selected_board_id.is_none_or(|id| {
+        !id.is_empty()
+            && id.len() <= 128
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    })
+}
+
+#[tauri::command]
+fn set_window_surface(
+    webview: WebviewWindow,
+    app: tauri::AppHandle,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
+) -> Result<(), String> {
+    if !valid_selected_board_id(selected_board_id.as_deref()) {
+        return Err("Invalid selected board id.".to_string());
+    }
+    let label = webview.label().to_string();
+
+    let (previous_target, previous_window) = {
+        let targets: State<RestoreTargets> = app.state();
+        let windows: State<Windows> = app.state();
+        let mut target_map = targets.map.lock().unwrap();
+        let mut window_map = windows.map.lock().unwrap();
+        let target = target_map
+            .get_mut(&label)
+            .ok_or_else(|| "No active workspace for this window.".to_string())?;
+        let entry = window_map
+            .get_mut(&label)
+            .ok_or_else(|| "No active window session.".to_string())?;
+        let previous_target = (target.surface, target.selected_board_id.clone());
+        let previous_window = (entry.surface, entry.selected_board_id.clone());
+        target.surface = surface;
+        target.selected_board_id = selected_board_id.clone();
+        entry.surface = surface;
+        entry.selected_board_id = selected_board_id;
+        (previous_target, previous_window)
+    };
+
+    if let Err(error) = snapshot_workspace(&app) {
+        if let Some(target) = app
+            .state::<RestoreTargets>()
+            .map
+            .lock()
+            .unwrap()
+            .get_mut(&label)
+        {
+            target.surface = previous_target.0;
+            target.selected_board_id = previous_target.1;
+        }
+        if let Some(entry) = app.state::<Windows>().map.lock().unwrap().get_mut(&label) {
+            entry.surface = previous_window.0;
+            entry.selected_board_id = previous_window.1;
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 // ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
@@ -3639,6 +3738,8 @@ async fn select_project(
 
     let target = RestoreEntry {
         mode,
+        surface: WindowSurface::Workspace,
+        selected_board_id: None,
         chat_agent,
         cwd: cwd.clone(),
         session_path: session_path.clone(),
@@ -3651,6 +3752,12 @@ async fn select_project(
         chat_agent,
         &cwd,
         session_path.as_deref(),
+    );
+    set_window_surface_state(
+        &mut app.state::<Windows>().map.lock().unwrap(),
+        &label,
+        WindowSurface::Workspace,
+        None,
     );
     finish_window_session(
         app.clone(),
@@ -4742,6 +4849,20 @@ async fn daemon_delete_session(app: &tauri::AppHandle, port: u16, id: &str) {
         .await;
 }
 
+fn set_window_surface_state(
+    map: &mut HashMap<String, WindowSession>,
+    label: &str,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
+) -> bool {
+    let Some(entry) = map.get_mut(label) else {
+        return false;
+    };
+    entry.surface = surface;
+    entry.selected_board_id = selected_board_id;
+    true
+}
+
 fn publish_window_session(
     map: &mut HashMap<String, WindowSession>,
     label: &str,
@@ -4971,6 +5092,8 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
                 label.clone(),
                 RestoreEntry {
                     mode: entry.mode,
+                    surface: entry.surface,
+                    selected_board_id: entry.selected_board_id.clone(),
                     chat_agent: entry.chat_agent,
                     cwd: entry.cwd.clone(),
                     session_path: entry.session_path.clone(),
@@ -4994,6 +5117,12 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
             entry.chat_agent,
             PathBuf::from(&entry.cwd),
             entry.session_path.clone(),
+        );
+        set_window_surface_state(
+            &mut app.state::<Windows>().map.lock().unwrap(),
+            &label,
+            entry.surface,
+            entry.selected_board_id.clone(),
         );
         // Apply saved geometry when present; else we tile after the loop.
         if let (Some(x), Some(y)) = (entry.x, entry.y) {
@@ -5080,6 +5209,7 @@ pub fn run() {
                 ))
                 .build(),
         )
+        .register_asynchronous_uri_scheme_protocol("board-asset", boards::asset_protocol)
         .manage(Daemon {
             token: daemon_token,
             ..Default::default()
@@ -5087,6 +5217,9 @@ pub fn run() {
         .manage(Windows::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
+        // Lazy: constructing this state performs no filesystem or SQLite I/O.
+        .manage(boards::BoardStoreState::default())
+        .manage(boards::PickerTokenStore::default())
         .manage(FocusedWindow::default())
         .manage(MoveDebounce::default())
         .manage(TrayState::default())
@@ -5178,6 +5311,24 @@ pub fn run() {
             focus_window_by_offset,
             arrange_all,
             window_restore_target,
+            set_window_surface,
+            boards::board_list,
+            boards::board_create,
+            boards::board_get,
+            boards::board_update_settings,
+            boards::board_item_create,
+            boards::board_item_update,
+            boards::board_item_soft_delete,
+            boards::board_items_apply,
+            boards::board_soft_delete,
+            boards::board_restore,
+            boards::board_asset_choose_and_import,
+            boards::board_export_choose_destination,
+            boards::board_backup_create,
+            boards::board_backup_choose_and_preview,
+            boards::board_restore_apply,
+            boards::board_lease_acquire,
+            boards::board_lease_release,
             window_tray_intent,
             set_update_available,
             set_remote_active,
@@ -5360,12 +5511,7 @@ async fn refresh_live_sessions_async(app: &tauri::AppHandle) {
         let state: State<Windows> = app.state();
         let map = state.map.lock().unwrap();
         map.iter()
-            .filter_map(|(label, window)| {
-                window
-                    .session_id
-                    .clone()
-                    .map(|id| (label.clone(), id))
-            })
+            .filter_map(|(label, window)| window.session_id.clone().map(|id| (label.clone(), id)))
             .collect()
     };
     if targets.is_empty() {
@@ -5501,6 +5647,8 @@ mod tests {
             windows: vec![
                 WorkspaceEntry {
                     mode: WorkspaceMode::Chat,
+                    surface: WindowSurface::Board,
+                    selected_board_id: Some("board-a".into()),
                     chat_agent: ChatAgent::Research,
                     cwd: "/p/a".into(),
                     session_path: Some("/s/a.jsonl".into()),
@@ -5519,8 +5667,15 @@ mod tests {
         let back: Workspace = serde_json::from_str(&json).unwrap();
         assert_eq!(ws, back);
         assert_eq!(back.windows[0].mode, WorkspaceMode::Chat);
+        assert_eq!(back.windows[0].surface, WindowSurface::Board);
+        assert_eq!(
+            back.windows[0].selected_board_id.as_deref(),
+            Some("board-a")
+        );
         assert_eq!(back.windows[0].chat_agent, ChatAgent::Research);
         assert!(json.contains(r#""mode":"chat""#));
+        assert!(json.contains(r#""surface":"board""#));
+        assert!(json.contains(r#""selectedBoardId":"board-a""#));
         assert!(json.contains(r#""chatAgent":"research""#));
         // The second entry omits optional fields entirely (skip_serializing_if).
         assert!(!json.contains("\"sessionPath\":null"));
@@ -5531,24 +5686,36 @@ mod tests {
         let legacy: Workspace =
             serde_json::from_str(r#"{ "windows": [{ "cwd": "/p/a" }] }"#).unwrap();
         assert_eq!(legacy.windows[0].mode, WorkspaceMode::Code);
+        assert_eq!(legacy.windows[0].surface, WindowSurface::Workspace);
+        assert!(legacy.windows[0].selected_board_id.is_none());
         assert_eq!(legacy.windows[0].chat_agent, ChatAgent::General);
 
-        let invalid: Workspace =
-            serde_json::from_str(r#"{ "windows": [{ "mode": "future", "cwd": "/p/a" }] }"#)
-                .unwrap();
+        let invalid: Workspace = serde_json::from_str(
+            r#"{ "windows": [{ "mode": "future", "surface": "future", "cwd": "/p/a" }] }"#,
+        )
+        .unwrap();
         assert_eq!(invalid.windows[0].mode, WorkspaceMode::Code);
+        assert_eq!(invalid.windows[0].surface, WindowSurface::Workspace);
+
+        let default_json = serde_json::to_string(&legacy.windows[0]).unwrap();
+        assert!(!default_json.contains("surface"));
+        assert!(!default_json.contains("selectedBoardId"));
     }
 
     #[test]
     fn restore_target_serializes_mode_and_session_path() {
         let target = RestoreEntry {
             mode: WorkspaceMode::Chat,
+            surface: WindowSurface::Board,
+            selected_board_id: Some("board-a".into()),
             chat_agent: ChatAgent::Therapist,
             cwd: "/p/a".into(),
             session_path: Some("/s/a.jsonl".into()),
         };
         let json = serde_json::to_value(target).unwrap();
         assert_eq!(json["mode"], "chat");
+        assert_eq!(json["surface"], "board");
+        assert_eq!(json["selectedBoardId"], "board-a");
         assert_eq!(json["chatAgent"], "therapist");
         assert_eq!(json["cwd"], "/p/a");
         assert_eq!(json["sessionPath"], "/s/a.jsonl");
@@ -6327,6 +6494,43 @@ mod tests {
         assert!(tile_rects(0, 0, 0, 1920, 1080).is_empty());
     }
 
+    #[test]
+    fn selected_board_ids_are_bounded_and_path_free() {
+        assert!(valid_selected_board_id(None));
+        assert!(valid_selected_board_id(Some("board_01-a")));
+        assert!(!valid_selected_board_id(Some("")));
+        assert!(!valid_selected_board_id(Some("../board")));
+        assert!(!valid_selected_board_id(Some(&"a".repeat(129))));
+    }
+
+    #[test]
+    fn changing_surface_preserves_agent_session_identity() {
+        let mut map = HashMap::from([(
+            "main".to_string(),
+            WindowSession {
+                session_id: Some("session-1".into()),
+                mode: WorkspaceMode::Chat,
+                chat_agent: ChatAgent::Research,
+                cwd: Some(PathBuf::from("/project")),
+                generation: 42,
+                ..Default::default()
+            },
+        )]);
+
+        assert!(set_window_surface_state(
+            &mut map,
+            "main",
+            WindowSurface::Board,
+            Some("board-a".into())
+        ));
+        let entry = &map["main"];
+        assert_eq!(entry.surface, WindowSurface::Board);
+        assert_eq!(entry.selected_board_id.as_deref(), Some("board-a"));
+        assert_eq!(entry.session_id.as_deref(), Some("session-1"));
+        assert_eq!(entry.mode, WorkspaceMode::Chat);
+        assert_eq!(entry.generation, 42);
+    }
+
     // ── Window↔session map (daemon model) ──────────────────────────────────
     // The `Windows` map replaces the old per-window `Sidecars` registry. These
     // lock in the three mutations the lifecycle relies on: a window gets a
@@ -6344,6 +6548,8 @@ mod tests {
             WindowSession {
                 session_id: None,
                 mode: WorkspaceMode::Chat,
+                surface: WindowSurface::Board,
+                selected_board_id: Some("board-a".into()),
                 chat_agent: ChatAgent::Research,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: Some("/s/a.jsonl".into()),
@@ -6368,6 +6574,8 @@ mod tests {
             WindowSession {
                 session_id: Some("old-id".into()),
                 mode: WorkspaceMode::Code,
+                surface: WindowSurface::Workspace,
+                selected_board_id: None,
                 chat_agent: ChatAgent::General,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: None,
@@ -6429,6 +6637,8 @@ mod tests {
         let mut targets = HashMap::new();
         let entry = RestoreEntry {
             mode: WorkspaceMode::Code,
+            surface: WindowSurface::Workspace,
+            selected_board_id: None,
             chat_agent: ChatAgent::General,
             cwd: "/project".into(),
             session_path: Some("/sessions/one.jsonl".into()),

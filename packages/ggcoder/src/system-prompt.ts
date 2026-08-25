@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
 import { clampToBytes, CONTEXT_LIMITS, type ContextLimits } from "./core/context-limits.js";
 import { TOOL_PROMPT_HINTS, buildToolSteering, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
@@ -28,11 +29,11 @@ const UNCACHED_MARKER = "<!-- uncached -->";
 /**
  * The agent's product identity. Anthropic models run as "Claude Code" (matching
  * the Claude Code identity Anthropic's OAuth tokens require in the system
- * prompt); every other provider runs as GG Coder. Keeping this dynamic avoids a
+ * prompt); every other provider runs as OrcaCoder. Keeping this dynamic avoids a
  * contradictory double identity when streaming through Anthropic.
  */
 function productName(provider: Provider | undefined): string {
-  return provider === "anthropic" ? "Claude Code" : "GG Coder by Ken Kai";
+  return provider === "anthropic" ? "Claude Code" : "OrcaCoder";
 }
 
 function renderIdentitySection(provider: Provider | undefined): string {
@@ -289,7 +290,8 @@ export async function collectProjectContext(
 ): Promise<string[]> {
   // Nearest-first collection order (cwd → root).
   const collected: Array<{ relPath: string; content: string; bytes: number }> = [];
-  let dir = cwd;
+  let dir = path.resolve(cwd);
+  const tempRoot = path.resolve(tmpdir());
   const visited = new Set<string>();
 
   while (!visited.has(dir)) {
@@ -311,6 +313,9 @@ export async function collectProjectContext(
       }
       break; // One file per directory — first match wins.
     }
+    // Temporary projects are isolated fixtures/workspaces; do not inherit
+    // unrelated user-home instructions above the OS temp root.
+    if (dir === tempRoot) break;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -484,7 +489,7 @@ export async function buildSubAgentSystemPrompt(
  *   Pass `tools.map(t => t.name)` from the session so the prompt reflects
  *   exactly what the model can call. Defaults to the full built-in set.
  * @param provider — the active LLM provider. Drives the product identity
- *   (`anthropic` → "Claude Code", everything else → "GG Coder").
+ *   (`anthropic` → "Claude Code", everything else → "OrcaCoder").
  * @param environment — extra Environment-section facts (additional workspace
  *   roots, network allowlist). This sits in the cached prefix, so changing it
  *   costs exactly one cache-miss turn.

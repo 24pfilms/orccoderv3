@@ -345,7 +345,8 @@ pub(crate) async fn update_install(
             set_snapshot(&app, state.inner(), |snapshot| {
                 snapshot.phase = "available";
                 snapshot.blockers = blockers.clone();
-                snapshot.error = Some("Finish active work before installing the update.".to_string());
+                snapshot.error =
+                    Some("Finish active work before installing the update.".to_string());
             });
             return Err("update blocked by active work".to_string());
         }
@@ -376,7 +377,9 @@ pub(crate) async fn update_install(
                     set_snapshot(&app, state.inner(), |snapshot| snapshot.progress = progress);
                 },
                 || {
-                    set_snapshot(&app, state.inner(), |snapshot| snapshot.progress = Some(100));
+                    set_snapshot(&app, state.inner(), |snapshot| {
+                        snapshot.progress = Some(100)
+                    });
                 },
             )
             .await

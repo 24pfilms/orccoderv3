@@ -61,6 +61,7 @@ export function ZoomController(): React.ReactElement | null {
   // Hotkeys: Cmd/Ctrl + ( = / + ) zoom in, ( - / _ ) zoom out, ( 0 ) reset.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (document.documentElement.dataset.windowSurface === "board") return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const k = e.key;
       let next: number;

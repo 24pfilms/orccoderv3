@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "folder": {
+    "folderId": "fixture-folder",
+    "name": "Characterization Fixtures",
+    "description": "Isolated Board Mode parity fixtures",
+    "color": "#3b82f6",
+    "icon": "test-tube",
+    "parentId": null,
+    "order": 0,
+    "createdAt": 1787548800000,
+    "updatedAt": 1787548800000
+  },
+  "board": {
+    "boardId": "fixture-core-board",
+    "folderId": "fixture-folder",
+    "name": "Board Mode Core Parity",
+    "description": "Notes, text, shapes, arrows, nested frames, image, and drawing",
+    "backgroundColor": "#111827",
+    "dotDensity": 20,
+    "maxZIndex": 10,
+    "panZoom": { "x": 60, "y": 40, "k": 0.8 },
+    "createdAt": 1787548800000,
+    "updatedAt": 1787548800000,
+    "lastAccessedAt": 1787548800000
+  },
+  "items": [
+    { "itemId": "fixture-frame-outer", "boardId": "fixture-core-board", "type": "FRAME", "x": 80, "y": 80, "width": 870, "height": 650, "text": "Core Canvas", "backgroundColor": "#1f2937", "textColor": "#f9fafb", "zIndex": 1, "votes": 0, "rotation": 0, "children": ["fixture-note", "fixture-text", "fixture-rect", "fixture-circle", "fixture-arrow", "fixture-image", "fixture-frame-inner"], "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-note", "boardId": "fixture-core-board", "type": "STICKY_NOTE", "x": 140, "y": 145, "width": 220, "height": 170, "text": "Sticky note\nDrag, resize, rotate", "backgroundColor": "#fde68a", "textColor": "#111827", "fontSize": 18, "fontFamily": "Inter", "zIndex": 2, "votes": 3, "rotation": -3, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-text", "boardId": "fixture-core-board", "type": "TEXT_BOX", "x": 410, "y": 145, "width": 250, "height": 100, "text": "Editable text - undo/redo", "backgroundColor": "transparent", "textColor": "#f9fafb", "fontSize": 24, "fontFamily": "Inter", "zIndex": 3, "votes": 0, "rotation": 0, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-rect", "boardId": "fixture-core-board", "type": "SHAPE", "shape": "ROUNDED_RECTANGLE", "x": 145, "y": 380, "width": 230, "height": 150, "text": "Rounded rectangle", "backgroundColor": "#60a5fa", "textColor": "#0f172a", "zIndex": 4, "votes": 0, "rotation": 12, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-circle", "boardId": "fixture-core-board", "type": "SHAPE", "shape": "CIRCLE", "x": 425, "y": 380, "width": 150, "height": 150, "text": "Circle", "backgroundColor": "#34d399", "textColor": "#052e16", "zIndex": 5, "votes": 0, "rotation": 0, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-arrow", "boardId": "fixture-core-board", "type": "SHAPE", "shape": "ARROW_BOTH", "x": 620, "y": 420, "width": 250, "height": 10, "text": "", "backgroundColor": "#f9fafb", "textColor": "#f9fafb", "zIndex": 6, "votes": 0, "rotation": -8, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-image", "boardId": "fixture-core-board", "type": "IMAGE", "x": 610, "y": 145, "width": 280, "height": 158, "text": "", "backgroundColor": "#0f172a", "zIndex": 7, "votes": 0, "rotation": 2, "originalWidth": 320, "originalHeight": 180, "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-frame-inner", "boardId": "fixture-core-board", "type": "FRAME", "x": 610, "y": 545, "width": 280, "height": 130, "text": "Nested frame", "backgroundColor": "#334155", "textColor": "#f8fafc", "zIndex": 8, "votes": 0, "rotation": 0, "children": ["fixture-diamond"], "createdAt": 1787548800000, "updatedAt": 1787548800000 },
+    { "itemId": "fixture-diamond", "boardId": "fixture-core-board", "type": "SHAPE", "shape": "DIAMOND", "x": 700, "y": 565, "width": 90, "height": 80, "text": "", "backgroundColor": "#c084fc", "textColor": "#2e1065", "zIndex": 9, "votes": 0, "rotation": 0, "createdAt": 1787548800000, "updatedAt": 1787548800000 }
+  ],
+  "image": {
+    "imageId": "fixture-image-data",
+    "itemId": "fixture-image",
+    "boardId": "fixture-core-board",
+    "type": "src",
+    "fileName": "fixture-image.png",
+    "mimeType": "image/png",
+    "createdAt": 1787548800000
+  }
+}

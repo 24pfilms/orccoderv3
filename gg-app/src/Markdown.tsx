@@ -1,4 +1,5 @@
 import { memo, useCallback, useContext, useMemo, useRef, useState, createContext } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -46,6 +47,48 @@ function ExternalLink({
     >
       {children}
     </a>
+  );
+}
+
+export function ZoomableImage({
+  node: _node,
+  alt = "",
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<"img"> & { node?: unknown }): React.ReactElement {
+  const [previewWidth, setPreviewWidth] = useState<number | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  const showPreview = (): void => {
+    const width = imageRef.current?.getBoundingClientRect().width ?? 0;
+    setPreviewWidth(Math.max(width * 4, 320));
+  };
+
+  return (
+    <>
+      <img
+        {...props}
+        ref={imageRef}
+        alt={alt}
+        className={["markdown-image", className].filter(Boolean).join(" ")}
+        tabIndex={0}
+        onMouseEnter={showPreview}
+        onMouseLeave={() => setPreviewWidth(null)}
+        onFocus={showPreview}
+        onBlur={() => setPreviewWidth(null)}
+      />
+      {previewWidth !== null &&
+        createPortal(
+          <div
+            className="image-hover-preview"
+            style={{ "--image-preview-width": `${previewWidth}px` } as React.CSSProperties}
+            aria-hidden="true"
+          >
+            <img src={props.src} alt="" />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -285,7 +328,7 @@ const MemoizedMarkdownBlock = memo(
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeHighlight]}
-          components={{ a: ExternalLink, pre: PreBlock }}
+          components={{ a: ExternalLink, img: ZoomableImage, pre: PreBlock }}
         >
           {normalized}
         </ReactMarkdown>

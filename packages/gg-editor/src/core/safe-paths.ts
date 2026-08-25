@@ -18,7 +18,17 @@
  */
 
 import { homedir, tmpdir } from "node:os";
-import { basename, resolve as resolvePath } from "node:path";
+import path, { resolve as resolvePath } from "node:path";
+
+function portablePath(cwd: string, requested: string): typeof path.posix | typeof path.win32 {
+  if (cwd.startsWith("/") || requested.startsWith("/")) return path.posix;
+  if (/^[A-Za-z]:[\\/]/.test(cwd) || /^[A-Za-z]:[\\/]/.test(requested)) return path.win32;
+  return path;
+}
+
+export function resolvePortablePath(cwd: string, requested: string): string {
+  return portablePath(cwd, requested).resolve(cwd, requested);
+}
 
 /** Default user-visible output directory for sandbox-redirected files. */
 export const USER_OUTPUT_DIR_NAME = "gg-editor-out";
@@ -34,10 +44,6 @@ function realTmpdir(): string {
   // ffmpeg-only tools that don't feed Resolve back; the redirect helper is
   // the one that pushes Resolve-facing writes elsewhere.
   return resolvePath(tmpdir());
-}
-
-function defaultAllowRoots(cwd: string): string[] {
-  return [resolvePath(cwd), realTmpdir(), userOutputDir()];
 }
 
 function isUnderRoot(absPath: string, root: string): boolean {
@@ -62,8 +68,13 @@ export function safeOutputPath(cwd: string, requested: string, opts?: SafeOutput
   if (!requested || typeof requested !== "string") {
     throw new Error("output path is empty");
   }
-  const abs = resolvePath(cwd, requested);
-  const roots = [...defaultAllowRoots(cwd), ...(opts?.allowRoots ?? []).map((r) => resolvePath(r))];
+  const abs = resolvePortablePath(cwd, requested);
+  const roots = [
+    resolvePortablePath(cwd, cwd),
+    realTmpdir(),
+    userOutputDir(),
+    ...(opts?.allowRoots ?? []).map((root) => resolvePortablePath(cwd, root)),
+  ];
   for (const root of roots) {
     if (isUnderRoot(abs, root)) return abs;
   }
@@ -131,9 +142,9 @@ export function safeResolveOutputPath(
   if (!requested || typeof requested !== "string") {
     throw new Error("output path is empty");
   }
-  const abs = resolvePath(cwd, requested);
+  const abs = resolvePortablePath(cwd, requested);
   if (isSandboxPath(abs)) {
-    const out = resolvePath(userOutputDir(), basename(abs));
+    const out = resolvePath(userOutputDir(), portablePath(cwd, requested).basename(abs));
     return {
       path: out,
       redirected: true,

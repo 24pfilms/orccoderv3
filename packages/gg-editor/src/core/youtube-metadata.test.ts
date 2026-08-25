@@ -128,7 +128,7 @@ describe("generateMetadata", () => {
   it("throws without API key", async () => {
     delete process.env.OPENAI_API_KEY;
     await expect(
-      generateMetadata({ language: "en", durationSec: 60, segments: [] }),
+      generateMetadata({ language: "en", durationSec: 60, segments: [] }, { apiKey: "" }),
     ).rejects.toThrow(/OPENAI_API_KEY/);
   });
 

@@ -31,6 +31,7 @@ import {
   arrangeAllWindows,
   onWindowOrder,
   restoreTarget,
+  setWindowSurface,
   onTrayIntent,
   takeTrayIntent,
   setUpdateAvailable,
@@ -47,6 +48,7 @@ import {
   openProjectPath,
   type AgentState,
   type WorkspaceMode,
+  type WindowSurface,
   type ModelOption,
   type SlashCommand,
   type BackgroundTask,
@@ -118,7 +120,7 @@ import { TitleUsageMeter } from "./TitleUsageMeter";
 import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
-import { Markdown, PromptSendProvider } from "./Markdown";
+import { Markdown, PromptSendProvider, ZoomableImage } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
 import { reportUpdateReadiness, useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
@@ -132,6 +134,13 @@ import { toast } from "./toast";
 import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
 import { basename } from "./tool-format";
 import { OrcaAppearance } from "./orca/OrcaAppearance";
+import { setAttentionOverride } from "./orca/orca-theme";
+import { BoardModeButton } from "./BoardModeButton";
+import { BoardErrorBoundary } from "./board/BoardErrorBoundary";
+import { BoardSurface, WorkspaceSurface } from "./board/BoardSurface";
+import { isBoardModeEnabled } from "./board/feature";
+import { BoardFlushCoordinator, type BoardFlushReason } from "./board/flush";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 import "./orca/orca-theme.css";
 import "./orca/scarlet.css";
@@ -454,6 +463,9 @@ function App(): React.ReactElement {
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
   const [tokens, setTokens] = useState(0);
   const [doneStatus, setDoneStatus] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    setAttentionOverride(doneStatus !== null);
+  }, [doneStatus]);
   // Pending plan awaiting review (the markdown). Non-null opens the review modal.
   const [planReview, setPlanReview] = useState<string | null>(null);
   // Path of the plan awaiting review, captured from `plan_exit`. Needed on accept
@@ -511,10 +523,18 @@ function App(): React.ReactElement {
   const [showNotes, setShowNotes] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const [notes, setNotes] = useState("");
-  // Every window chooses a code or chat workspace before connecting. Mode stays
-  // separate from picker visibility so restore and reopened pickers are explicit.
+  // Every window chooses a code or chat workspace before connecting. Board Mode
+  // is a separate visual surface and never replaces that workspace or its session.
   const [needsProject, setNeedsProject] = useState(true);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("code");
+  const [boardModeEnabled] = useState(() => isBoardModeEnabled());
+  const [windowSurface, setWindowSurfaceState] = useState<WindowSurface>("workspace");
+  const [boardMounted, setBoardMounted] = useState(false);
+  const [surfaceChanging, setSurfaceChanging] = useState(false);
+  const [boardDirty, setBoardDirty] = useState(false);
+  const [boardFlushCoordinator] = useState(() => new BoardFlushCoordinator(setBoardDirty));
+  const closingAfterBoardFlushRef = useRef(false);
+  const restoredSurfaceRef = useRef<WindowSurface>("workspace");
   // False until the boot-time workspace-restore check resolves.
   const [restoreChecked, setRestoreChecked] = useState(false);
   // Every window starts from the mode-neutral home screen before choosing Code or Chat.
@@ -634,10 +654,12 @@ function App(): React.ReactElement {
     if (autopilotReviewing || planReview) blockers.push("A review is waiting for a decision");
     if (input.trim() || attachments.length > 0) blockers.push("A draft or attachment is waiting");
     if (enhancing || queuedCount > 0) blockers.push("A prompt operation is still active");
+    if (boardDirty) blockers.push("Board changes need saving");
     void reportUpdateReadiness(blockers);
   }, [
     attachments.length,
     autopilotReviewing,
+    boardDirty,
     enhancing,
     input,
     kenRunning,
@@ -1469,12 +1491,110 @@ function App(): React.ReactElement {
       .then((target) => {
         if (target) {
           setWorkspaceMode(target.mode);
+          restoredSurfaceRef.current =
+            boardModeEnabled && target.surface === "board" ? "board" : "workspace";
           onProjectChosen();
         }
       })
       .finally(() => setRestoreChecked(true));
     // Mount-only: the native target remains stable for this window's lifetime.
-  }, []);
+  }, [boardModeEnabled]);
+
+  useEffect(() => {
+    if (!hydrated || restoredSurfaceRef.current !== "board") return;
+    restoredSurfaceRef.current = "workspace";
+    setBoardMounted(true);
+    setWindowSurfaceState("board");
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!boardModeEnabled) return;
+    document.documentElement.dataset.windowSurface = windowSurface;
+    return () => {
+      delete document.documentElement.dataset.windowSurface;
+    };
+  }, [boardModeEnabled, windowSurface]);
+
+  const flushBoard = useCallback(
+    async (reason: BoardFlushReason): Promise<boolean> => {
+      const result = await boardFlushCoordinator.flush(reason);
+      if (result.ok) return true;
+      setStatus(`${result.error ?? "Board changes could not be saved"}; retry from Board Mode`);
+      return false;
+    },
+    [boardFlushCoordinator],
+  );
+
+  const changeWindowSurface = useCallback(
+    async (
+      surface: WindowSurface,
+      flushReason: BoardFlushReason = "surface-switch",
+    ): Promise<boolean> => {
+      if (!boardModeEnabled || surface === windowSurface) return true;
+      if (surfaceChanging) return false;
+      setSurfaceChanging(true);
+      try {
+        if (surface === "workspace" && !(await flushBoard(flushReason))) return false;
+        await setWindowSurface(surface);
+        setWindowSurfaceState(surface);
+        setBoardMounted(surface === "board");
+        if (surface === "board") setIsFileDragOver(false);
+        return true;
+      } catch {
+        setStatus("surface switch failed; current surface remains active");
+        return false;
+      } finally {
+        setSurfaceChanging(false);
+      }
+    },
+    [boardModeEnabled, flushBoard, surfaceChanging, windowSurface],
+  );
+
+  const openProjectPicker = useCallback(async (): Promise<void> => {
+    if (windowSurface === "board" && !(await changeWindowSurface("workspace", "project-change"))) {
+      return;
+    }
+    setShowPicker(true);
+  }, [changeWindowSurface, windowSurface]);
+
+  useEffect(() => {
+    if (!boardModeEnabled) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
+        if (closingAfterBoardFlushRef.current) return;
+        if (!(await flushBoard("window-close"))) return;
+        closingAfterBoardFlushRef.current = true;
+        try {
+          await getCurrentWindow().destroy();
+        } catch {
+          closingAfterBoardFlushRef.current = false;
+          setStatus("window close failed; Board changes remain available");
+        }
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [boardModeEnabled, flushBoard]);
+
+  useEffect(() => {
+    if (!boardModeEnabled || needsProject) return;
+    const toggleSurface = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "b") return;
+      event.preventDefault();
+      void changeWindowSurface(windowSurface === "board" ? "workspace" : "board");
+    };
+    window.addEventListener("keydown", toggleSurface);
+    return () => window.removeEventListener("keydown", toggleSurface);
+  }, [boardModeEnabled, changeWindowSurface, needsProject, windowSurface]);
 
   useEffect(() => {
     // Only the main window auto-connects to its default project. Secondary
@@ -2286,6 +2406,22 @@ function App(): React.ReactElement {
     setHydrateNonce((n) => n + 1);
   }
 
+  const boardControl = boardModeEnabled && state?.cwd && (
+    <BoardModeButton
+      surface={windowSurface}
+      disabled={surfaceChanging}
+      onChange={(surface) => void changeWindowSurface(surface)}
+    />
+  );
+  const boardAgentStatus =
+    running || kenRunning || autopilotReviewing
+      ? "Agent active"
+      : doneStatus
+        ? "Agent completed"
+        : /error|fail/i.test(status)
+          ? "Agent needs attention"
+          : "Agent ready";
+
   const updateFooter =
     appUpdate.phase === "available" || previewUpdateFooter ? (
       <button
@@ -2405,10 +2541,10 @@ function App(): React.ReactElement {
   return (
     <div
       className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}`}
-      onDragEnter={handleWindowDragEnter}
-      onDragOver={handleWindowDragOver}
-      onDragLeave={handleWindowDragLeave}
-      onDrop={handleWindowDrop}
+      onDragEnter={windowSurface === "workspace" ? handleWindowDragEnter : undefined}
+      onDragOver={windowSurface === "workspace" ? handleWindowDragOver : undefined}
+      onDragLeave={windowSurface === "workspace" ? handleWindowDragLeave : undefined}
+      onDrop={windowSurface === "workspace" ? handleWindowDrop : undefined}
     >
       <div className="orca-wallpaper" aria-hidden="true" />
 
@@ -2426,6 +2562,17 @@ function App(): React.ReactElement {
         stripExtras={
           <>
             <TitleUsageMeter currentProvider={state?.provider ?? ""} />
+            {windowSurface === "board" && (
+              <button
+                type="button"
+                className="board-agent-status"
+                aria-live="polite"
+                title="Return to Workspace to view agent activity"
+                onClick={() => void changeWindowSurface("workspace")}
+              >
+                {boardAgentStatus}
+              </button>
+            )}
             {windowTotal > 1 && windowIndex !== null && (
               <span
                 className={`window-index${isThisFocused ? "" : " dim"}`}
@@ -2440,7 +2587,7 @@ function App(): React.ReactElement {
       >
         <BackButton
           label={workspaceMode === "chat" ? "Back to chats" : "Back to this project's sessions"}
-          onClick={() => setShowPicker(true)}
+          onClick={() => void openProjectPicker()}
         />
         <div className="rank-badge-wrap">
           <RankBadge
@@ -2459,6 +2606,7 @@ function App(): React.ReactElement {
         {workspaceMode === "chat" ? (
           <span className="picker-head-actions">
             <OrcaAppearance />
+            {boardControl}
             <button
               className="btn btn-primary btn-sm"
               disabled={running}
@@ -2493,6 +2641,7 @@ function App(): React.ReactElement {
                 }}
               />
               <OrcaAppearance />
+              {boardControl}
               <button
                 className="btn btn-primary btn-sm"
                 disabled={running}
@@ -2556,386 +2705,403 @@ function App(): React.ReactElement {
         )}
       </WorkspaceHeader>
 
-      {/* Non-scrolling frame the same size as the chat viewport. The banner
+      <WorkspaceSurface boardEnabled={boardModeEnabled} hidden={windowSurface === "board"}>
+        {/* Non-scrolling frame the same size as the chat viewport. The banner
           lives HERE, not inside `.transcript` — `.transcript` scrolls, and an
           absolutely positioned child of a scrolling container is pinned to the
           top of the scrolled CONTENT, not the visible viewport, so in an
           existing session scrolled down it rendered far above what's on
           screen. Anchoring to this non-scrolling sibling keeps it pinned to
           what the user is actually looking at, at any scroll position. */}
-      <div
-        className="transcript-frame"
-        onMouseEnter={() => setChatHovered(true)}
-        onMouseLeave={() => setChatHovered(false)}
-      >
-        {workspaceMode === "code" && kenPowerBanner && (
-          <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
-        )}
-        <div className="transcript" ref={attachTranscript} onScroll={onTranscriptScroll}>
-          {!hydrated && items.length === 0 ? (
-            <TranscriptSkeleton />
-          ) : (
-            <>
-              {items.length === 0 &&
-                (status === "ready" ? (
-                  <WakeScreen chat={workspaceMode === "chat"} />
-                ) : (
-                  <div className="line transcript-reveal" style={{ color: theme.textDim }}>
-                    {`\u273b ${status}`}
-                  </div>
-                ))}
-              <PromptSendProvider value={sendKenRecommendedPrompt}>
-                {items.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-                ))}
-              </PromptSendProvider>
-            </>
+        <div
+          className="transcript-frame"
+          onMouseEnter={() => setChatHovered(true)}
+          onMouseLeave={() => setChatHovered(false)}
+        >
+          {workspaceMode === "code" && kenPowerBanner && (
+            <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
+          )}
+          <div className="transcript" ref={attachTranscript} onScroll={onTranscriptScroll}>
+            {!hydrated && items.length === 0 ? (
+              <TranscriptSkeleton />
+            ) : (
+              <>
+                {items.length === 0 &&
+                  (status === "ready" ? (
+                    <WakeScreen chat={workspaceMode === "chat"} />
+                  ) : (
+                    <div className="line transcript-reveal" style={{ color: theme.textDim }}>
+                      {`\u273b ${status}`}
+                    </div>
+                  ))}
+                <PromptSendProvider value={sendKenRecommendedPrompt}>
+                  {items.map((it) => (
+                    <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
+                  ))}
+                </PromptSendProvider>
+              </>
+            )}
+          </div>
+          {items.length > 0 && (
+            <ExportChatButton
+              visible={chatHovered || exporting}
+              busy={exporting}
+              onExport={() => void exportTranscript()}
+            />
           )}
         </div>
-        {items.length > 0 && (
-          <ExportChatButton
-            visible={chatHovered || exporting}
-            busy={exporting}
-            onExport={() => void exportTranscript()}
-          />
-        )}
-      </div>
 
-      <div className="liveregion">
-        {workspaceMode === "code" && autopilotReviewing && (
-          <AutopilotReviewBar onCancel={requestCancel} />
-        )}
-        {workspaceMode === "code" && kenRunning && (
-          <KenActivityBar
-            runStartTs={kenRunStartTs}
-            tokens={kenTokens}
-            isThinking={kenIsThinking}
-            thinkingStartTs={kenThinkingStartTs}
-            thinkingAccumMs={kenThinkingAccumMs}
-            onCancel={() => void cancelKen()}
-          />
-        )}
-        {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
+        <div className="liveregion">
+          {workspaceMode === "code" && autopilotReviewing && (
+            <AutopilotReviewBar onCancel={requestCancel} />
+          )}
+          {workspaceMode === "code" && kenRunning && (
+            <KenActivityBar
+              runStartTs={kenRunStartTs}
+              tokens={kenTokens}
+              isThinking={kenIsThinking}
+              thinkingStartTs={kenThinkingStartTs}
+              thinkingAccumMs={kenThinkingAccumMs}
+              onCancel={() => void cancelKen()}
+            />
+          )}
+          {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
+          {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
             build is idle — otherwise the idle "Ready for work" line stacks under
             Ken's spinner. When the build is also running, both bars show. */}
-        {(workspaceMode === "chat" || running || (!kenRunning && !autopilotReviewing)) && (
-          <ActivityBar
-            running={running}
-            cancelling={cancelling}
-            tokens={tokens}
-            doneStatus={doneStatus}
-            isThinking={isThinking}
-            thinkingStartTs={thinkingStartTs}
-            thinkingAccumMs={thinkingAccumMs}
-            planTotal={workspaceMode === "chat" ? 0 : planTotal}
-            planDone={workspaceMode === "chat" ? 0 : Math.min(planDone.size, planTotal)}
-            onCancel={requestCancel}
-            toolsHidden={toolsHidden}
-            hasToolFeed={liveToolFeed.length > 0}
-            onToggleTools={toggleTools}
-          />
-        )}
-      </div>
-
-      <div
-        className={`inputwrap${isFileDragOver ? " dragover" : ""}${
-          scheduleInvalid ? " schedule-invalid" : ""
-        }`}
-      >
-        {scheduleDraft ? (
-          <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
-        ) : (
-          slashOpen && (
-            <SlashMenu
-              commands={slashMatches}
-              activeIndex={clampedSlashIndex}
-              onSelect={pickSlashCommand}
-              onHover={setSlashIndex}
+          {(workspaceMode === "chat" || running || (!kenRunning && !autopilotReviewing)) && (
+            <ActivityBar
+              running={running}
+              cancelling={cancelling}
+              tokens={tokens}
+              doneStatus={doneStatus}
+              isThinking={isThinking}
+              thinkingStartTs={thinkingStartTs}
+              thinkingAccumMs={thinkingAccumMs}
+              planTotal={workspaceMode === "chat" ? 0 : planTotal}
+              planDone={workspaceMode === "chat" ? 0 : Math.min(planDone.size, planTotal)}
+              onCancel={requestCancel}
+              toolsHidden={toolsHidden}
+              hasToolFeed={liveToolFeed.length > 0}
+              onToggleTools={toggleTools}
             />
-          )
-        )}
-        {mentionOpen && (
-          <FileMentionMenu
-            files={fileMatches}
-            activeIndex={clampedFileIndex}
-            isRecent={mention?.query === ""}
-            onSelect={pickMentionFile}
-            onHover={setFileIndex}
-          />
-        )}
-        <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
-        <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
-        <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
-        <div className="inputrow">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              if (e.target.files) void addFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          <button
-            className="attach-btn"
-            title="Attach files"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip size={16} />
-          </button>
-          <span className="prompt" style={{ color: theme.primary }}>
-            {">"}
-          </span>
-          <div className="input-stack">
-            {enhanceAnim && (
-              <EnhanceDissolve
-                oldText={enhanceAnim.oldText}
-                newText={enhanceAnim.newText}
-                onDone={onEnhanceAnimDone}
+          )}
+        </div>
+
+        <div
+          className={`inputwrap${isFileDragOver ? " dragover" : ""}${
+            scheduleInvalid ? " schedule-invalid" : ""
+          }`}
+        >
+          {scheduleDraft ? (
+            <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
+          ) : (
+            slashOpen && (
+              <SlashMenu
+                commands={slashMatches}
+                activeIndex={clampedSlashIndex}
+                onSelect={pickSlashCommand}
+                onHover={setSlashIndex}
               />
-            )}
-            {/* `@Orca` active: a textarea can't color just one token, so we mirror
+            )
+          )}
+          {mentionOpen && (
+            <FileMentionMenu
+              files={fileMatches}
+              activeIndex={clampedFileIndex}
+              isRecent={mention?.query === ""}
+              onSelect={pickMentionFile}
+              onHover={setFileIndex}
+            />
+          )}
+          <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
+          <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
+          <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
+          <div className="inputrow">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,video/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                if (e.target.files) void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              className="attach-btn"
+              title="Attach files"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip size={16} />
+            </button>
+            <span className="prompt" style={{ color: theme.primary }}>
+              {">"}
+            </span>
+            <div className="input-stack">
+              {enhanceAnim && (
+                <EnhanceDissolve
+                  oldText={enhanceAnim.oldText}
+                  newText={enhanceAnim.newText}
+                  onDone={onEnhanceAnimDone}
+                />
+              )}
+              {/* `@Orca` active: a textarea can't color just one token, so we mirror
                 the input in an aligned overlay where the leading `@Orca` shimmers
                 in Ken's color. The textarea text below is made transparent (caret
                 stays visible) so only this styled copy shows. Metrics match
                 `.input` 1:1 so wrapping/caret line up. */}
-            {kenActive && kenInputParts && (
-              <div className="ken-input-highlight" aria-hidden="true">
-                {kenInputParts.lead}
-                <ShimmerText base={theme.ken} bright="#ffffff">
-                  {kenInputParts.token}
-                </ShimmerText>
-                {kenInputParts.rest}
-              </div>
-            )}
-            <textarea
-              ref={attachInput}
-              className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
-              rows={1}
-              // Lock the input while the dissolve→decode animation plays: the caret
-              // is invisible, so typing would be silently discarded and Enter would
-              // submit the un-enhanced draft mid-animation.
-              readOnly={enhanceAnim !== null}
-              value={input}
-              placeholder={workspaceMode === "chat" ? "Ask anything\u2026" : displayPlaceholder}
-              onPaste={(e) => {
-                const files = Array.from(e.clipboardData.files);
-                if (files.length > 0) {
-                  e.preventDefault();
-                  void addFiles(files);
-                }
-              }}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setSlashIndex(0);
-                setCaret(e.target.selectionStart ?? e.target.value.length);
-                // Typing exits history-recall mode so ↑/↓ start fresh next time.
-                if (historyIndex !== null) setHistoryIndex(null);
-                // Drop the enhancement the instant the text diverges from it, so
-                // the highlighted preview/bubble never misalign with edited text.
-                if (enhancement && e.target.value !== enhancement.plain) setEnhancement(null);
-                updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
-              }}
-              onClick={(e) => {
-                const el = e.currentTarget;
-                setCaret(el.selectionStart ?? el.value.length);
-                updateMention(el.value, el.selectionStart ?? el.value.length);
-              }}
-              onKeyUp={(e) => {
-                const el = e.currentTarget;
-                setCaret(el.selectionStart ?? el.value.length);
-                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                  updateMention(el.value, el.selectionStart ?? el.value.length);
-                }
-              }}
-              onKeyDown={(e) => {
-                // While the dissolve→decode animation plays the input is locked;
-                // swallow keys so Enter can't submit the un-enhanced draft.
-                if (enhanceAnim) {
-                  e.preventDefault();
-                  return;
-                }
-                if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  const delta = e.key === "ArrowDown" ? 1 : -1;
-                  setFileIndex((i) => (i + delta + fileMatches.length) % fileMatches.length);
-                } else if (mentionOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
-                  e.preventDefault();
-                  const file = fileMatches[clampedFileIndex];
-                  if (file) pickMentionFile(file);
-                } else if (mentionOpen && e.key === "Escape") {
-                  e.preventDefault();
-                  setMention(null);
-                } else if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  const delta = e.key === "ArrowDown" ? 1 : -1;
-                  setSlashIndex((i) => (i + delta + slashMatches.length) % slashMatches.length);
-                } else if (slashOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
-                  e.preventDefault();
-                  const cmd = slashMatches[clampedSlashIndex];
-                  if (cmd) pickSlashCommand(cmd);
-                } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                  // Menus are closed here (handled above), so arrows recall sent
-                  // prompts shell-style — unless the caret is mid-text in a
-                  // multi-line draft, where navigateHistory declines and the
-                  // cursor moves normally.
-                  if (navigateHistory(e.key === "ArrowUp" ? -1 : 1, e.currentTarget)) {
+              {kenActive && kenInputParts && (
+                <div className="ken-input-highlight" aria-hidden="true">
+                  {kenInputParts.lead}
+                  <ShimmerText base={theme.ken} bright="#ffffff">
+                    {kenInputParts.token}
+                  </ShimmerText>
+                  {kenInputParts.rest}
+                </div>
+              )}
+              <textarea
+                ref={attachInput}
+                className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
+                rows={1}
+                // Lock the input while the dissolve→decode animation plays: the caret
+                // is invisible, so typing would be silently discarded and Enter would
+                // submit the un-enhanced draft mid-animation.
+                readOnly={enhanceAnim !== null}
+                value={input}
+                placeholder={workspaceMode === "chat" ? "Ask anything\u2026" : displayPlaceholder}
+                onPaste={(e) => {
+                  const files = Array.from(e.clipboardData.files);
+                  if (files.length > 0) {
                     e.preventDefault();
+                    void addFiles(files);
                   }
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  // Enter sends; Shift+Enter inserts a newline (textarea default).
-                  e.preventDefault();
-                  submit();
-                } else if (e.key === "Escape") {
-                  // Cancel the build if it's running; otherwise cancel Ken so the
-                  // "esc to cancel" on his bar actually works.
-                  if (slashOpen) setInput("");
-                  else if (running && !cancelling) requestCancel();
-                  else if (kenRunning) void cancelKen();
-                }
-              }}
-              autoFocus
-            />
+                }}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSlashIndex(0);
+                  setCaret(e.target.selectionStart ?? e.target.value.length);
+                  // Typing exits history-recall mode so ↑/↓ start fresh next time.
+                  if (historyIndex !== null) setHistoryIndex(null);
+                  // Drop the enhancement the instant the text diverges from it, so
+                  // the highlighted preview/bubble never misalign with edited text.
+                  if (enhancement && e.target.value !== enhancement.plain) setEnhancement(null);
+                  updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                }}
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  setCaret(el.selectionStart ?? el.value.length);
+                  updateMention(el.value, el.selectionStart ?? el.value.length);
+                }}
+                onKeyUp={(e) => {
+                  const el = e.currentTarget;
+                  setCaret(el.selectionStart ?? el.value.length);
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    updateMention(el.value, el.selectionStart ?? el.value.length);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // While the dissolve→decode animation plays the input is locked;
+                  // swallow keys so Enter can't submit the un-enhanced draft.
+                  if (enhanceAnim) {
+                    e.preventDefault();
+                    return;
+                  }
+                  if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                    e.preventDefault();
+                    const delta = e.key === "ArrowDown" ? 1 : -1;
+                    setFileIndex((i) => (i + delta + fileMatches.length) % fileMatches.length);
+                  } else if (
+                    mentionOpen &&
+                    (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))
+                  ) {
+                    e.preventDefault();
+                    const file = fileMatches[clampedFileIndex];
+                    if (file) pickMentionFile(file);
+                  } else if (mentionOpen && e.key === "Escape") {
+                    e.preventDefault();
+                    setMention(null);
+                  } else if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                    e.preventDefault();
+                    const delta = e.key === "ArrowDown" ? 1 : -1;
+                    setSlashIndex((i) => (i + delta + slashMatches.length) % slashMatches.length);
+                  } else if (slashOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
+                    e.preventDefault();
+                    const cmd = slashMatches[clampedSlashIndex];
+                    if (cmd) pickSlashCommand(cmd);
+                  } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                    // Menus are closed here (handled above), so arrows recall sent
+                    // prompts shell-style — unless the caret is mid-text in a
+                    // multi-line draft, where navigateHistory declines and the
+                    // cursor moves normally.
+                    if (navigateHistory(e.key === "ArrowUp" ? -1 : 1, e.currentTarget)) {
+                      e.preventDefault();
+                    }
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    // Enter sends; Shift+Enter inserts a newline (textarea default).
+                    e.preventDefault();
+                    submit();
+                  } else if (e.key === "Escape") {
+                    // Cancel the build if it's running; otherwise cancel Ken so the
+                    // "esc to cancel" on his bar actually works.
+                    if (slashOpen) setInput("");
+                    else if (running && !cancelling) requestCancel();
+                    else if (kenRunning) void cancelKen();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
           </div>
+          {!enhanceAnim && (
+            // Pill pinned to the center of the input box (.inputwrap) top border,
+            // overlapping it. Decoupled from text flow, so it never overlaps text,
+            // drifts, or shifts the caret/height; centered (not in a corner) to
+            // stay clear of the status row's "esc to cancel". Always mounted (so it
+            // can transition both ways); the `visible` class fades/slides it in
+            // when there's text and out when there isn't.
+            <button
+              className={`enhance-pill${enhanceHintVisible ? " visible" : ""}${enhancing ? " enhancing" : ""}`}
+              title="Enhance prompt — clearer wording + correct terms"
+              disabled={enhancing || !enhanceHintVisible}
+              aria-hidden={!enhanceHintVisible}
+              onClick={() => void runEnhance()}
+            >
+              {enhancing ? "Enhancing…" : "Enhance?"}
+            </button>
+          )}
         </div>
-        {!enhanceAnim && (
-          // Pill pinned to the center of the input box (.inputwrap) top border,
-          // overlapping it. Decoupled from text flow, so it never overlaps text,
-          // drifts, or shifts the caret/height; centered (not in a corner) to
-          // stay clear of the status row's "esc to cancel". Always mounted (so it
-          // can transition both ways); the `visible` class fades/slides it in
-          // when there's text and out when there isn't.
-          <button
-            className={`enhance-pill${enhanceHintVisible ? " visible" : ""}${enhancing ? " enhancing" : ""}`}
-            title="Enhance prompt — clearer wording + correct terms"
-            disabled={enhancing || !enhanceHintVisible}
-            aria-hidden={!enhanceHintVisible}
-            onClick={() => void runEnhance()}
-          >
-            {enhancing ? "Enhancing…" : "Enhance?"}
-          </button>
-        )}
-      </div>
 
-      <div
-        className={`footer${workspaceMode === "chat" ? " footer-chat" : ""}`}
-        style={{ color: theme.footerText }}
-      >
-        {!hydrated ? (
-          <FooterSkeleton />
-        ) : (
-          <>
-            {workspaceMode === "chat" ? (
-              <span
-                className="footer-left footer-reveal"
-                style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
-              >
-                {state?.chatAgent === "therapist"
-                  ? "Therapist Agent"
-                  : state?.chatAgent === "research"
-                    ? "Research Agent"
-                    : "General Agent"}
-              </span>
-            ) : (
-              <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
-                {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
-                {schedules.length > 0 && (
-                  <>
-                    {runningTaskCount > 0 && <FooterSep />}
-                    <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
-                  </>
-                )}
-                {state?.planMode && (
-                  <>
-                    {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
-                    <span className="footer-plan">
-                      <ShimmerText base={theme.secondary} bright="#ddd6fe">
-                        {"\u25C6 plan mode"}
-                      </ShimmerText>
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-            <span className="footer-right footer-reveal">
-              {contextPct > 0 && (
-                <>
-                  <ContextMeter pct={contextPct} />
-                  <FooterSep />
-                </>
-              )}
-              {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
-                (() => {
-                  const level = state?.thinkingLevel ?? null;
-                  const label = level ? `Thinking ${level}` : "Thinking off";
-                  const maxPower = level === "xhigh" || level === "max";
-                  return (
-                    <>
-                      <button
-                        className="thinking-toggle"
-                        style={{
-                          color: thinkingColor(level),
-                          fontWeight: level === "high" ? 600 : 400,
-                        }}
-                        title="Cycle reasoning level"
-                        onClick={() => void cycleThinking()}
-                      >
-                        {maxPower ? (
-                          <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
-                            {label}
-                          </ShimmerText>
-                        ) : (
-                          label
-                        )}
-                      </button>
-                      <FooterSep />
-                    </>
-                  );
-                })()}
-              <span className="model-anchor">
-                <span className="model-label" style={{ color: theme.text }}>
-                  OrcaCoder
+        <div
+          className={`footer${workspaceMode === "chat" ? " footer-chat" : ""}`}
+          style={{ color: theme.footerText }}
+        >
+          {!hydrated ? (
+            <FooterSkeleton />
+          ) : (
+            <>
+              {workspaceMode === "chat" ? (
+                <span
+                  className="footer-left footer-reveal"
+                  style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
+                >
+                  {state?.chatAgent === "therapist"
+                    ? "Therapist Agent"
+                    : state?.chatAgent === "research"
+                      ? "Research Agent"
+                      : "General Agent"}
                 </span>
-                <ModelSelect
-                  models={models}
-                  currentModel={state?.model ?? ""}
-                  onSelect={onSelectModel}
-                  disabled={running}
-                  title={
-                    workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
-                  }
-                />
-              </span>
-              {workspaceMode === "code" && (
-                <>
-                  <FooterSep />
-                  <span className="model-anchor">
-                    <span className="model-label" style={{ color: theme.ken }}>
-                      Orca
-                    </span>
-                    <ModelSelect
-                      models={models}
-                      currentModel={state?.kenModel ?? state?.model ?? ""}
-                      onSelect={(id) => onSelectKenModel(id)}
-                      color={theme.ken}
-                      title={
-                        state?.kenModelOverride
-                          ? "Orca is pinned to a separate model — click to change"
-                          : "Orca follows OrcaCoder's model — click to pin one"
-                      }
-                      onSelectFollow={() => onSelectKenModel(null)}
-                      followActive={!state?.kenModelOverride}
-                    />
-                  </span>
-                </>
+              ) : (
+                <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
+                  {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
+                  {schedules.length > 0 && (
+                    <>
+                      {runningTaskCount > 0 && <FooterSep />}
+                      <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
+                    </>
+                  )}
+                  {state?.planMode && (
+                    <>
+                      {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
+                      <span className="footer-plan">
+                        <ShimmerText base={theme.secondary} bright="#ddd6fe">
+                          {"\u25C6 plan mode"}
+                        </ShimmerText>
+                      </span>
+                    </>
+                  )}
+                </span>
               )}
-            </span>
-          </>
-        )}
-      </div>
+              <span className="footer-right footer-reveal">
+                {contextPct > 0 && (
+                  <>
+                    <ContextMeter pct={contextPct} />
+                    <FooterSep />
+                  </>
+                )}
+                {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
+                  (() => {
+                    const level = state?.thinkingLevel ?? null;
+                    const label = level ? `Thinking ${level}` : "Thinking off";
+                    const maxPower = level === "xhigh" || level === "max";
+                    return (
+                      <>
+                        <button
+                          className="thinking-toggle"
+                          style={{
+                            color: thinkingColor(level),
+                            fontWeight: level === "high" ? 600 : 400,
+                          }}
+                          title="Cycle reasoning level"
+                          onClick={() => void cycleThinking()}
+                        >
+                          {maxPower ? (
+                            <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
+                              {label}
+                            </ShimmerText>
+                          ) : (
+                            label
+                          )}
+                        </button>
+                        <FooterSep />
+                      </>
+                    );
+                  })()}
+                <span className="model-anchor">
+                  <span className="model-label" style={{ color: theme.text }}>
+                    OrcaCoder
+                  </span>
+                  <ModelSelect
+                    models={models}
+                    currentModel={state?.model ?? ""}
+                    onSelect={onSelectModel}
+                    disabled={running}
+                    title={
+                      workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
+                    }
+                  />
+                </span>
+                {workspaceMode === "code" && (
+                  <>
+                    <FooterSep />
+                    <span className="model-anchor">
+                      <span className="model-label" style={{ color: theme.ken }}>
+                        Orca
+                      </span>
+                      <ModelSelect
+                        models={models}
+                        currentModel={state?.kenModel ?? state?.model ?? ""}
+                        onSelect={(id) => onSelectKenModel(id)}
+                        color={theme.ken}
+                        title={
+                          state?.kenModelOverride
+                            ? "Orca is pinned to a separate model — click to change"
+                            : "Orca follows OrcaCoder's model — click to pin one"
+                        }
+                        onSelectFollow={() => onSelectKenModel(null)}
+                        followActive={!state?.kenModelOverride}
+                      />
+                    </span>
+                  </>
+                )}
+              </span>
+            </>
+          )}
+        </div>
+      </WorkspaceSurface>
+
+      {boardModeEnabled && boardMounted && (
+        <BoardErrorBoundary
+          onFailure={() => {
+            setStatus("Board Mode failed; agent session remains active");
+            void changeWindowSurface("workspace");
+          }}
+          onReturnToWorkspace={() => void changeWindowSurface("workspace")}
+        >
+          <BoardSurface flushCoordinator={boardFlushCoordinator} />
+        </BoardErrorBoundary>
+      )}
 
       {updateFooter}
 
@@ -3075,7 +3241,13 @@ const TranscriptRow = memo(function TranscriptRow({
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
               {item.images.map((src, i) => (
-                <img key={i} className="user-img" src={src} alt="attachment" onLoad={onImageLoad} />
+                <ZoomableImage
+                  key={i}
+                  className="user-img"
+                  src={src}
+                  alt={`Attachment ${i + 1}`}
+                  onLoad={onImageLoad}
+                />
               ))}
             </div>
           )}
@@ -3210,38 +3382,28 @@ const TranscriptRow = memo(function TranscriptRow({
     case "images":
       return (
         <div className="img-grid">
-          {item.images.map((img, i) => {
-            const openImage = (): void => {
-              if (img.path) void openProjectPath(img.path);
-            };
-            return (
-              <figure
-                key={img.path ?? i}
-                className={`img-card${img.path ? " img-card-clickable" : ""}`}
-                role={img.path ? "button" : undefined}
-                tabIndex={img.path ? 0 : undefined}
-                title={img.path ? `Open ${img.path}` : undefined}
-                onClick={openImage}
-                onKeyDown={(e) => {
-                  if (!img.path || (e.key !== "Enter" && e.key !== " ")) return;
-                  e.preventDefault();
-                  openImage();
-                }}
-              >
-                <img
-                  className="img-thumb"
-                  src={img.src}
-                  alt={img.path ?? "image"}
-                  onLoad={onImageLoad}
-                />
-                {img.path && (
-                  <figcaption className="img-cap" title={img.path}>
+          {item.images.map((img, i) => (
+            <figure key={img.path ?? i} className="img-card">
+              <ZoomableImage
+                className="img-thumb"
+                src={img.src}
+                alt={img.path ?? `Generated image ${i + 1}`}
+                onLoad={onImageLoad}
+              />
+              {img.path && (
+                <figcaption className="img-cap">
+                  <button
+                    type="button"
+                    className="img-open"
+                    title={`Open ${img.path}`}
+                    onClick={() => img.path && void openProjectPath(img.path)}
+                  >
                     {basename(img.path)}
-                  </figcaption>
-                )}
-              </figure>
-            );
-          })}
+                  </button>
+                </figcaption>
+              )}
+            </figure>
+          ))}
         </div>
       );
     case "generating_image":

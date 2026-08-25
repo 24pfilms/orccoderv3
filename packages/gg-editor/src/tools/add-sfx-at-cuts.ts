@@ -1,10 +1,9 @@
-import { resolve as resolvePath } from "node:path";
 import { z } from "zod";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { bundledSfxDescriptionList, listBundledSfxNames, resolveSfx } from "../core/bundled-sfx.js";
 import { compact, err } from "../core/format.js";
 import { checkFfmpeg, probeMedia, runFfmpeg } from "../core/media/ffmpeg.js";
-import { safeOutputPath } from "../core/safe-paths.js";
+import { resolvePortablePath, safeOutputPath } from "../core/safe-paths.js";
 import { buildSfxOnCutsFilter } from "../core/sfx-on-cuts.js";
 
 const AddSfxAtCutsParams = z.object({
@@ -86,7 +85,7 @@ export function createAddSfxAtCutsTool(cwd: string): AgentTool<typeof AddSfxAtCu
     async execute(args, ctx) {
       if (!checkFfmpeg()) return err("ffmpeg not on PATH", "install ffmpeg");
       try {
-        const inAbs = resolvePath(cwd, args.input);
+        const inAbs = resolvePortablePath(cwd, args.input);
         const outAbs = safeOutputPath(cwd, args.output);
         if (inAbs === outAbs) {
           return err("output and input are identical", "use a different output path");

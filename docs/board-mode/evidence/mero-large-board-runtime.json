@@ -1,0 +1,12 @@
+{
+  "items": 500,
+  "loadToItemsMs": 312.5731,
+  "zoomResponseMs": 123.08679999999981,
+  "selectionResponseMs": 100.04520000000002,
+  "beforeZoom": "translate(-2010px, 180px) scale(1)",
+  "afterZoom": "translate(-2251.2px, 201.6px) scale(1.12)",
+  "jsHeapUsedBytes": 38901440,
+  "jsHeapTotalBytes": 96071680,
+  "domNodes": 6522,
+  "layoutCount": 10
+}

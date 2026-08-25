@@ -201,8 +201,10 @@ describe("LspClientPool", () => {
     managers.push(manager);
 
     const file = path.join(tmpDir, "a.fake");
-    const start = Date.now();
     expect((await manager.diagnosticsAfterWriteDetailed(file, "x\n")).kind).toBe("server_failed");
+    // Measure only the TTL exercise below; process startup is unrelated and can
+    // be delayed by other workspace packages running in parallel.
+    const start = Date.now();
 
     // A second write PAST the halfway mark. This is the discriminating step: if
     // a failed retain refreshed `lastUsedAt`, continued writing would keep the

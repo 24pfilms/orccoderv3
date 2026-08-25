@@ -284,6 +284,15 @@
   transform: scale(1.08);
 }
 
+.orca-theme-dot:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.orca-theme-dot:disabled:hover {
+  transform: none;
+}
+
 .orca-theme-dot.active {
   border-color: var(--text);
 }

@@ -17,6 +17,14 @@ import {
 import { toast } from "./toast";
 import { SoundButton } from "./SoundButton";
 import { MemesButton } from "./MemesButton";
+import {
+  loadState as loadOrcaTheme,
+  setAttentionEnabled,
+  setAttentionTheme,
+  subscribeToThemeChanges,
+  themeDotGradient,
+  THEME_NAMES,
+} from "./orca/orca-theme";
 
 interface Props {
   onClose: () => void;
@@ -30,6 +38,19 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
   const [permissions, setPermissions] = useState<PermissionsStatus | null>(null);
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
   const [pluginBusy, setPluginBusy] = useState(false);
+  const [attentionEnabled, setAttentionEnabledState] = useState(
+    () => loadOrcaTheme().attentionEnabled,
+  );
+  const [attentionTheme, setAttentionThemeState] = useState(() => loadOrcaTheme().attentionTheme);
+
+  useEffect(
+    () =>
+      subscribeToThemeChanges((state) => {
+        setAttentionEnabledState(state.attentionEnabled);
+        setAttentionThemeState(state.attentionTheme);
+      }),
+    [],
+  );
 
   useEffect(() => {
     // Native (Rust) read — no sidecar wait needed.
@@ -149,6 +170,44 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
       <div className="modal-row">
         <SoundButton variant="settings" />
         <MemesButton variant="settings" />
+      </div>
+      <div
+        className="modal-row"
+        title="Temporarily use this theme until the window's next task starts"
+      >
+        <span style={{ color: theme.text, flex: 1 }}>Attention theme</span>
+        <span className="orca-theme-dots">
+          {THEME_NAMES.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={`orca-theme-dot${attentionTheme === name ? " active" : ""}`}
+              style={{ background: themeDotGradient(name) }}
+              aria-label={`${name} attention theme`}
+              aria-pressed={attentionTheme === name}
+              title={name[0].toUpperCase() + name.slice(1)}
+              disabled={!attentionEnabled}
+              onClick={() => {
+                setAttentionTheme(name);
+                setAttentionThemeState(name);
+              }}
+            />
+          ))}
+        </span>
+        <span className="cl-toggle-switch">
+          <label className="cl-switch">
+            <input
+              type="checkbox"
+              aria-label="Use an attention theme when waiting for the next task"
+              checked={attentionEnabled}
+              onChange={(event) => {
+                setAttentionEnabled(event.target.checked);
+                setAttentionEnabledState(event.target.checked);
+              }}
+            />
+            <span />
+          </label>
+        </span>
       </div>
       <div className="modal-label" style={{ color: theme.textMuted }}>
         Agent plugins

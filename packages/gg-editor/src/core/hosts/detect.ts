@@ -13,22 +13,29 @@ export interface DetectedHost {
  * Cross-platform process scan. Returns true if any process whose name (or
  * full command line) contains one of the patterns is running.
  */
-function isProcessRunning(patterns: string[]): string[] {
+function processList(): string {
   const os = platform();
   let stdout: string;
 
   if (os === "darwin" || os === "linux") {
-    const r = spawnSync("ps", ["-axo", "comm,args"], { encoding: "utf8" });
+    const r = spawnSync("ps", ["-axo", "comm,args"], {
+      encoding: "utf8",
+      timeout: 2_000,
+      windowsHide: true,
+    });
     stdout = r.stdout ?? "";
   } else if (os === "win32") {
-    const r = spawnSync("tasklist", ["/FO", "CSV", "/NH"], { encoding: "utf8" });
+    const r = spawnSync("tasklist", ["/FO", "CSV", "/NH"], {
+      encoding: "utf8",
+      timeout: 2_000,
+      windowsHide: true,
+    });
     stdout = r.stdout ?? "";
   } else {
-    return [];
+    return "";
   }
 
-  const lower = stdout.toLowerCase();
-  return patterns.filter((p) => lower.includes(p.toLowerCase()));
+  return stdout.toLowerCase();
 }
 
 const HOST_PATTERNS: Record<Exclude<HostName, "none">, { display: string; patterns: string[] }> = {
@@ -52,8 +59,11 @@ const HOST_PATTERNS: Record<Exclude<HostName, "none">, { display: string; patter
  * full app bundle path on macOS first, then fall back.
  */
 export function detectHost(): DetectedHost {
+  const processes = processList();
+  const matching = (patterns: string[]): string[] =>
+    patterns.filter((pattern) => processes.includes(pattern.toLowerCase()));
   // Resolve check — be strict to avoid false positives from "dns.resolve" etc.
-  const resolveBundleHits = isProcessRunning(["DaVinci Resolve.app", "DaVinci Resolve"]);
+  const resolveBundleHits = matching(["DaVinci Resolve.app", "DaVinci Resolve"]);
   if (resolveBundleHits.length > 0) {
     return {
       name: "resolve",
@@ -63,7 +73,7 @@ export function detectHost(): DetectedHost {
   }
 
   // Premiere check
-  const premiereHits = isProcessRunning(HOST_PATTERNS.premiere.patterns);
+  const premiereHits = matching(HOST_PATTERNS.premiere.patterns);
   if (premiereHits.length > 0) {
     return {
       name: "premiere",

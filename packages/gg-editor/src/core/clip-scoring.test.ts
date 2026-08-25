@@ -76,7 +76,9 @@ describe("scoreClipInternal", () => {
 
   it("throws when no API key is configured", async () => {
     delete process.env.OPENAI_API_KEY;
-    await expect(scoreClipInternal("hello world", 0, 10)).rejects.toThrow(/OPENAI_API_KEY/);
+    await expect(scoreClipInternal("hello world", 0, 10, [], { apiKey: "" })).rejects.toThrow(
+      /OPENAI_API_KEY/,
+    );
   });
 
   it("calls OpenAI chat completions with json_object response format and parses the result", async () => {

@@ -1,11 +1,10 @@
-import { resolve as resolvePath } from "node:path";
 import { z } from "zod";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { analyzeReframe, buildReframeFilter, type Aspect } from "../core/face-reframe.js";
 import { compact, err } from "../core/format.js";
 import { checkFfmpeg, runFfmpeg } from "../core/media/ffmpeg.js";
 import { findPython } from "../core/python.js";
-import { safeOutputPath } from "../core/safe-paths.js";
+import { resolvePortablePath, safeOutputPath } from "../core/safe-paths.js";
 
 const FaceReframeParams = z.object({
   input: z.string().describe("Source video (relative resolves to cwd)."),
@@ -77,7 +76,7 @@ export function createFaceReframeTool(cwd: string): AgentTool<typeof FaceReframe
         );
       }
       try {
-        const inAbs = resolvePath(cwd, args.input);
+        const inAbs = resolvePortablePath(cwd, args.input);
         const outAbs = safeOutputPath(cwd, args.output);
         if (inAbs === outAbs) {
           return err("output and input are identical", "use a different output path");

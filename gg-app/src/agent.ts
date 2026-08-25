@@ -89,6 +89,7 @@ export interface BackgroundTask {
 }
 
 export type WorkspaceMode = "code" | "chat";
+export type WindowSurface = "workspace" | "board";
 export type ChatAgentId = "general" | "therapist" | "research";
 
 export type MemoryCategory =
@@ -1271,6 +1272,8 @@ export async function selectProject(cwd: string, sessionPath?: string): Promise<
 /** The active project/session Rust can restore into this webview. */
 export interface RestoreTarget {
   mode: WorkspaceMode;
+  surface?: WindowSurface;
+  selectedBoardId?: string;
   chatAgent?: ChatAgentId;
   cwd: string;
   sessionPath: string | null;
@@ -1289,6 +1292,13 @@ export async function restoreTarget(): Promise<RestoreTarget | null> {
     await logError(`window_restore_target failed: ${String(e)}`);
     return null;
   }
+}
+
+export async function setWindowSurface(
+  surface: WindowSurface,
+  selectedBoardId?: string,
+): Promise<void> {
+  await invoke("set_window_surface", { surface, selectedBoardId: selectedBoardId ?? null });
 }
 
 /**
