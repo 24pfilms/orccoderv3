@@ -14,7 +14,7 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 24 August 2026
+## Current status — 25 August 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
@@ -28,17 +28,73 @@ ComfyUI, and Houdini workflows.
 | Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
 | Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
 | Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
+| Board Mode           | Mero board ported behind a production-off flag; core editing verified in the desktop app     |
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**Today's result: successful.** The latest focused verification passed all eight Markdown image
-tests and the `gg-app` TypeScript check. Earlier broad verification passed all 357 `gg-app` tests;
-the Orca branding and mentor checks, `@kenkaiiii/ggcoder` build, and Rust `cargo check` also pass.
-The remaining imported-suite failures are environment-sensitive prompt-budget, LSP timing, or local
-TypeScript-resolution checks outside this branding work.
+**Today's result: Board Mode went from inert to usable.** Nineteen defects were found by driving
+the real desktop app and reading the mutations that reached SQLite. Every one sat on a boundary
+between two layers that were each correct in isolation — which is why the 74 Board tests passing
+at the start of the day caught none of them. The focused Board suite now passes 24 files / 82
+tests, `gg-app` TypeScript is clean, the Rust side builds, and creating, editing, styling, and
+persisting board items is confirmed working in the running desktop app.
 
 **Known local warning:** the optional `supademo` extension is missing
 `~/.gg/extensions/supademo/plugin.json`. The warning does not block OrcaCoder startup.
+
+## Board Mode
+
+An infinite whiteboard ported from [Mero](https://github.com/24pfilms/Mero), running on a native
+SQLite store with fenced single-editor leases, compare-and-swap revisions, content-addressed
+assets, and backup/restore. It is **off by default** and gated twice.
+
+### Turning it on
+
+```bash
+VITE_BOARD_MODE_ENABLED=true pnpm --dir gg-app tauri dev
+```
+
+The flag is read from `import.meta.env`, so it is baked in when Vite starts — setting it after
+the dev server is running has no effect. A runtime kill switch also applies: Board Mode stays off
+if `localStorage` holds `orcacoder.board-mode.disabled = "true"`. Both gates fail closed.
+
+With the flag on, a **Board** control appears in the window header beside Workspace.
+
+There is also a browser-only fixture that needs no flag, no Tauri, and no database — useful for
+working on the canvas itself:
+
+```bash
+pnpm --dir gg-app dev
+# then open http://localhost:1420/?boardFixture=mero-core
+```
+
+### What works
+
+Sticky notes, text, shapes, arrows, frames, and pen drawing; images via the native picker;
+selection, marquee, drag, resize, rotate, and double-click text editing; font size, colour, layer
+order, duplicate, delete, and votes; a right-click menu including maximize/minimize/download for
+images; undo and redo; zoom, fit, and minimap; PNG/JPG/PDF/CSV export. Everything persists through
+the lease and revision layer, and a second window on the same board opens read-only with an
+explicit takeover.
+
+### Not yet ported
+
+Drag-and-drop of files onto the canvas, text scaling with resize, right-drag marquee, image crop,
+clear-board, and centre-content. These are tracked in
+[`tasks/board-parity-todo.md`](tasks/board-parity-todo.md).
+
+Mero's AI features — generate, edit-with-AI, image-to-video, regenerate — are **deliberately
+deferred**, not missing by accident: the migration excluded Gemini credentials by design.
+
+### A note on testing
+
+Nineteen defects were fixed on 25 August 2026, and the Board suite was green before, during, and
+after every one of them. The tests mock the repository, so each layer looked correct on its own
+while disagreeing with its neighbour — a serde attribute that renamed enum variants but not their
+fields, a payload allow-list that permitted `fontSize` on text but not on notes, a custom URI
+scheme that WebView2 will not load, pointer capture that stole clicks from the toolbar, and
+`overflow-x: auto` on a parent that clipped a menu out of existence. End-to-end coverage against
+the real binary is the gap worth closing next.
 
 ## Self-contained Orca sources
 
