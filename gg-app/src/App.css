@@ -24,7 +24,7 @@
      commandColor #818cf8 on the #374151 message fill). Shared by the user
      bubble and the chat input. */
   --user-text: #818cf8;
-  --user-bg: #313a49;
+  --user-bg: rgba(49, 58, 73, 0.35);
 
   /* Ken Kai (mentor agent) — soft cyan/green. Single source of truth with
      theme.ken in theme.ts; both MUST match or the inline-styled @Ken input
@@ -2440,7 +2440,7 @@ body {
   width: fit-content;
   max-width: min(620px, 78%);
   /* Push the bubble to the right edge (user on right, assistant on left). */
-  background: var(--user-bg);
+  background: transparent;
   color: var(--user-text);
   border-radius: var(--radius-card);
   padding: 6px 12px;
@@ -2448,10 +2448,11 @@ body {
   font-size: 15px;
   white-space: pre-wrap;
   word-break: break-word;
-  /* Reserved, invisible border. The queued state only recolors it, so leaving
-     the queue never changes the bubble's box by 2px — which otherwise nudges
-     the text and every bubble below it at the moment the message is sent. */
-  border: 1px solid transparent;
+  /* Outline only, no fill: the palette wallpaper reads straight through the bubble
+     instead of a slab of grey sitting on it. The border was already reserved here so the
+     queued state could recolor it without shifting the box by 2px — it is simply visible
+     now rather than transparent. */
+  border: 1px solid color-mix(in srgb, var(--user-text) 42%, transparent);
 }
 /* `@Ken` prompt bubble: tinted in Ken's color (matching his replies + the input
    highlight) so the transcript shows this message went to the mentor, not GG
@@ -3141,7 +3142,7 @@ body {
      between the top border and the chat input below (the input's own top gap
      otherwise makes the line look high). */
   padding: 11px 18px 7px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgb(255 255 255 / 7%);
   font-size: 13px;
   line-height: 1.5;
   /* Fixed-width figures so the ticking timer / token count don't reflow the
@@ -3220,9 +3221,14 @@ body {
   gap: 8px;
   margin: 10px 14px;
   padding: 10px 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 14px;
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
   position: relative;
   transition: border-color var(--t-fast);
 }
