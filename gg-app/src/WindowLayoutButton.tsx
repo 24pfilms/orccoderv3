@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { AppWindow } from "lucide-react";
-import { setupWindows, arrangeAllWindows } from "./agent";
+import { setupWindows, arrangeAllWindows, setAllWindowsMinimized } from "./agent";
 import { supportsNativeSelectPopup } from "./platform";
 import { playSound } from "./sounds";
 import { theme } from "./theme";
@@ -147,6 +147,28 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
             <div className="winlayout-divider" role="separator" />
             <button role="menuitem" className="winlayout-item" onClick={() => void run("auto")}>
               Auto-arrange all
+            </button>
+            <div className="winlayout-divider" role="separator" />
+            <button
+              role="menuitem"
+              className="winlayout-item"
+              onClick={() => {
+                setOpen(false);
+                void setAllWindowsMinimized(true);
+              }}
+            >
+              Hide all windows
+              <span className="winlayout-hint">Ctrl+Shift+H</span>
+            </button>
+            <button
+              role="menuitem"
+              className="winlayout-item"
+              onClick={() => {
+                setOpen(false);
+                void setAllWindowsMinimized(false);
+              }}
+            >
+              Show all windows
             </button>
           </div>
         </>

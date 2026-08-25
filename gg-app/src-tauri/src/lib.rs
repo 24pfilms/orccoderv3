@@ -3665,6 +3665,45 @@ fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), Stri
 /// `set_size`/`set_position` dispatch to the main thread asynchronously, and
 /// firing all of them in a tight loop lets the window server coalesce the later
 /// dispatches — so the trailing windows would move but keep their old size.
+/// Minimize every OrcaCoder window at once, or bring them all back.
+///
+/// Minimize rather than hide: a hidden window leaves the taskbar entirely, and with no
+/// global shortcut registered there would be no way back to it. Minimized windows stay
+/// reachable from the taskbar whatever else happens.
+#[tauri::command]
+async fn set_all_minimized(
+    app: tauri::AppHandle,
+    minimized: Option<bool>,
+) -> Result<(), String> {
+    let windows = app.webview_windows();
+    // No explicit target means toggle: if anything is minimized, restore everything;
+    // otherwise put it all away. One shortcut then does both directions.
+    let minimized = minimized.unwrap_or_else(|| {
+        !windows
+            .values()
+            .any(|window| window.is_minimized().unwrap_or(false))
+    });
+    for window in windows.values() {
+        let result = if minimized {
+            window.minimize()
+        } else {
+            window.unminimize()
+        };
+        // One uncooperative window must not strand the rest half-minimized.
+        if let Err(error) = result {
+            log::warn!("window {} could not change minimized state: {error}", window.label());
+        }
+    }
+    if !minimized {
+        // Put focus somewhere deterministic on restore, so the user lands in a window
+        // rather than behind whatever else is on screen.
+        if let Some(window) = sorted_windows(&app, windows.len()).first() {
+            let _ = window.set_focus();
+        }
+    }
+    Ok(())
+}
+
 /// Staggering lets each window's size+position fully commit before the next's
 /// hits the main-thread queue.
 #[tauri::command]
@@ -5310,6 +5349,7 @@ pub fn run() {
             gaze_focus,
             focus_window_by_offset,
             arrange_all,
+            set_all_minimized,
             window_restore_target,
             set_window_surface,
             boards::board_list,

@@ -1436,6 +1436,20 @@ export async function focusWindowByOffset(offset: number): Promise<void> {
 }
 
 /** Re-tile every open window into a clean grid (no create/destroy). */
+/**
+ * Minimize every OrcaCoder window at once, or bring them all back. Minimize rather than
+ * hide, so the windows stay reachable from the taskbar with no global shortcut needed.
+ */
+export async function setAllWindowsMinimized(minimized?: boolean): Promise<void> {
+  try {
+    // Omit `minimized` to toggle: restore everything if anything is minimized, otherwise
+    // put it all away.
+    await invoke("set_all_minimized", { minimized: minimized ?? null });
+  } catch (e) {
+    await logError(`set_all_minimized failed: ${String(e)}`);
+  }
+}
+
 export async function arrangeAllWindows(): Promise<void> {
   try {
     await invoke("arrange_all");

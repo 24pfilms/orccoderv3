@@ -2140,6 +2140,8 @@ body {
 .winlayout-item {
   display: flex;
   align-items: center;
+  display: flex;
+  align-items: center;
   gap: 9px;
   padding: 6px 9px;
   border: none;
@@ -6089,4 +6091,13 @@ button.img-open:focus-visible {
     animation: none;
     transition: none;
   }
+}
+
+/* Shortcut hint inside a window-layout menu item. */
+.winlayout-item .winlayout-hint {
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
 }

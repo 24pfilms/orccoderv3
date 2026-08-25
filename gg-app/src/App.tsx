@@ -29,6 +29,7 @@ import {
   newWindow,
   focusWindowByOffset,
   arrangeAllWindows,
+  setAllWindowsMinimized,
   onWindowOrder,
   restoreTarget,
   setWindowSurface,
@@ -1591,6 +1592,20 @@ function App(): React.ReactElement {
       unlisten?.();
     };
   }, [boardModeEnabled, flushBoard]);
+
+  useEffect(() => {
+    // Ctrl/Cmd+Shift+H toggles every OrcaCoder window away and back. Minimized rather
+    // than hidden, because a hidden window leaves the taskbar and — with no global
+    // shortcut registered — there would be no way to reach it again.
+    const hideAll = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "h") return;
+      event.preventDefault();
+      void setAllWindowsMinimized();
+    };
+    window.addEventListener("keydown", hideAll);
+    return () => window.removeEventListener("keydown", hideAll);
+  }, []);
 
   useEffect(() => {
     if (!boardModeEnabled || needsProject) return;
