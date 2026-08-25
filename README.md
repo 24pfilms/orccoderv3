@@ -28,7 +28,7 @@ ComfyUI, and Houdini workflows.
 | Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
 | Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
 | Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
-| Board Mode           | Mero board ported behind a production-off flag; core editing verified in the desktop app     |
+| Board Mode           | Mero board ported behind a production-off flag; editing, video, and generation verified      |
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
@@ -77,14 +77,30 @@ images; undo and redo; zoom, fit, and minimap; PNG/JPG/PDF/CSV export. Everythin
 the lease and revision layer, and a second window on the same board opens read-only with an
 explicit takeover.
 
+**Generate an image.** Right-click empty canvas → *Generate image…*, describe what you want, and
+the result lands on the board. It uses the ChatGPT OAuth credential the app already holds — no
+API key and no second sign-in — through the same Codex endpoint and `image_generation` tool the
+`ggcoder` agent uses, so it costs ChatGPT subscription quota rather than API billing. The request
+runs in Rust, not the webview, so the board itself still makes no outbound calls, and the returned
+bytes pass through exactly the same validation as a file you pick by hand: magic-byte sniffing,
+raster limits, the storage cap, and lease authorization.
+
+**Embed a YouTube video.** Right-click empty canvas → *Add YouTube video…* and paste any YouTube
+link. The player is inert until you double-click it, so board gestures (select, drag, resize)
+always win — an iframe otherwise swallows pointer input and turns every resize into a drag. Videos
+embed through `youtube-nocookie.com`, and the CSP is opened to those two player hosts and nothing
+else. This is the one deliberate narrowing of the board's no-remote-content invariant.
+
 ### Not yet ported
 
 Drag-and-drop of files onto the canvas, text scaling with resize, right-drag marquee, image crop,
 clear-board, and centre-content. These are tracked in
 [`tasks/board-parity-todo.md`](tasks/board-parity-todo.md).
 
-Mero's AI features — generate, edit-with-AI, image-to-video, regenerate — are **deliberately
-deferred**, not missing by accident: the migration excluded Gemini credentials by design.
+Mero's remaining AI features — edit-with-AI on an existing image, image-to-video, and regenerate —
+are **deferred**, not missing by accident. Mero drove them through Gemini, and this migration
+excluded Gemini credentials by design. Text-to-image generation has since been rebuilt on the
+OpenAI credential the app already owns (above); the others could follow the same route.
 
 ### A note on testing
 
