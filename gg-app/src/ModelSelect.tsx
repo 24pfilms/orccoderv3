@@ -18,6 +18,8 @@ interface Props {
    *  clears the pin. `followActive` makes it the selected value. */
   onSelectFollow?: () => void;
   followActive?: boolean;
+  /** Refetch the model list. Offered to the user when the list came back empty. */
+  onReload?: () => void;
 }
 
 const FOLLOW_VALUE = "__follow__";
@@ -89,6 +91,7 @@ export function ModelSelect({
   color,
   onSelectFollow,
   followActive,
+  onReload,
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -97,7 +100,15 @@ export function ModelSelect({
   const following = Boolean(onSelectFollow && followActive);
   const value = following ? FOLLOW_VALUE : currentModel;
   const known = models.some((model) => model.id === currentModel);
-  const unavailable = Boolean(disabled || models.length === 0);
+  // An empty list is recoverable, not terminal. The list is fetched once at
+  // hydrate with a bounded backoff (see loadModelsWithRetry), and the only
+  // other refetch is a `models_change` event that may never arrive — so a
+  // sidecar that boots slower than the retry window left BOTH pickers dead for
+  // the rest of the session with no way back. Hand the user the retry instead
+  // of disabling the control: a click is cheap, and it is the difference
+  // between "wait and hope" and "click it again".
+  const canRetry = Boolean(models.length === 0 && !disabled && onReload);
+  const unavailable = Boolean(disabled || (models.length === 0 && !canRetry));
   // A locked picker has to SAY it is locked. Both controls render the model as
   // plain footer text, so without this the disabled state is invisible: the
   // label looks identical, the click does nothing, and the tooltip still
@@ -120,7 +131,27 @@ export function ModelSelect({
     unavailableReason ?? (activeLocal?.endpoint ? `${title} — ${activeLocal.endpoint}` : title);
   // Dim to match every other disabled control in the footer, so "you can't use
   // this right now" is visible before the click rather than after it.
-  const controlColor = unavailable ? theme.textDim : (color ?? theme.text);
+  const controlColor = unavailable || canRetry ? theme.textDim : (color ?? theme.text);
+
+  // Retry stands in for the whole picker on both platforms: a native <select>
+  // with nothing in it opens an empty popup, which is worse than the button.
+  // Dimmed like the disabled state (the list really is missing) but hoverable,
+  // so the underline from `.model-button:hover` advertises that it does something.
+  if (canRetry) {
+    return (
+      <span className="model-picker" style={{ color: controlColor }}>
+        <button
+          className="model-button"
+          style={{ color: controlColor }}
+          title="No models loaded — click to retry"
+          aria-label={`${title} — no models loaded, click to retry`}
+          onClick={() => onReload?.()}
+        >
+          {modelDisplayName(models, currentModel)}
+        </button>
+      </span>
+    );
+  }
 
   useEffect(() => {
     if (!open) return;

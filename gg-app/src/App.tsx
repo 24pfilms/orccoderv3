@@ -803,6 +803,15 @@ function App(): React.ReactElement {
   // Bumped by every hydrate. Lets work that outlives a hydrate (a project
   // switch, or re-selecting a session) tell whether its result is still wanted.
   const hydrateGenerationRef = useRef(0);
+  // User-initiated model refetch, offered by the picker when the list is empty.
+  // Hydrate's load is the only unprompted one and its backoff is bounded, so a
+  // sidecar that answers late leaves the picker with nothing; this is the way
+  // back without reopening the project. Guarded by the same generation check as
+  // hydrate so a slow answer can't repopulate a project the user has left.
+  const reloadModels = useCallback(() => {
+    const generation = hydrateGenerationRef.current;
+    void loadModelsInto(listModels, setModels, () => hydrateGenerationRef.current !== generation);
+  }, []);
   // Mirror of `state` for use inside the memoized event handler (which doesn't
   // re-capture state). Lets turn_end pick the right context-token formula by
   // provider without re-subscribing the SSE listener on every state change.
@@ -3080,6 +3089,7 @@ function App(): React.ReactElement {
                     currentModel={state?.model ?? ""}
                     onSelect={onSelectModel}
                     disabled={running}
+                    onReload={reloadModels}
                     title={
                       workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
                     }
@@ -3096,6 +3106,7 @@ function App(): React.ReactElement {
                         models={models}
                         currentModel={state?.kenModel ?? state?.model ?? ""}
                         onSelect={(id) => onSelectKenModel(id)}
+                        onReload={reloadModels}
                         color={theme.ken}
                         title={
                           state?.kenModelOverride
