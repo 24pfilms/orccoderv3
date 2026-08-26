@@ -6,6 +6,13 @@
   --border: #272b36;
   --border-strong: #353a47;
 
+  /* Scrollbars — translucent white rather than a fixed grey, so one value reads
+     correctly on every surface in the app (transcript, glass cards, popovers,
+     the board's dark canvas) instead of only the one it was picked against. */
+  --scroll-thumb: rgb(255 255 255 / 13%);
+  --scroll-thumb-hover: rgb(255 255 255 / 26%);
+  --scroll-thumb-active: rgb(255 255 255 / 36%);
+
   /* Text — neutral-cool, APCA-gated. */
   --text: #f4f6f8;
   --text-secondary: #c3c9d4;
@@ -51,6 +58,57 @@
   /* Fonts — same-family Geist Sans + Geist Mono. */
   --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ── Scrollbars (global) ──────────────────────────────────────────────────
+   ONE treatment for every scroll container in the app. This was previously
+   opt-in — seven near-identical copies of `8px + var(--border)`, each scoped to
+   one component — which meant any container nobody remembered got Windows'
+   native scrollbar instead: a wide grey trough with stepper arrows at both
+   ends. The model-picker menu was exactly that case.
+
+   A slim pill that floats clear of the content: the thumb is inset by a
+   transparent border rather than sized down, so the visible bar is 4px while
+   the grab target stays a comfortable 10px. Track and corner are transparent so
+   the bar reads as part of the surface it scrolls, not a channel cut into it.
+   Steppers removed — nothing else in this UI has them.
+
+   Deliberately unscoped. New scroll containers should inherit this, not
+   re-declare it; override only where a component genuinely needs something
+   else (Scarlet's branded red bar, or the inputs that hide theirs entirely). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  /* `background-clip: padding-box` is what makes the border read as padding —
+     without it the border paints over the thumb and the inset disappears. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill, 999px);
+  /* A short thumb on a long list is a smudge; hold a grabbable minimum. */
+  min-height: 32px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--scroll-thumb-active);
+  background-clip: padding-box;
+}
+/* The stepper arrows — the single biggest tell of an unstyled native bar. */
+::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* ── Button system (shared) ───────────────────────────────────────────────
@@ -1246,16 +1304,6 @@ body {
      regardless of where it's rendered. */
   text-align: left;
 }
-/* Any scroll container inside a modal gets a thin, non-overlapping scrollbar so
-   the thumb never sits on top of the row content. */
-.modal ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.modal ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 .modal-head {
   display: flex;
   align-items: center;
@@ -1564,8 +1612,6 @@ body {
      stack (the `.modal-title` class only sizes/weights, it never sets family,
      and this window has no `.modal` ancestor to inherit from). */
   font-family: var(--sans);
-  /* Match the in-app modal's scrollbar treatment (those rules are scoped to
-     `.modal`, which this window doesn't use). */
 }
 /* One-shot confetti overlay — covers the whole modal, never intercepts clicks,
    sits above the content while the burst plays then clears itself. */
@@ -1576,14 +1622,6 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 5;
-}
-.whatsnew-window ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.whatsnew-window ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 /* Scroll container takes the remaining height and engages once the notes outgrow
    it — short release lists sit at their natural height, long ones scroll. */
@@ -1692,13 +1730,6 @@ body {
   scrollbar-gutter: stable;
   padding-right: 4px;
   margin: 2px 0 14px;
-}
-.tasks-list::-webkit-scrollbar {
-  width: 8px;
-}
-.tasks-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 .tasks-item {
   display: flex;
@@ -1862,13 +1893,6 @@ body {
   scrollbar-gutter: stable;
   padding-right: 4px;
   margin: 2px 0 14px;
-}
-.mcp-list::-webkit-scrollbar {
-  width: 8px;
-}
-.mcp-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 .mcp-item {
   display: flex;
@@ -2319,13 +2343,6 @@ body {
    position. Plain rows render fine even in long sessions, so it's not worth the
    jank — leave it off. */
 
-.transcript::-webkit-scrollbar {
-  width: 8px;
-}
-.transcript::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 
 .line {
   min-height: 1.55em;
@@ -3393,13 +3410,6 @@ body {
   word-break: normal;
   color: var(--user-text);
 }
-.enh-diss::-webkit-scrollbar {
-  width: 8px;
-}
-.enh-diss::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 /* Smooth dissolve: the whole old draft fades + drifts up while its height (set
    inline by JS) collapses to one line. One CSS tween, no character deletion — it
    just "vanishes" softly.
@@ -3947,13 +3957,6 @@ button.img-open:focus-visible {
   line-height: 1.5;
   padding: 0;
   margin: 0;
-}
-.input::-webkit-scrollbar {
-  width: 8px;
-}
-.input::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 
 .input::placeholder {
