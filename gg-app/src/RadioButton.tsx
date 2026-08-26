@@ -96,35 +96,62 @@ export function RadioButton(): React.ReactElement {
       </button>
       {open && (
         <Modal title="Internet Radio" onClose={() => setOpen(false)} className="radio-modal">
-          <label className="modal-label" style={{ color: theme.textMuted }}>
-            Station
-          </label>
-          <select
-            className="modal-input radio-station-select"
-            style={{ color: theme.text, background: theme.inputBackground }}
-            value={selected}
-            disabled={busy || stations.length === 0}
-            onChange={(event) => changeStation(event.target.value)}
-          >
-            {stations.map((station) => (
-              <option key={station.id} value={station.id}>
-                {station.name}
-              </option>
-            ))}
-          </select>
-          <div className="modal-hint radio-station-description" style={{ color: theme.textDim }}>
-            {selectedStation?.description ?? "Choose a station to start listening."}
-          </div>
+          {/* A list, not a <select>. WebView2's native select popup opens but
+              cannot commit a selection (the same defect that forced the model
+              picker's in-webview menu), so the station picker was unusable on
+              Windows. Ten hand-picked stations also read better as rows that
+              show their description than as names hidden behind a dropdown. */}
+          <ul className="radio-stations" aria-label="Stations">
+            {stations.map((station) => {
+              const isSelected = station.id === selected;
+              const isPlaying = station.id === current;
+              return (
+                <li key={station.id}>
+                  <button
+                    type="button"
+                    className="radio-station"
+                    data-selected={isSelected || undefined}
+                    data-playing={isPlaying || undefined}
+                    aria-pressed={isSelected}
+                    disabled={busy}
+                    onClick={() => changeStation(station.id)}
+                    onDoubleClick={() => void play(station.id)}
+                  >
+                    <span className="radio-station-text">
+                      <strong>{station.name}</strong>
+                      <span>{station.description}</span>
+                    </span>
+                    {isPlaying ? (
+                      // Three bars rather than a label: it reads at a glance and
+                      // does not reflow the row when playback starts or stops.
+                      <span className="radio-bars" aria-label="Now playing">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+            {stations.length === 0 ? (
+              <li className="radio-stations-empty">No stations available.</li>
+            ) : null}
+          </ul>
 
           <div className="radio-player-row">
             <button
               className="modal-btn primary radio-play-button"
               disabled={busy || !selected}
+              title={selectedStation ? `${playing ? "Stop" : "Play"} ${selectedStation.name}` : ""}
               onClick={() => void togglePlayback()}
             >
               {playing ? <Pause size={17} /> : <Play size={17} />}
-              {playing ? "Pause" : "Play"}
+              {playing ? "Stop" : "Play"}
             </button>
+            <span className="radio-now" style={{ color: theme.textDim }}>
+              {playing ? selectedStation?.name : "Nothing playing"}
+            </span>
           </div>
 
           <div className="radio-volume-heading">
