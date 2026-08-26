@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1420" width="1000" height="1420" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="1000" height="1420" fill="#0f1115"/>
+
+  <!-- Header -->
+  <text x="50" y="56" fill="#f4f6f8" font-size="27" font-weight="600">How a change becomes an update on someone's machine</text>
+  <text x="50" y="84" fill="#9aa3b2" font-size="15">Read top to bottom. Nothing moves to the next step on its own once the colour turns blue.</text>
+
+  <!-- Legend -->
+  <rect x="50" y="104" width="900" height="46" rx="10" fill="#161922" stroke="#272b36"/>
+  <rect x="68" y="120" width="12" height="14" rx="3" fill="#5b6472"/>
+  <text x="88" y="132" fill="#c3c9d4" font-size="13.5">Claude does it</text>
+  <rect x="228" y="120" width="12" height="14" rx="3" fill="#36c489"/>
+  <text x="248" y="132" fill="#c3c9d4" font-size="13.5">Happens automatically</text>
+  <rect x="438" y="120" width="12" height="14" rx="3" fill="#4d9dff"/>
+  <text x="458" y="132" fill="#c3c9d4" font-size="13.5">You start it by hand — it will not happen without you</text>
+
+  <g font-size="17" font-weight="600">
+    <!-- 1 -->
+    <rect x="50" y="170" width="900" height="80" rx="12" fill="#161922" stroke="#272b36"/>
+    <rect x="50" y="170" width="6" height="80" rx="3" fill="#5b6472"/>
+    <circle cx="92" cy="210" r="17" fill="#20242f"/>
+    <text x="92" y="216" fill="#9aa3b2" font-size="15" text-anchor="middle">1</text>
+    <text x="126" y="203" fill="#f4f6f8">Change the code</text>
+    <text x="126" y="228" fill="#9aa3b2" font-size="13.5" font-weight="400">Write it, run the tests, commit it. Nothing is pushed that has not been run.</text>
+    <text x="930" y="216" fill="#5b6472" font-size="12" font-weight="600" text-anchor="end">CLAUDE</text>
+
+    <!-- 2 -->
+    <rect x="50" y="270" width="900" height="80" rx="12" fill="#161922" stroke="#272b36"/>
+    <rect x="50" y="270" width="6" height="80" rx="3" fill="#5b6472"/>
+    <circle cx="92" cy="310" r="17" fill="#20242f"/>
+    <text x="92" y="316" fill="#9aa3b2" font-size="15" text-anchor="middle">2</text>
+    <text x="126" y="303" fill="#f4f6f8">Push it to a branch on OrcaCoder V3</text>
+    <text x="126" y="328" fill="#9aa3b2" font-size="13.5" font-weight="400">Never straight to orca-main. GitHub refuses that.</text>
+    <text x="930" y="316" fill="#5b6472" font-size="12" font-weight="600" text-anchor="end">CLAUDE</text>
+
+    <!-- 3 -->
+    <rect x="50" y="370" width="900" height="80" rx="12" fill="#161922" stroke="#272b36"/>
+    <rect x="50" y="370" width="6" height="80" rx="3" fill="#5b6472"/>
+    <circle cx="92" cy="410" r="17" fill="#20242f"/>
+    <text x="92" y="416" fill="#9aa3b2" font-size="15" text-anchor="middle">3</text>
+    <text x="126" y="403" fill="#f4f6f8">Open a pull request into orca-main</text>
+    <text x="126" y="428" fill="#9aa3b2" font-size="13.5" font-weight="400">A request to add the work to the main line. It is not added yet.</text>
+    <text x="930" y="416" fill="#5b6472" font-size="12" font-weight="600" text-anchor="end">CLAUDE</text>
+
+    <!-- 4 -->
+    <rect x="50" y="470" width="900" height="80" rx="12" fill="#161922" stroke="#2f4b3f"/>
+    <rect x="50" y="470" width="6" height="80" rx="3" fill="#36c489"/>
+    <circle cx="92" cy="510" r="17" fill="#1a2b24"/>
+    <text x="92" y="516" fill="#36c489" font-size="15" text-anchor="middle">4</text>
+    <text x="126" y="503" fill="#f4f6f8">The checks run on their own</text>
+    <text x="126" y="528" fill="#9aa3b2" font-size="13.5" font-weight="400">Types, tests and a full app build, on Windows and on macOS. No one starts this.</text>
+    <text x="930" y="516" fill="#36c489" font-size="12" font-weight="600" text-anchor="end">AUTOMATIC</text>
+
+    <!-- 5 -->
+    <rect x="50" y="570" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="570" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="610" r="17" fill="#18243a"/>
+    <text x="92" y="616" fill="#4d9dff" font-size="15" text-anchor="middle">5</text>
+    <text x="126" y="603" fill="#f4f6f8">You merge it</text>
+    <text x="126" y="628" fill="#9aa3b2" font-size="13.5" font-weight="400">Only when every check is green. A red check means it does not go in.</text>
+    <text x="930" y="616" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 6 -->
+    <rect x="50" y="670" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="670" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="710" r="17" fill="#18243a"/>
+    <text x="92" y="716" fill="#4d9dff" font-size="15" text-anchor="middle">6</text>
+    <text x="126" y="703" fill="#f4f6f8">You rehearse the update</text>
+    <text x="126" y="728" fill="#9aa3b2" font-size="13.5" font-weight="400">Desktop isolated update test. A throwaway key, no real users. Proves updating does not break.</text>
+    <text x="930" y="716" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 7 -->
+    <rect x="50" y="770" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="770" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="810" r="17" fill="#18243a"/>
+    <text x="92" y="816" fill="#4d9dff" font-size="15" text-anchor="middle">7</text>
+    <text x="126" y="803" fill="#f4f6f8">You build the candidate</text>
+    <text x="126" y="828" fill="#9aa3b2" font-size="13.5" font-weight="400">Desktop candidate. You type the exact commit and the version, such as 0.54.0.</text>
+    <text x="930" y="816" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 8 -->
+    <rect x="50" y="870" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="870" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="910" r="17" fill="#18243a"/>
+    <text x="92" y="916" fill="#4d9dff" font-size="15" text-anchor="middle">8</text>
+    <text x="126" y="903" fill="#f4f6f8">You sign it</text>
+    <text x="126" y="928" fill="#9aa3b2" font-size="13.5" font-weight="400">Desktop protected signing. This is what stops Windows warning the person installing it.</text>
+    <text x="930" y="916" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 9 -->
+    <rect x="50" y="970" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="970" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="1010" r="17" fill="#18243a"/>
+    <text x="92" y="1016" fill="#4d9dff" font-size="15" text-anchor="middle">9</text>
+    <text x="126" y="1003" fill="#f4f6f8">You stage a draft</text>
+    <text x="126" y="1028" fill="#9aa3b2" font-size="13.5" font-weight="400">Desktop publication, set to stage-draft. Nobody can download it yet.</text>
+    <text x="930" y="1016" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 10 - review gate, highlighted -->
+    <rect x="50" y="1070" width="900" height="80" rx="12" fill="#1d1a12" stroke="#6b5320"/>
+    <rect x="50" y="1070" width="6" height="80" rx="3" fill="#e3a23f"/>
+    <circle cx="92" cy="1110" r="17" fill="#2a2415"/>
+    <text x="92" y="1116" fill="#e3a23f" font-size="15" text-anchor="middle">10</text>
+    <text x="126" y="1103" fill="#f4f6f8">You look at the draft</text>
+    <text x="126" y="1128" fill="#c9b07a" font-size="13.5" font-weight="400">The last point where stopping costs nothing. Right version? Right notes? Right file?</text>
+    <text x="930" y="1116" fill="#e3a23f" font-size="12" font-weight="600" text-anchor="end">STOP AND CHECK</text>
+
+    <!-- 11 -->
+    <rect x="50" y="1170" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="1170" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="1210" r="17" fill="#18243a"/>
+    <text x="92" y="1216" fill="#4d9dff" font-size="15" text-anchor="middle">11</text>
+    <text x="126" y="1203" fill="#f4f6f8">You publish it</text>
+    <text x="126" y="1228" fill="#9aa3b2" font-size="13.5" font-weight="400">Desktop publication, set to publish-reviewed-draft. This is the moment it is out.</text>
+    <text x="930" y="1216" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+
+    <!-- 12 -->
+    <rect x="50" y="1270" width="900" height="80" rx="12" fill="#141b26" stroke="#2b4463"/>
+    <rect x="50" y="1270" width="6" height="80" rx="3" fill="#4d9dff"/>
+    <circle cx="92" cy="1310" r="17" fill="#18243a"/>
+    <text x="92" y="1316" fill="#4d9dff" font-size="15" text-anchor="middle">12</text>
+    <text x="126" y="1303" fill="#f4f6f8">You put it on the machine</text>
+    <text x="126" y="1328" fill="#9aa3b2" font-size="13.5" font-weight="400">Copy the installer across and run it. The app does not update itself yet.</text>
+    <text x="930" y="1316" fill="#4d9dff" font-size="12" font-weight="600" text-anchor="end">YOU</text>
+  </g>
+
+  <!-- connectors -->
+  <g stroke="#3a4150" stroke-width="2" fill="none">
+    <path d="M500 250 L500 270"/><path d="M500 350 L500 370"/><path d="M500 450 L500 470"/>
+    <path d="M500 550 L500 570"/><path d="M500 650 L500 670"/><path d="M500 750 L500 770"/>
+    <path d="M500 850 L500 870"/><path d="M500 950 L500 970"/><path d="M500 1050 L500 1070"/>
+    <path d="M500 1150 L500 1170"/><path d="M500 1250 L500 1270"/>
+  </g>
+
+  <text x="50" y="1390" fill="#5b6472" font-size="13">Steps 5 to 12 each need a person to start them. None of them happens because the step before it finished.</text>
+</svg>

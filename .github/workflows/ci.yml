@@ -15,8 +15,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-# Windows-only while OrcaCoder's supported desktop target is Windows x64.
-# macOS and Linux return only when their platform work is explicitly resumed.
+# Windows is the supported desktop target. macOS is built here as an EARLY
+# WARNING only: it compiles the app and runs the cross-platform checks, so
+# breakage on macOS is found on the pull request that causes it rather than
+# months later when Mac support is actually wanted. It does not sign, notarize,
+# or produce anything installable, and no one is shipped a macOS build.
+#
+# The macOS leg deliberately stops before the packaged smoke test: that step
+# builds an MSI, which is Windows-only. A macOS equivalent has not been written.
+#
+# Linux returns only when its platform work is explicitly resumed.
 #
 # We deliberately keep the gg-editor + gg-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
@@ -31,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025]
+        os: [windows-2025, macos-15]
         node: [24.15.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -109,13 +117,17 @@ jobs:
   app:
     name: app · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # 30 not 15: the Windows leg compiles the Tauri tree and builds/launches
-    # an MSI (~12 min warm; the Rust compile is much slower cold-cache).
-    timeout-minutes: 30
+    # 45 not 15: the Windows leg compiles the Tauri tree and builds/launches
+    # an MSI (~12 min warm; the Rust compile is much slower cold-cache), and a
+    # cold macOS Rust compile is slower still.
+    timeout-minutes: 45
     strategy:
+      # macOS must not be able to cancel the Windows leg. Windows is the
+      # supported target; macOS is advance warning and is allowed to fail on its
+      # own without hiding the result that matters.
       fail-fast: false
       matrix:
-        os: [windows-2025]
+        os: [windows-2025, macos-15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -176,6 +188,20 @@ jobs:
 
       # Builds an MSI, extracts it without installing, launches it with a
       # throwaway profile, and requires a visible window plus packaged sidecar.
+      # Windows-only: the script builds an MSI. There is no macOS equivalent yet.
       - name: Packaged app smoke (MSI build + launch)
+        if: runner.os == 'Windows'
         working-directory: gg-app
         run: pnpm smoke:packaged
+
+      # macOS: prove the app still COMPILES and bundles. `--bundles app` stops at
+      # the .app and skips the DMG, which is the slow, flaky part and proves
+      # nothing extra about the code.
+      #
+      # Unsigned on purpose. Signing needs an Apple Developer certificate, and a
+      # secret must never be exposed to a pull request from a fork. This job
+      # answers one question — does it build — and the .app is discarded.
+      - name: macOS app build (compile check, unsigned)
+        if: runner.os == 'macOS'
+        working-directory: gg-app
+        run: pnpm tauri build --bundles app

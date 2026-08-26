@@ -9,15 +9,30 @@ release.
 
 ---
 
-## 1. The short version
+## 1. The whole process in one picture
 
-Nothing ships by itself. Every step that produces something a user could install
-has to be started by a person, on purpose, with the exact version and commit
-typed in by hand. That is deliberate. It means a mistake needs someone to make
-it, not just a script to run.
+<p align="center">
+  <img src="../images/release-flow.svg" alt="Twelve steps from changing the code to installing an update. Steps 1 to 3 are done by Claude, step 4 runs automatically, and steps 5 to 12 each have to be started by a person." width="1000">
+</p>
+
+Read it top to bottom. The colour tells you who acts:
+
+- **Grey** — Claude does it.
+- **Green** — happens on its own once a pull request is open.
+- **Blue** — you start it by hand. It will not happen without you.
+- **Amber (step 10)** — stop and look. The last point where stopping costs
+  nothing.
+
+Nothing ships by itself. Every step that produces something a person could
+install has to be started deliberately, with the exact version and commit typed
+in. That is on purpose: a mistake needs someone to make it, not just a script to
+run.
 
 Your part is to decide **what** ships and **when**. The automated part is to
-build it the same way every time and to refuse when a check fails.
+build it the same way every time, and to refuse when a check fails.
+
+The rest of this document explains each step, and what to do when one of them
+goes wrong.
 
 ---
 
@@ -65,29 +80,57 @@ That lists exactly the commits you are about to send.
 **Right now no pull request into `orca-main` can merge.** The branch protection
 asks for six checks. CI only produces two.
 
-| Protection requires          | CI runs |
-| ---------------------------- | ------- |
-| `windows-2025 · node 24.15.0` | Yes     |
-| `app · windows-2025`          | Yes     |
-| `ubuntu-24.04 · node 24.15.0` | No      |
-| `macos-15 · node 24.15.0`     | No      |
-| `app · ubuntu-24.04`          | No      |
-| `app · macos-15`              | No      |
+| Protection requires           | CI runs                    |
+| ----------------------------- | -------------------------- |
+| `windows-2025 · node 24.15.0` | Yes                        |
+| `app · windows-2025`          | Yes                        |
+| `macos-15 · node 24.15.0`     | Yes, added 26 August 2026   |
+| `app · macos-15`              | Yes, added 26 August 2026   |
+| `ubuntu-24.04 · node 24.15.0` | **No**                     |
+| `app · ubuntu-24.04`          | **No**                     |
 
-`ci.yml` builds on Windows only, and says why: *"Windows-only while OrcaCoder's
-supported desktop target is Windows x64."* That was a decision. The protection
-rules were just never changed to match, so four checks will wait forever for a
-job that never starts.
+macOS was added to the matrix on 26 August 2026, so four of the six now exist.
+The two Ubuntu checks still do not, and a required check that never starts waits
+forever. **A pull request still cannot merge.**
 
-Two ways to fix it. Pick one:
+Two ways to finish it. Pick one:
 
-- **Match the rules to the decision.** In the repository settings, require only
-  the two Windows checks. Correct while Windows is the only supported target.
-- **Match the code to the rules.** Put macOS and Ubuntu back in the CI matrix.
-  Only worth doing when those platforms are genuinely supported and tested.
+- **Match the rules to reality.** In the repository settings, require the four
+  checks that exist and drop the two Ubuntu ones. Correct while nobody runs
+  OrcaCoder on Linux.
+- **Add Ubuntu to CI.** Only worth it if Linux is genuinely going to be
+  supported. Otherwise it is a job that has to pass without protecting anyone.
 
-This is a settings change on GitHub, so a person with admin rights has to make
-it. Until then, work can be pushed to a branch but cannot reach `orca-main`.
+The first is a settings change on GitHub, so someone with admin rights has to
+make it. Until one of the two is done, work can be pushed to a branch but cannot
+reach `orca-main`.
+
+### Why macOS is in CI when there is no Mac
+
+It builds; it does not ship. The macOS job compiles the app and runs the
+cross-platform checks, then stops. It does not sign, notarize, or produce
+anything installable, and nobody is given a macOS build.
+
+The point is early warning. If a change breaks the macOS build, that shows up on
+the pull request that caused it instead of months later when Mac support is
+actually wanted — when the cause is buried under hundreds of other commits.
+
+A macOS app cannot be built on Windows. It needs the macOS SDK and Xcode's
+tools, and there is no practical cross-compile. GitHub's `macos-15` runners are
+what make this possible without owning a Mac. Note that macOS runner minutes on
+a private repository bill at a much higher rate than Linux, so keep the macOS
+job to pull requests rather than every push.
+
+Two things are still missing before a Mac build could be given to anyone:
+
+- **An Apple Developer account** for signing and notarization. Unsigned apps on
+  current macOS can report themselves as damaged and refuse to open, which is
+  worse than the Windows warning. `entitlements.plist` is already written for
+  this, including the JIT permissions the bundled Node sidecar needs to avoid
+  crashing at launch on a notarized build.
+- **A real Mac for testing.** CI proves it compiles. It cannot tell you the
+  window looks right. Renting a cloud Mac by the hour is enough for that; there
+  is no need to buy one.
 
 ---
 
