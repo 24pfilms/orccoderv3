@@ -396,6 +396,33 @@ async function persistThinkingLevel(
   }
 }
 
+/**
+ * Persist the radio selection to ~/.gg/settings.json so the station you were
+ * listening to is the one that comes back.
+ *
+ * Volume rides along deliberately: restoring a station at a default volume
+ * rather than the one you left it at is its own small annoyance, and it is the
+ * kind of thing you only notice at 2am.
+ *
+ * `null` means "off" and is stored as such, so stopping the radio is remembered
+ * as a choice rather than falling back to whatever played before it.
+ */
+async function persistRadioSelection(
+  settingsFile: string,
+  station: string | null,
+  volume: number,
+): Promise<void> {
+  try {
+    const sm = new SettingsManager(settingsFile);
+    await sm.load();
+    await sm.set("radioStation", station ?? undefined);
+    await sm.set("radioVolume", volume);
+  } catch (err) {
+    captureSidecarError(err, "app-sidecar.settings.persist-radio");
+    log("WARN", "app-sidecar", "failed to persist radio selection", { err: String(err) });
+  }
+}
+
 /** Validate a project folder name: lowercase letters, digits, dashes only. */
 function isValidProjectName(name: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
@@ -1303,6 +1330,29 @@ async function main(): Promise<void> {
     },
   });
   process.once("exit", stopRadio);
+
+  // Bring back the station that was playing when the daemon last stopped.
+  //
+  // Volume is restored FIRST: `playRadio` passes the current volume to the
+  // player process on spawn, so setting it afterwards would start the stream at
+  // the default and jump — audibly — a moment later.
+  //
+  // Failures here are deliberately quiet. A station can 404, a stream can move,
+  // and the player binary may not be installed on this machine; none of that is
+  // worth an error on startup for something the user can simply press play on.
+  {
+    const savedRadio = loadSavedSettings(paths.settingsFile);
+    if (typeof savedRadio.radioVolume === "number") setRadioVolume(savedRadio.radioVolume);
+    if (savedRadio.radioStation) {
+      const result = playRadio(savedRadio.radioStation);
+      if (!result.ok) {
+        log("INFO", "app-sidecar", "saved radio station did not resume", {
+          station: savedRadio.radioStation,
+          reason: result.error ?? "unknown",
+        });
+      }
+    }
+  }
 
   // Tauri can disappear without delivering a signal (force-quit, dev runner
   // teardown, crash). Detect reparenting or a dead shell so the daemon and its
@@ -4387,6 +4437,7 @@ async function createSession(
           json(res, 400, { error: result.error ?? "Radio volume failed to update." });
           return;
         }
+        void persistRadioSelection(paths.settingsFile, getCurrentStation(), getRadioVolume());
         json(res, 200, { current: getCurrentStation(), volume: getRadioVolume() });
       });
       return;
@@ -4404,6 +4455,7 @@ async function createSession(
         }
         if (!station || station === "off") {
           stopRadio();
+          void persistRadioSelection(paths.settingsFile, null, getRadioVolume());
           json(res, 200, { current: null });
           return;
         }
@@ -4412,6 +4464,7 @@ async function createSession(
           json(res, 400, { error: result.error ?? "Radio failed to start." });
           return;
         }
+        void persistRadioSelection(paths.settingsFile, getCurrentStation(), getRadioVolume());
         json(res, 200, { current: getCurrentStation() });
       });
       return;

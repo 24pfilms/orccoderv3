@@ -28,6 +28,10 @@ const SettingsSchema = z.object({
   maxTokens: z.number().int().min(256).default(16384),
   thinkingEnabled: z.boolean().default(false),
   thinkingLevel: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).optional(),
+  /** Last radio station played, resumed on the next start. Unset = none chosen. */
+  radioStation: z.string().optional(),
+  /** Last radio volume (0-100), so a station never resumes louder than you left it. */
+  radioVolume: z.number().int().min(0).max(100).optional(),
   theme: z
     .enum([
       "auto",
