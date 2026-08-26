@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const sidecarEntry = join(here, "error-mom-sidecar.mjs");
+const sidecarEntry = join(here, "sidecar-bootstrap.mjs");
 const ggcoderSidecarEntry = join(repoRoot, "packages", "ggcoder", "dist", "app-sidecar.js");
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");

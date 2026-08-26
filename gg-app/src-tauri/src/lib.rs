@@ -4507,7 +4507,7 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
 /// Path to the workspace dev sidecar wrapper, relative to this crate. The
 /// wrapper initializes Error Mom before importing ggcoder's built sidecar.
 fn workspace_sidecar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/error-mom-sidecar.mjs")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/sidecar-bootstrap.mjs")
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
@@ -4718,7 +4718,6 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
         // GG_APP_LISTENING handshake.
         .env("GG_APP_PORT", "0")
         .env("GG_APP_TOKEN", &app.state::<Daemon>().token)
-        .env("ERROR_MOM_RELEASE", env!("CARGO_PKG_VERSION"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]

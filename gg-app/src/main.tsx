@@ -1,6 +1,3 @@
-// Error Mom must initialize before every other webview dependency so startup
-// failures are reported too.
-import { errorMom } from "./error-mom";
 import ReactDOM from "react-dom/client";
 import { error as logError, attachConsole } from "@tauri-apps/plugin-log";
 // Self-hosted Geist Sans + Mono (bundled by Vite → works offline in the
@@ -43,11 +40,13 @@ tagPlatform();
 applyAll(loadState());
 subscribeToThemeChanges();
 
+// These handlers used to forward to a crash-reporting service; that service is
+// gone and the reporting is removed. They stay because React's own default logs
+// every failure identically — this keeps WHICH boundary fired (uncaught vs
+// caught vs recoverable) and the component stack, which is the part that
+// actually locates the failure in devtools.
 function captureReactError(culprit: string, error: unknown, componentStack?: string): void {
-  errorMom.captureError(error, {
-    culprit,
-    ...(componentStack ? { context: { componentStack } } : {}),
-  });
+  console.error(culprit, error, ...(componentStack ? [{ componentStack }] : []));
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
