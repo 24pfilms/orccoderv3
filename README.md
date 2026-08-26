@@ -168,6 +168,11 @@ Everything needed for the current Orca identity is stored under this repository:
 
 ## Run the current Orca build
 
+> **Pushing work, or building an installer for another machine?** Read
+> [docs/release/github-and-updates.md](docs/release/github-and-updates.md) first. It covers which
+> of the three remotes to push to (a bare `git push` goes to the wrong one), why there is no
+> automatic updater yet, and the build step that is easy to skip without noticing.
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm --filter @kenkaiiii/ggcoder build
