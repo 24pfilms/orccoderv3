@@ -4580,6 +4580,10 @@ button.img-open:focus-visible {
   max-width: min(640px, 90vw);
   max-height: 50vh;
   overflow-y: auto;
+  /* Setting only `overflow-y` makes the X axis compute to `auto`, not `visible`
+     — so a name a few pixels too wide raised a full-width horizontal bar under
+     the list. Nothing here scrolls sideways; long names ellipsize instead. */
+  overflow-x: hidden;
   /* No rubber-band bounce, and no scroll chaining to the transcript behind. */
   overscroll-behavior: none;
   padding: 8px;
@@ -5788,7 +5792,29 @@ button.img-open:focus-visible {
   .footer-right {
     flex: 0 1 auto;
     gap: 10px;
+    /* NEVER clip this cluster. It is ~21px tall and anchors popovers that open
+       UPWARD out of it — the model menu, the schedules menu. `overflow: hidden`
+       clips both axes, so those menus opened, measured correctly, and had every
+       pixel discarded: the picker looked dead in any window under 900px while
+       working perfectly in a wide one. Nothing about it looked like a CSS clip,
+       because clipping happens before compositing — no z-index can escape it.
+       Shrink the labels instead (below), which is all this rule ever wanted. */
+    min-width: 0;
+  }
+  /* Absorb the shrink where it is safe: the model name is the only label here
+     long enough to force the cluster wide. Truncating the trigger's text cannot
+     hide a popover — the menu is a SIBLING of this button inside .model-picker,
+     not a child of it. */
+  .model-button,
+  .model-select-text {
+    min-width: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .model-picker,
+  .model-anchor {
+    min-width: 0;
   }
   .footer-left {
     flex: 1 1 0;
