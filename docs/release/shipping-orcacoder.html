@@ -590,8 +590,9 @@
     <div class="blocker">
       <h3>A Mac build cannot be given to anyone yet</h3>
       <p>
-        macOS is built on every pull request, but only as an early warning. It
-        proves the code still compiles. It is not signed, and it is thrown away.
+        macOS is built on every pull request and kept for seven days, so you can
+        download it and try it. It is not signed, which is fine for testing on a
+        Mac you control and not fine for anyone else.
       </p>
       <p>
         Handing a Mac build to a person needs an Apple Developer account. Without
@@ -601,6 +602,80 @@
         buy one.
       </p>
     </div>
+  </section>
+
+  <section>
+    <h2>Testing a Mac build without owning a Mac</h2>
+    <p class="section-note">
+      This one catches people, because the obvious order does not work.
+    </p>
+
+    <div class="blocker">
+      <h3>A Mac app cannot be built on Windows</h3>
+      <p>
+        It needs Apple's own tools, and those only run on Apple computers. There is
+        no way around it, and nothing to copy across. The building has to happen on
+        a Mac before any testing can start.
+      </p>
+      <p>
+        You do not have to buy one. You rent two things briefly: a Mac that builds,
+        and a Mac you can look at.
+      </p>
+    </div>
+
+    <p class="phase">The loop</p>
+
+    <div class="step step--auto">
+      <div class="marker">1</div>
+      <div class="card">
+        <div class="card-head"><h3>GitHub builds it</h3><span class="chip chip--auto">Automatic</span></div>
+        <p>GitHub rents Apple computers by the minute and keeps Apple's tools installed on them. Every pull request builds the Mac version on one, and keeps the result for seven days.</p>
+        <p>You do nothing. It happens because the pull request opened.</p>
+        <span class="where"><b>Find it:</b> Actions → the CI run → Artifacts → <b>orcacoder-macos-unsigned</b></span>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">2</div>
+      <div class="card">
+        <div class="card-head"><h3>You rent a Mac for an hour</h3><span class="chip chip--you">You</span></div>
+        <p>A cloud Mac is a real Apple computer in a data centre that you connect to like a remote screen. Rent it when you need it, hand it back after, and pay for the time you used.</p>
+        <p>Services such as MacinCloud or Scaleway suit this. Avoid Amazon's Mac service for short checks — it charges a minimum of twenty-four hours per machine.</p>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">3</div>
+      <div class="card">
+        <div class="card-head"><h3>Download it on that Mac</h3><span class="chip chip--you">You</span></div>
+        <p>The rented Mac has its own web browser. Sign in to GitHub there and download the build straight onto it.</p>
+        <p>Do not download it on your PC and send it over. That is a longer trip for the same file, and passing a Mac app between machines can damage it.</p>
+      </div>
+    </div>
+
+    <div class="step step--check">
+      <div class="marker">4</div>
+      <div class="card">
+        <div class="card-head"><h3>Right-click, then Open</h3><span class="chip chip--check">Expect this</span></div>
+        <p>The build is not signed, so macOS refuses a plain double-click. Right-click the app and choose <b>Open</b> instead. That offers a way through; a double-click does not.</p>
+        <p>This is expected, and it is not a fault in the app. It only becomes a real problem when handing the app to somebody else, which is what signing solves.</p>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">5</div>
+      <div class="card">
+        <div class="card-head"><h3>Test it, then give the Mac back</h3><span class="chip chip--you">You</span></div>
+        <p>GitHub's build proves the code compiles. It cannot tell you whether the window looks right or the app behaves. That is the reason to rent a screen you can sit in front of.</p>
+        <p>Stop the rental when you are finished.</p>
+      </div>
+    </div>
+
+    <p class="section-note" style="margin-top: 28px">
+      Before anyone else can open a Mac build, it has to be signed and sent to Apple
+      to be checked. That needs an Apple Developer account, which costs a yearly fee.
+      Until then, Mac builds are for testing only.
+    </p>
   </section>
 
   <section>

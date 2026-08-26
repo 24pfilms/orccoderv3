@@ -205,3 +205,26 @@ jobs:
         if: runner.os == 'macOS'
         working-directory: gg-app
         run: pnpm tauri build --bundles app
+
+      # Keep the .app so it can be downloaded and tried on a real Mac. Without
+      # this the build proves it compiles and leaves nothing behind, which is no
+      # use to someone who has rented a cloud Mac for an hour to look at it.
+      #
+      # Zipped to preserve the bundle: a .app is a DIRECTORY, and uploading it
+      # unzipped flattens it into loose files that will not launch.
+      #
+      # It is unsigned, so macOS blocks it on first open. On a Mac you control,
+      # right-click the app and choose Open — that offers a way through that a
+      # double-click does not. Giving it to anyone else needs real signing.
+      - name: Keep the macOS build for testing
+        if: runner.os == 'macOS'
+        working-directory: gg-app/src-tauri/target/release/bundle/macos
+        run: ditto -c -k --sequesterRsrc --keepParent OrcaCoder.app OrcaCoder-unsigned.zip
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: runner.os == 'macOS'
+        with:
+          name: orcacoder-macos-unsigned
+          path: gg-app/src-tauri/target/release/bundle/macos/OrcaCoder-unsigned.zip
+          retention-days: 7
+          if-no-files-found: error

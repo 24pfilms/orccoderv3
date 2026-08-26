@@ -126,6 +126,32 @@ what make this possible without owning a Mac. Note that macOS runner minutes on
 a private repository bill at a much higher rate than Linux, so keep the macOS
 job to pull requests rather than every push.
 
+### Testing a Mac build without owning a Mac
+
+<p align="center">
+  <img src="../images/mac-test-loop.svg" alt="Five steps: GitHub builds the Mac version automatically, you rent a cloud Mac by the hour, download the build on that Mac, right-click to open it past the unsigned warning, test it, and stop the rental." width="1000">
+</p>
+
+The obvious order does not work, because step one has to happen on a Mac. The
+order that does work:
+
+1. **GitHub builds it.** Every pull request builds the macOS app and keeps it for
+   seven days, under the artifact name `orcacoder-macos-unsigned`. You do nothing.
+2. **You rent a Mac for an hour.** A cloud Mac is a real Apple computer you
+   connect to like a remote screen. MacinCloud and Scaleway suit short sessions.
+   Avoid Amazon's Mac service for this — it bills a minimum of twenty-four hours
+   per machine.
+3. **Download it on that Mac**, using its own browser. Do not download it on the
+   PC and send it over: it is a longer trip for the same file, and moving a `.app`
+   between machines can damage it. (This is also why CI zips the bundle before
+   uploading — a `.app` is a directory, and uploading it unzipped flattens it into
+   loose files that will not launch.)
+4. **Right-click the app and choose Open.** The build is unsigned, so a plain
+   double-click is refused. Right-click offers a way through; double-click does
+   not. Expected, and not a fault.
+5. **Test it, then stop the rental.** CI proves the code compiles. Only a real
+   screen shows you whether the window looks right.
+
 Two things are still missing before a Mac build could be given to anyone:
 
 - **An Apple Developer account** for signing and notarization. Unsigned apps on
