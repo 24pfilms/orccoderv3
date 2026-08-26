@@ -15,7 +15,12 @@ release.
   <img src="../images/release-flow.svg" alt="Twelve steps from changing the code to installing an update. Steps 1 to 3 are done by Claude, step 4 runs automatically, and steps 5 to 12 each have to be started by a person." width="1000">
 </p>
 
-Read it top to bottom. The colour tells you who acts:
+There is also a **web version** of this in
+[`shipping-orcacoder.html`](shipping-orcacoder.html), beside this file. Open it in
+a browser. It adds the exact workflow names to click in the Actions tab, what
+four common failures mean, and plain definitions for the terms in here.
+
+Read the picture top to bottom. The colour tells you who acts:
 
 - **Grey** — Claude does it.
 - **Green** — happens on its own once a pull request is open.
