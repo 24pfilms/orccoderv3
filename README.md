@@ -18,7 +18,7 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 25 August 2026
+## Current status — 26 August 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
@@ -36,15 +36,30 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**Today's result: Board Mode went from inert to usable.** Nineteen defects were found by driving
-the real desktop app and reading the mutations that reached SQLite. Every one sat on a boundary
-between two layers that were each correct in isolation — which is why the 74 Board tests passing
-at the start of the day caught none of them. The focused Board suite now passes 24 files / 82
-tests, `gg-app` TypeScript is clean, the Rust side builds, and creating, editing, styling, and
-persisting board items is confirmed working in the running desktop app.
+**Today's result: the footer model picker works again, and the console is quiet.**
 
-**Known local warning:** the optional `supademo` extension is missing
-`~/.gg/extensions/supademo/plugin.json`. The warning does not block OrcaCoder startup.
+The model dropdown had been dead for weeks — but only in windows narrower than 900px, which is
+why it read as random. `.footer-right` carries `overflow: hidden` below that breakpoint, and the
+menu opens *upward* out of a 21px-tall box: a 330px popup clipped to nothing. It was never the
+button, the model list, or z-index. Clipping happens before compositing, so no z-index can escape
+it — `z-index: 9999` reordered pixels that had already been discarded. The clip is replaced by
+truncation on the model label, which is what the rule wanted in the first place.
+
+Worth recording *how* it was found. Four theories from screenshots — an invisible overlay, an
+empty model list, a leftover transform, a `backdrop-filter` compositing bug — were all wrong. The
+first measurement of the live page (`getBoundingClientRect` versus `elementFromPoint`, walking the
+ancestor chain) found it in one pass. **Measure the running page before theorising about it.**
+
+Also landed:
+
+- **`error-mom` removed.** Its Railway backend no longer exists and answers every request with a
+  404 that carries no CORS headers — so a deleted service looked like a CORS misconfiguration. Worse,
+  the browser client defaults `captureFailedRequests` and `captureConsoleErrors` to `true`, so each
+  failed report was captured as both and resent: hundreds of console errors per session, climbing.
+  The sidecar entry survives as `scripts/sidecar-bootstrap.mjs`, which is what it always actually was.
+- **One global scrollbar treatment**, replacing seven per-component copies. Styling was opt-in, so
+  any container nobody remembered — the model menu among them — fell back to the native Windows bar.
+- **An empty model list now offers a retry** instead of disabling the picker for the whole session.
 
 ## Board Mode
 
@@ -67,6 +82,9 @@ the dev server is running has no effect. A runtime kill switch also applies: Boa
 if `localStorage` holds `orcacoder.board-mode.disabled = "true"`. Both gates fail closed.
 
 With the flag on, a **Board** control appears in the window header beside Workspace.
+
+The desktop launcher (`OrcaCoder V3 start.bat`) sets the flag itself, so a double-click opens the
+app with Board Mode already on — no terminal, and no remembering the variable.
 
 There is also a browser-only fixture that needs no flag, no Tauri, and no database — useful for
 working on the canvas itself:
