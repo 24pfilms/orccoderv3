@@ -2041,12 +2041,24 @@ async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreErro
     if let Some(account) = account_id {
         request = request.header("chatgpt-account-id", account);
     }
-    let response = request.json(&body).send().await.map_err(|_| {
+    // Log every outcome. This call crosses the network and can fail for reasons the
+    // user cannot see — an expired token, a changed endpoint, a refusal. Without a
+    // log line the only evidence is a dialog reappearing, which reads as "nothing
+    // happened" rather than "this failed, and here is why".
+    log::info!("board image generation starting (prompt {} chars)", prompt.len());
+    let response = request.json(&body).send().await.map_err(|err| {
+        log::warn!("board image generation could not reach the service: {err}");
         BoardStoreError::new("board_generate_failed", "Could not reach the image service")
     })?;
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let detail = response.text().await.unwrap_or_default();
+        // The body is logged truncated: it carries the real reason, and a bearer
+        // token is never echoed back in it, but it can be long.
+        log::warn!(
+            "board image generation rejected: status={status} body={}",
+            detail.chars().take(400).collect::<String>()
+        );
         let message = serde_json::from_str::<serde_json::Value>(&detail)
             .ok()
             .and_then(|value| {
@@ -2059,7 +2071,8 @@ async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreErro
             .unwrap_or_else(|| format!("Image service returned {status}"));
         return Err(BoardStoreError::new("board_generate_failed", message));
     }
-    let text = response.text().await.map_err(|_| {
+    let text = response.text().await.map_err(|err| {
+        log::warn!("board image generation response could not be read: {err}");
         BoardStoreError::new("board_generate_failed", "Image response could not be read")
     })?;
     // The model can answer with text instead of an image — most often a refusal. Collect
@@ -2104,6 +2117,14 @@ async fn request_generated_image(prompt: &str) -> Result<Vec<u8>, BoardStoreErro
         }
     }
     let spoken = spoken.trim();
+    // A 200 that carries no image is the hardest case to diagnose from the outside:
+    // the request worked, so nothing looks broken, and the user sees only a dialog
+    // come back. Log the stream size and whatever the model said instead.
+    log::warn!(
+        "board image generation returned no image: stream={} bytes, spoken={}",
+        text.len(),
+        if spoken.is_empty() { "(nothing)" } else { spoken }
+    );
     Err(BoardStoreError::new(
         "board_generate_declined",
         if spoken.is_empty() {
@@ -2167,6 +2188,38 @@ pub(crate) async fn board_image_generate(
     })
     .await
     .map_err(|_| BoardStoreError::new("board_generate_failed", "Staging worker failed"))??;
+    // Re-read the board revision instead of using the one the caller sent.
+    //
+    // The write is guarded by a compare-and-swap on the WHOLE board's revision,
+    // and `expected_revision` was captured before a network call that takes about
+    // a minute. Anything that touched the board in that minute — another window, a
+    // queued save, an edit made while waiting — moved the revision on, so the write
+    // was refused with "Board revision or editing lease is stale" and a generated
+    // image was thrown away after the user had waited for it.
+    //
+    // Re-anchoring is safe because it does not weaken the check that matters. The
+    // lease is still verified — same app instance, same window, same lease epoch —
+    // so only the window holding the editing lease can write, and the item's own
+    // revision is still checked. What is dropped is a guarantee that never made
+    // sense for this operation: the board-level CAS exists to catch "someone
+    // changed this while you were composing an edit", not "the board moved while a
+    // network request was in flight".
+    //
+    // The same helper serves the file picker and drag-and-drop, where the caller's
+    // revision IS fresh, so this correction belongs here rather than in there.
+    let board_id_for_read = board_id.clone();
+    let project_for_read = project.clone();
+    let current_revision = run_store(app.clone(), move |_, connection| {
+        load_document(connection, &project_for_read, &board_id_for_read)
+    })
+    .await
+    .map(|document| document.board.revision)
+    .unwrap_or(expected_revision);
+    if current_revision != expected_revision {
+        log::info!(
+            "board image generation re-anchored revision {expected_revision} -> {current_revision}"
+        );
+    }
     let result = import_image_from_path(
         app,
         project,
@@ -2175,7 +2228,7 @@ pub(crate) async fn board_image_generate(
         item_id,
         "image".to_string(),
         lease_epoch,
-        expected_revision,
+        current_revision,
         staged.clone(),
     )
     .await;

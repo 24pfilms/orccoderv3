@@ -9,6 +9,10 @@ interface BoardPromptDialogProps {
   hint?: string | null;
   busy?: boolean;
   multiline?: boolean;
+  /** Text the field opens with. Hands a failed prompt back instead of making the
+   *  user retype it — the dialog is unmounted while the request runs, so its own
+   *  state cannot carry the value across. */
+  initialValue?: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }
@@ -26,15 +30,21 @@ export function BoardPromptDialog({
   hint,
   busy = false,
   multiline = false,
+  initialValue = "",
   onSubmit,
   onCancel,
 }: BoardPromptDialogProps): React.ReactElement {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    fieldRef.current?.focus();
-  }, []);
+    const field = fieldRef.current;
+    field?.focus();
+    // Select the returned prompt so a retry can either edit it or type straight
+    // over it. Landing the caret at the start of text you did not expect to see
+    // is worse than either.
+    if (initialValue) field?.select();
+  }, [initialValue]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

@@ -60,7 +60,15 @@ export function BoardCanvas({
 }: BoardCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [prompt, setPrompt] = useState<{ kind: "video" | "generate"; at: BoardPoint } | null>(null);
+  // `text` carries a failed prompt back into the reopened dialog. The dialog is
+  // unmounted while the request runs, so its own state cannot survive the round
+  // trip — without this the field returns empty and a failure is indistinguishable
+  // from nothing having happened.
+  const [prompt, setPrompt] = useState<{
+    kind: "video" | "generate";
+    at: BoardPoint;
+    text?: string;
+  } | null>(null);
   const [promptHint, setPromptHint] = useState<string | null>(null);
   const [promptBusy, setPromptBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -304,6 +312,7 @@ export function BoardCanvas({
           multiline={prompt.kind === "generate"}
           hint={promptHint}
           busy={promptBusy}
+          initialValue={prompt.text ?? ""}
           onCancel={() => {
             setPrompt(null);
             setPromptBusy(false);
@@ -330,7 +339,7 @@ export function BoardCanvas({
             setPromptHint(null);
             void onGenerateImage(value, prompt.at).then((failure) => {
               if (failure) {
-                setPrompt({ kind: "generate", at: prompt.at });
+                setPrompt({ kind: "generate", at: prompt.at, text: value });
                 setPromptHint(failure);
               }
             });
