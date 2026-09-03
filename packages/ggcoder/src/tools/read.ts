@@ -131,7 +131,7 @@ export function createReadTool(
           // Smaller copy for the inline terminal preview (kitty/iTerm2). Kept
           // separate from the full-res copy the model sees. Cosmetic — a
           // preview failure must never break the read.
-          const previewBuffer = await downscaleForPreview(buffer);
+          const preview = await downscaleForPreview(buffer, finalMediaType);
           return {
             content: [
               {
@@ -143,8 +143,10 @@ export function createReadTool(
             details: {
               imagePreviews: [
                 {
-                  base64: previewBuffer.toString("base64"),
-                  mediaType: finalMediaType,
+                  base64: preview.buffer.toString("base64"),
+                  // The preview's own type: an opaque image is re-encoded to
+                  // JPEG, so the source's type would no longer describe it.
+                  mediaType: preview.mediaType,
                   path: resolved,
                 },
               ],

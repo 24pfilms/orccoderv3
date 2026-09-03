@@ -2189,8 +2189,14 @@ export function App(props: AppProps) {
           inputImages
             .filter((img) => img.kind === "image")
             .map(async (img): Promise<ImagePreview> => {
-              const downscaled = await downscaleForPreview(Buffer.from(img.data, "base64"));
-              return { base64: downscaled.toString("base64"), mediaType: img.mediaType };
+              const downscaled = await downscaleForPreview(
+                Buffer.from(img.data, "base64"),
+                img.mediaType,
+              );
+              return {
+                base64: downscaled.buffer.toString("base64"),
+                mediaType: downscaled.mediaType,
+              };
             }),
         );
         imagePreviews = built.length > 0 ? built : undefined;

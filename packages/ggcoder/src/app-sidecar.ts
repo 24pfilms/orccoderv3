@@ -3897,9 +3897,9 @@ async function createSession(
                   if (block.type !== "image") continue;
                   try {
                     const rawBuf = Buffer.from(block.data, "base64");
-                    const previewBuf = await downscaleForPreview(rawBuf);
+                    const preview = await downscaleForPreview(rawBuf, block.mediaType);
                     toolImages.push({
-                      src: `data:${block.mediaType};base64,${previewBuf.toString("base64")}`,
+                      src: `data:${preview.mediaType};base64,${preview.buffer.toString("base64")}`,
                       path: imgPath,
                     });
                   } catch {
