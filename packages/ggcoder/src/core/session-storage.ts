@@ -462,6 +462,20 @@ async function normalizeMediaBlocks(
       normalized.push(value);
       continue;
     }
+    // Already stored. Normalizing a second time used to re-store the MARKER as
+    // if it were image data: `Buffer.from("gg-session-asset:v1:…", "base64")`
+    // silently drops `-` and `:` because neither is a base64 character, leaving
+    // 61 bytes of noise. That noise was saved as a new asset and the block was
+    // re-pointed at it, so the session then rehydrated garbage labelled
+    // `image/png`, and Anthropic rejected every request with "Could not process
+    // image" — on every resume, blamed on the provider.
+    //
+    // Re-storing a marker can never be right: those bytes are already on disk
+    // under their own hash. Pass it through untouched.
+    if (parseMediaMarker(value.data)) {
+      normalized.push(value);
+      continue;
+    }
     if (sourcePath) {
       metrics.omittedPathMedia += 1;
       normalized.push({
