@@ -5,7 +5,6 @@ import orcaLogo from "./assets/orca-scarlet.png";
 interface Props {
   folderSet?: boolean;
   providerCount?: number;
-  serving?: boolean;
   action?: React.ReactNode;
 }
 
@@ -13,7 +12,6 @@ interface Props {
 export function AsciiLogo({
   folderSet = false,
   providerCount = 0,
-  serving = false,
   action,
 }: Props): React.ReactElement {
   // The installed bundle version, not the source package version: an in-app
@@ -44,7 +42,6 @@ export function AsciiLogo({
       <div className="scarlet-status-pills" aria-label="System status">
         <span>Project waters: {folderSet ? "set" : "unset"}</span>
         <span>AI providers: {providerCount}</span>
-        <span className="scarlet-pill-muted">Remote signal: {serving ? "live" : "standby"}</span>
       </div>
       {action && <div className="scarlet-update-slot">{action}</div>}
     </section>

@@ -118,7 +118,7 @@ import { Toaster } from "./Toaster";
 import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
 import { TitleUsageMeter } from "./TitleUsageMeter";
-import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
+import { formatActivityTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider, ZoomableImage } from "./Markdown";
@@ -1056,31 +1056,13 @@ function App(): React.ReactElement {
     };
   }, [insertDroppedFolderPaths]);
 
-  // Keep the native window title aligned with the visible title-bar context.
+  // ActivityWatch records this native title, so keep it stable and project-specific.
   useEffect(() => {
     const fallbackTitle = workspaceMode === "chat" ? "Orca Chat" : "OrcaCoder";
     const title =
-      !needsProject && !showPicker
-        ? formatWorkspaceTitle(
-            state?.cwd,
-            state?.gitBranch,
-            fallbackTitle,
-            state?.gitDirtyFileCount,
-            state?.gitHubIssues ?? null,
-            state?.gitHubPRs ?? null,
-          )
-        : fallbackTitle;
+      !needsProject && !showPicker ? formatActivityTitle(state?.cwd, fallbackTitle) : fallbackTitle;
     setWindowTitle(title);
-  }, [
-    needsProject,
-    showPicker,
-    state?.cwd,
-    state?.gitBranch,
-    state?.gitDirtyFileCount,
-    state?.gitHubIssues,
-    state?.gitHubPRs,
-    workspaceMode,
-  ]);
+  }, [needsProject, showPicker, state?.cwd, workspaceMode]);
 
   // Auto-grow the chat textarea to fit its content, up to a CSS max-height
   // after which it scrolls.
