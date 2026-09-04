@@ -3510,6 +3510,9 @@ fn build_app_window_with_visibility(
     app: &tauri::AppHandle,
     label: &str,
     visible: bool,
+    // Saved (x, y, width, height). When present, the window is BORN at this
+    // geometry rather than moved after the fact — see the restore path.
+    geometry: Option<(i32, i32, u32, u32)>,
 ) -> Result<WebviewWindow, String> {
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title("OrcaCoder")
@@ -3517,6 +3520,11 @@ fn build_app_window_with_visibility(
         .min_inner_size(480.0, 360.0)
         .background_color(APP_BG)
         .visible(visible);
+    if let Some((x, y, w, h)) = geometry {
+        builder = builder
+            .position(x as f64, y as f64)
+            .inner_size(w as f64, h as f64);
+    }
     // Windows needs HTML5 drop enabled for the existing browser attachment path.
     // macOS keeps Tauri's native handler so folder drops include absolute paths.
     #[cfg(target_os = "windows")]
@@ -3530,7 +3538,7 @@ fn build_app_window_with_visibility(
 }
 
 fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, String> {
-    build_app_window_with_visibility(app, label, true)
+    build_app_window_with_visibility(app, label, true, None)
 }
 
 /// Open enough new project windows to reach `count` total (each with its own
@@ -5188,16 +5196,23 @@ fn restore_one_window(
             },
         );
     }
-    let win = match build_app_window_with_visibility(app, &label, false) {
-        Ok(win) => win,
-        Err(error) => {
-            remove_restore_target(
-                &mut app.state::<RestoreTargets>().map.lock().unwrap(),
-                &label,
-            );
-            return Err(error);
-        }
+    // Build the window VISIBLE, at its saved geometry, in one shot. Previously it
+    // was built hidden and then shown — and a WebView2 window created hidden and
+    // shown later frequently never paints its first frame, coming up black until
+    // a manual reload. Building it visible from the start avoids that path
+    // entirely; passing geometry to the builder means it is also born at the
+    // right place, with no post-show reposition flash.
+    let geometry = match (entry.x, entry.y, entry.width, entry.height) {
+        (Some(x), Some(y), Some(w), Some(h)) => Some((x, y, w, h)),
+        _ => None,
     };
+    if let Err(error) = build_app_window_with_visibility(app, &label, true, geometry) {
+        remove_restore_target(
+            &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+            &label,
+        );
+        return Err(error);
+    }
     start_window_session(
         app.clone(),
         label.clone(),
@@ -5212,32 +5227,7 @@ fn restore_one_window(
         entry.surface,
         entry.selected_board_id.clone(),
     );
-    let mut any_geometry = false;
-    if let (Some(x), Some(y)) = (entry.x, entry.y) {
-        any_geometry = true;
-        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-    }
-    if let (Some(w), Some(h)) = (entry.width, entry.height) {
-        any_geometry = true;
-        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
-    }
-    let _ = win.show();
-
-    // Force a paint shortly after the window is on screen. A window built hidden
-    // and then shown can stay black in WebView2 until something triggers its
-    // first paint — the stagger reduced this but did not eliminate it. One
-    // reload once the window is visible is the programmatic equivalent of the
-    // manual Ctrl+Shift+R that reliably fills a blank panel, and it is safe: the
-    // restore target is registered in Rust for the window's lifetime, so the
-    // reloaded webview re-hydrates the same workspace (the exact
-    // content-process-reload path the app already supports).
-    let win_for_paint = win.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        let _ = win_for_paint.eval("window.location.reload()");
-    });
-
-    Ok(any_geometry)
+    Ok(geometry.is_some())
 }
 
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
