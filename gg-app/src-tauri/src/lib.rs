@@ -4308,6 +4308,27 @@ fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32)) {
     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
+/// Safety net for the intermittent black window on restore. Building visible and
+/// tiling fixes the common case, but under load one window still occasionally
+/// misses its first paint and comes up black. A one-pixel resize and back forces
+/// WebView2 to present a frame — the reliable way to make a stuck window paint.
+/// Unlike a page reload it does not navigate, so a window that already painted is
+/// untouched (which is why the earlier reload approach was wrong — it blanked
+/// good windows). Deferred so every window has settled first, and each grow is
+/// given a beat to register as its own resize before it is reverted.
+fn repaint_all_windows_soon(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        for win in app.webview_windows().values() {
+            let Ok(size) = win.inner_size() else { continue };
+            let _ = win.set_size(tauri::PhysicalSize::new(size.width + 1, size.height + 1));
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            let _ = win.set_size(size);
+        }
+    });
+}
+
 /// Tile the first `count` windows into a grid filling the primary work area.
 /// Synchronous (applies all rects immediately) — used at window-creation time
 /// (`setup_windows` / restore), where the OS commits each before the next shows.
@@ -5266,6 +5287,7 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
         // One window: tile so it lands in the current work area (it may have been
         // saved on a monitor that is no longer there).
         arrange_windows(app, count);
+        repaint_all_windows_soon(app);
         broadcast_window_order(app);
         return Ok(());
     }
@@ -5286,6 +5308,7 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
         // every window exists. Saved absolute positions are not trusted: a
         // different monitor layout would otherwise scatter windows off-screen.
         arrange_windows(&app, count);
+        repaint_all_windows_soon(&app);
         broadcast_window_order(&app);
     });
     Ok(())
