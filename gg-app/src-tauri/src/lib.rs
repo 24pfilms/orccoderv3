@@ -5172,35 +5172,6 @@ fn recreate_all_window_sessions(app: tauri::AppHandle) {
     }
 }
 
-/// Records which windows' webviews have reported their first paint. The restore
-/// sequence waits on this so it never initialises two windows at once — the
-/// concurrency that left some webviews black (alive but never presenting).
-#[derive(Default)]
-struct PaintGate(std::sync::Mutex<std::collections::HashSet<String>>);
-
-/// Called by each window's frontend once it has painted its first frame.
-#[tauri::command]
-fn window_painted(window: WebviewWindow, gate: State<PaintGate>) {
-    gate.0.lock().unwrap().insert(window.label().to_string());
-}
-
-/// Wait until `label` has reported paint, or give up after a fallback timeout so
-/// a window that never signals cannot stall the whole restore. Polls (rather
-/// than a condvar) to avoid pulling in tokio's `sync` feature.
-async fn await_window_paint(app: &tauri::AppHandle, label: &str) {
-    let start = std::time::Instant::now();
-    loop {
-        if app.state::<PaintGate>().0.lock().unwrap().contains(label) {
-            return;
-        }
-        if start.elapsed() >= std::time::Duration::from_millis(4000) {
-            log::warn!("window {label} did not report paint in time; continuing restore");
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-}
-
 /// `main` for the first restored window, `project-N` for the rest.
 fn restore_label(index: usize) -> String {
     if index == 0 {
@@ -5264,72 +5235,47 @@ fn restore_one_window(
     Ok(())
 }
 
-/// Boot the app's windows. With a restorable snapshot, reopen one window per
-/// entry — each pointed at its project + session, BORN at its final tiled slot
-/// in the current monitor's work area, and created strictly one at a time: the
-/// next window is not built until the previous has reported its first paint.
-/// Otherwise fall back to the single default `main` window (the picker shows).
+/// Boot the app's window. With a restorable snapshot, reopen the FIRST window —
+/// pointed at its project + session — as a single window. Otherwise fall back to
+/// the single default `main` window (the project picker shows).
 ///
-/// Sequential, non-overlapping creation is what finally made multi-window
-/// restore reliable. Building several overlapping webviews at once made WebView2
-/// leave some of them black — alive but never presenting a frame. One at a time,
-/// each at its own slot, sidesteps that; it costs a couple of seconds to fan out
-/// (deliberately, off the main thread) in exchange for every window painting.
+/// Multi-window auto-restore is PARKED. Creating several webviews during startup
+/// triggers a WebView2 GPU bug: spawning a new webview disrupts the shared GPU
+/// compositor and blanks the windows already up (they stay alive but stop
+/// presenting — the "black window" symptom). Every automated heal timed during
+/// startup — reload, immediate re-arrange, resize-nudge, and even strict
+/// one-at-a-time paint-gated creation — failed, while the same actions performed
+/// by hand a few seconds later (Ctrl+Shift+R, the arrange button) reliably
+/// recover the windows, because by then the GPU has settled. Rather than ship a
+/// flaky multi-window restore, we restore a single window (which never blacks)
+/// and the user reopens any others. A late self-heal remains a possible future
+/// approach; see git history for the parked sequential/paint-gate machinery.
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
-    if entries.is_empty() {
-        // Fresh boot / nothing to restore: the usual single main window.
-        build_app_window(app, "main")?;
-        start_window_session(
-            app.clone(),
-            "main".into(),
-            WorkspaceMode::Code,
-            ChatAgent::General,
-            default_cwd(),
-            None,
-        );
-        broadcast_window_order(app);
-        return Ok(());
+
+    // Restore only the first window (single-window restore is reliable). `None`
+    // geometry gives it the normal default size, like a fresh boot.
+    if let Some(entry) = entries.into_iter().next() {
+        if let Err(error) = restore_one_window(app, 0, &entry, None) {
+            log::warn!("restore failed, falling back to default main window: {error}");
+        } else {
+            broadcast_window_order(app);
+            return Ok(());
+        }
     }
 
-    let count = entries.len();
-    // Compute the tiled grid up front so each window is BORN at its final,
-    // non-overlapping slot. Empty only if the primary monitor can't be read,
-    // which then gets a tidy-up tile at the end.
-    let rects: Vec<(i32, i32, u32, u32)> = match app.primary_monitor() {
-        Ok(Some(monitor)) => {
-            let area = monitor.work_area();
-            tile_rects(
-                count,
-                area.position.x,
-                area.position.y,
-                area.size.width as i32,
-                area.size.height as i32,
-            )
-        }
-        _ => Vec::new(),
-    };
-
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let have_rects = !rects.is_empty();
-        for (i, entry) in entries.into_iter().enumerate() {
-            if let Err(error) = restore_one_window(&app, i, &entry, rects.get(i).copied()) {
-                log::warn!("failed to restore window {i}: {error}");
-                continue;
-            }
-            broadcast_window_order(&app);
-            // Gate: do not build the next window until this one has painted, so
-            // two never initialise at once.
-            await_window_paint(&app, &restore_label(i)).await;
-        }
-        // Only needed when windows couldn't be placed at build time.
-        if !have_rects {
-            arrange_windows(&app, count);
-        }
-        broadcast_window_order(&app);
-    });
+    // Fresh boot / nothing to restore / restore failed: the usual single main.
+    build_app_window(app, "main")?;
+    start_window_session(
+        app.clone(),
+        "main".into(),
+        WorkspaceMode::Code,
+        ChatAgent::General,
+        default_cwd(),
+        None,
+    );
+    broadcast_window_order(app);
     Ok(())
 }
 
@@ -5409,7 +5355,6 @@ pub fn run() {
         .manage(Windows::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
-        .manage(PaintGate::default())
         // Lazy: constructing this state performs no filesystem or SQLite I/O.
         .manage(boards::BoardStoreState::default())
         .manage(boards::PickerTokenStore::default())
@@ -5505,7 +5450,6 @@ pub fn run() {
             arrange_all,
             set_all_minimized,
             quit_app,
-            window_painted,
             window_restore_target,
             set_window_surface,
             boards::board_list,

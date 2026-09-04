@@ -1,6 +1,5 @@
 import ReactDOM from "react-dom/client";
 import { error as logError, attachConsole } from "@tauri-apps/plugin-log";
-import { invoke } from "@tauri-apps/api/core";
 // Self-hosted Geist Sans + Mono (bundled by Vite → works offline in the
 // packaged app). Imported before App so the @font-face rules land ahead of the
 // stylesheet that references them.
@@ -83,16 +82,6 @@ if (isBoardFixture) {
         <ZoomController />
         {/* <GazeController /> */}
       </AppUpdateProvider>,
-    );
-    // Tell Rust this window has painted its first frame. Restore creates windows
-    // one at a time and waits on this before building the next, so two never
-    // initialise at once (the concurrency that left some webviews black). Two
-    // rAFs ensure the browser has actually presented a frame, not just committed
-    // the render. Best-effort: Rust also has a timeout fallback.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        void invoke("window_painted").catch(() => {});
-      }),
     );
   });
 }
