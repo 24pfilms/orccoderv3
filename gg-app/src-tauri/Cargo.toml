@@ -1,6 +1,6 @@
 [package]
 name = "gg-app"
-version = "0.54.1"
+version = "0.54.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
