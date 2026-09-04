@@ -5164,15 +5164,14 @@ fn recreate_all_window_sessions(app: tauri::AppHandle) {
 /// at its project + session, with saved geometry — and record a per-window
 /// restore target so the webview skips the picker. Otherwise fall back to the
 /// single default `main` window at the boot cwd (the picker then shows).
-/// Restore one window: register its target, build it hidden, start its session,
-/// apply its saved geometry, and show it. Returns whether geometry was applied
-/// (so the caller knows whether to tile the set afterwards). Shared by the
-/// immediate first window and the staggered remainder.
+/// Restore one window: register its target, build it visible, and start its
+/// session. The caller tiles the whole set afterwards, so no geometry is applied
+/// here. Shared by the immediate first window and the staggered remainder.
 fn restore_one_window(
     app: &tauri::AppHandle,
     index: usize,
     entry: &WorkspaceEntry,
-) -> Result<bool, String> {
+) -> Result<(), String> {
     // First restored window reclaims `main`; the rest get project-N.
     let label = if index == 0 {
         "main".to_string()
@@ -5196,17 +5195,17 @@ fn restore_one_window(
             },
         );
     }
-    // Build the window VISIBLE, at its saved geometry, in one shot. Previously it
-    // was built hidden and then shown — and a WebView2 window created hidden and
-    // shown later frequently never paints its first frame, coming up black until
-    // a manual reload. Building it visible from the start avoids that path
-    // entirely; passing geometry to the builder means it is also born at the
-    // right place, with no post-show reposition flash.
-    let geometry = match (entry.x, entry.y, entry.width, entry.height) {
-        (Some(x), Some(y), Some(w), Some(h)) => Some((x, y, w, h)),
-        _ => None,
-    };
-    if let Err(error) = build_app_window_with_visibility(app, &label, true, geometry) {
+    // Build the window VISIBLE, not hidden-then-shown. A WebView2 window created
+    // hidden and shown later frequently never paints its first frame, coming up
+    // black until a manual reload; building visible avoids that path entirely.
+    //
+    // Deliberately NOT placed at its saved absolute position: those coordinates
+    // are from whatever monitor layout was connected last time, so on a
+    // different layout they land windows off the current screen (the symptom was
+    // "only one window opened" — the rest were off-screen). The caller tiles the
+    // whole set into the current monitor's work area instead, which is always
+    // visible and is exactly what the header's arrange control does.
+    if let Err(error) = build_app_window_with_visibility(app, &label, true, None) {
         remove_restore_target(
             &mut app.state::<RestoreTargets>().map.lock().unwrap(),
             &label,
@@ -5227,7 +5226,7 @@ fn restore_one_window(
         entry.surface,
         entry.selected_board_id.clone(),
     );
-    Ok(geometry.is_some())
+    Ok(())
 }
 
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
@@ -5260,13 +5259,13 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let count = entries.len();
     let mut entries = entries.into_iter().enumerate();
     let (first_i, first_entry) = entries.next().expect("entries is non-empty");
-    let mut any_geometry = restore_one_window(app, first_i, &first_entry)?;
+    restore_one_window(app, first_i, &first_entry)?;
 
     let remaining: Vec<(usize, WorkspaceEntry)> = entries.collect();
     if remaining.is_empty() {
-        if !any_geometry {
-            arrange_windows(app, count);
-        }
+        // One window: tile so it lands in the current work area (it may have been
+        // saved on a monitor that is no longer there).
+        arrange_windows(app, count);
         broadcast_window_order(app);
         return Ok(());
     }
@@ -5277,18 +5276,16 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
             // ~350ms is enough for the previous window's first paint and session
             // handshake to settle without the restore feeling sluggish.
             tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-            match restore_one_window(&app, i, &entry) {
-                Ok(geo) => any_geometry = any_geometry || geo,
-                Err(error) => log::warn!("failed to restore window {i}: {error}"),
+            if let Err(error) = restore_one_window(&app, i, &entry) {
+                log::warn!("failed to restore window {i}: {error}");
             }
             // Keep the taskbar/order in step as each one lands.
             broadcast_window_order(&app);
         }
-        // Tile only if no window carried saved geometry, matching the old
-        // behaviour — done once at the end so every window exists first.
-        if !any_geometry {
-            arrange_windows(&app, count);
-        }
+        // Always tile the restored set into the current monitor's work area, once
+        // every window exists. Saved absolute positions are not trusted: a
+        // different monitor layout would otherwise scatter windows off-screen.
+        arrange_windows(&app, count);
         broadcast_window_order(&app);
     });
     Ok(())
