@@ -3529,7 +3529,20 @@ fn build_app_window_with_visibility(
     // macOS keeps Tauri's native handler so folder drops include absolute paths.
     #[cfg(target_os = "windows")]
     {
-        builder = builder.disable_drag_drop_handler();
+        builder = builder
+            .disable_drag_drop_handler()
+            // Disable WebView2's native window-occlusion calculation. Without
+            // this, WebView2 SUSPENDS PAINTING for a window it judges occluded or
+            // in the background — so during a multi-window restore, windows that
+            // overlap or sit behind another come up BLACK (JS still runs; only
+            // the compositor stops), recovering only when focused or reloaded.
+            // This was the real cause of the intermittent blank panels. The
+            // string also repeats Tauri's default disabled features, because
+            // additional_browser_args REPLACES that default rather than adding
+            // to it.
+            .additional_browser_args(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion",
+            );
     }
     if matches!(window_chrome(), WindowChrome::MacOverlay) {
         builder = apply_mac_overlay(builder);
