@@ -29,7 +29,7 @@ import {
   newWindow,
   focusWindowByOffset,
   arrangeAllWindows,
-  setAllWindowsMinimized,
+  quitApp,
   onWindowOrder,
   restoreTarget,
   setWindowSurface,
@@ -1584,18 +1584,30 @@ function App(): React.ReactElement {
     };
   }, [boardModeEnabled, flushBoard]);
 
+  // Ctrl/Cmd+Shift+H is now an OS-level global shortcut registered in Rust
+  // (see setup() in lib.rs), not a webview keydown. That is what lets the second
+  // press RESTORE every window — while they are all minimized no window has
+  // focus, so a keydown listener here would never hear it. The in-app listener
+  // was removed rather than kept alongside: with the global shortcut also live,
+  // one press while focused would fire both and toggle twice to a net no-op.
+  // The "Hide all windows" button in WindowLayoutButton still calls the command
+  // directly for a pointer-driven path.
+
   useEffect(() => {
-    // Ctrl/Cmd+Shift+H toggles every OrcaCoder window away and back. Minimized rather
-    // than hidden, because a hidden window leaves the taskbar and — with no global
-    // shortcut registered — there would be no way to reach it again.
-    const hideAll = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "h") return;
+    // Ctrl+Q quits the whole app in one action, preserving every open window for
+    // next launch. Windows/Linux only: macOS already quits the app with the
+    // native Cmd+Q, which fires the same graceful ExitRequested path. Scoped to
+    // the focused window (not a global shortcut) because quitting only makes
+    // sense while you are looking at the app.
+    if (navigator.userAgent.toLowerCase().includes("mac")) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
+      if (event.key.toLowerCase() !== "q") return;
       event.preventDefault();
-      void setAllWindowsMinimized();
+      void quitApp();
     };
-    window.addEventListener("keydown", hideAll);
-    return () => window.removeEventListener("keydown", hideAll);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {

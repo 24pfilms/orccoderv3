@@ -3670,11 +3670,12 @@ fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), Stri
 /// Minimize rather than hide: a hidden window leaves the taskbar entirely, and with no
 /// global shortcut registered there would be no way back to it. Minimized windows stay
 /// reachable from the taskbar whatever else happens.
-#[tauri::command]
-async fn set_all_minimized(
-    app: tauri::AppHandle,
-    minimized: Option<bool>,
-) -> Result<(), String> {
+/// Minimize or restore every window; `None` toggles. Factored out of the Tauri
+/// command so the global shortcut handler can call identical logic — the
+/// shortcut must work when NO window is focused (all minimized), which a webview
+/// keydown listener cannot, so the OS-level shortcut is the only path that
+/// restores. Both routes share this so both directions behave the same.
+fn apply_all_minimized(app: &tauri::AppHandle, minimized: Option<bool>) {
     let windows = app.webview_windows();
     // No explicit target means toggle: if anything is minimized, restore everything;
     // otherwise put it all away. One shortcut then does both directions.
@@ -3697,11 +3698,54 @@ async fn set_all_minimized(
     if !minimized {
         // Put focus somewhere deterministic on restore, so the user lands in a window
         // rather than behind whatever else is on screen.
-        if let Some(window) = sorted_windows(&app, windows.len()).first() {
+        if let Some(window) = sorted_windows(app, windows.len()).first() {
             let _ = window.set_focus();
         }
     }
+}
+
+#[tauri::command]
+async fn set_all_minimized(
+    app: tauri::AppHandle,
+    minimized: Option<bool>,
+) -> Result<(), String> {
+    apply_all_minimized(&app, minimized);
     Ok(())
+}
+
+/// Write the restore snapshot and tear the daemon down exactly once, then leave
+/// the caller to exit. Idempotent via AppExiting: whichever fires first — a tray
+/// Quit, Ctrl+Q, or the RunEvent::ExitRequested from the last window closing —
+/// does the work with every window still alive; a later teardown event sees the
+/// flag already set and skips, so it can never overwrite the good snapshot with
+/// an empty one.
+fn perform_shutdown(app: &tauri::AppHandle) {
+    // `swap` returns the PREVIOUS value. If it was already true, shutdown is
+    // underway and the snapshot was already taken while windows existed.
+    if app.state::<AppExiting>().0.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // Re-read each live session's state so a window's cwd/session is current,
+    // then snapshot while the windows are still open (so all of them are saved).
+    refresh_live_sessions(app);
+    let _ = snapshot_workspace(app);
+    // Terminate the daemon's process group once — reaps every session's MCP/LSP
+    // children in one shot (no orphans).
+    let child = app.state::<Daemon>().child.lock().unwrap().take();
+    if let Some(child) = child {
+        terminate_child(child);
+    }
+}
+
+/// Quit the whole app in one action, preserving every open project window for
+/// next launch. Windows has no native app-quit (macOS has Cmd+Q), so the only
+/// way out was closing each window's X — which drops each window from the
+/// restore set one at a time, leaving nothing to reopen. Reached from the tray
+/// Quit item and Ctrl+Q.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    perform_shutdown(&app);
+    app.exit(0);
 }
 
 /// Staggering lets each window's size+position fully commit before the next's
@@ -3920,6 +3964,7 @@ mod tray_id {
     pub const NEW_CODE: &str = "tray:new-code";
     pub const REMOTE: &str = "tray:remote";
     pub const SETTINGS: &str = "tray:settings";
+    pub const QUIT: &str = "tray:quit";
 }
 
 /// Everything the tray menu's labels depend on. Both fields are pushed down by
@@ -4022,6 +4067,16 @@ fn build_tray_menu(
         true,
         None::<&str>,
     )?)?;
+    // Quit the whole app in one action — the only path that preserves every open
+    // window for next launch (closing each window's X drops them one by one).
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(
+        app,
+        tray_id::QUIT,
+        "Quit OrcaCoder",
+        true,
+        None::<&str>,
+    )?)?;
     Ok(menu)
 }
 
@@ -4059,6 +4114,13 @@ fn init_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         // don't "fix" this by copying their `cfg(windows)` override.
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| {
+            // Quit is terminal, not a webview intent — do it directly rather
+            // than routing through dispatch_tray_action.
+            if event.id().as_ref() == tray_id::QUIT {
+                perform_shutdown(app);
+                app.exit(0);
+                return;
+            }
             let action = match event.id().as_ref() {
                 tray_id::UPDATE => "update",
                 tray_id::NEW_CHAT => "new-chat",
@@ -5234,6 +5296,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -5349,6 +5412,7 @@ pub fn run() {
             focus_window_by_offset,
             arrange_all,
             set_all_minimized,
+            quit_app,
             window_restore_target,
             set_window_surface,
             boards::board_list,
@@ -5384,6 +5448,32 @@ pub fn run() {
             // window can restore its siblings (macOS does this natively).
             #[cfg(target_os = "windows")]
             app.manage(MinimizeState::default());
+            // OS-level Ctrl/Cmd+Shift+H: minimize every window, and — because it
+            // is registered with the operating system rather than as a webview
+            // keydown — fire again to restore them even though no window has
+            // focus while they are all minimized. That focus gap is exactly why
+            // the old in-webview handler could hide but never bring back.
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+                };
+                #[cfg(target_os = "macos")]
+                let mods = Modifiers::SUPER | Modifiers::SHIFT;
+                #[cfg(not(target_os = "macos"))]
+                let mods = Modifiers::CONTROL | Modifiers::SHIFT;
+                let toggle = Shortcut::new(Some(mods), Code::KeyH);
+                // The handler fires on both press and release; act on press only,
+                // or the release would immediately toggle back to a net no-op.
+                if let Err(error) = app.global_shortcut().on_shortcut(toggle, |app, _scut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        apply_all_minimized(app, None);
+                    }
+                }) {
+                    // Another app may already own the combo; log and carry on
+                    // rather than fail the launch over a convenience shortcut.
+                    log::warn!("could not register global minimize/restore shortcut: {error}");
+                }
+            }
             // Sweep orphaned sidecars from previous (crashed/force-quit) app
             // instances BEFORE spawning any new sidecars — they'd otherwise
             // accumulate forever across launches. Best-effort + logged.
@@ -5489,18 +5579,10 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                // Mark the quit BEFORE windows start tearing down, so the
-                // Destroyed handlers preserve the snapshot, then write the final
-                // snapshot (current geometry + each window's live cwd/session).
-                app.state::<AppExiting>().0.store(true, Ordering::SeqCst);
-                refresh_live_sessions(app);
-                let _ = snapshot_workspace(app);
-                // Terminate the daemon's process group once — reaps every
-                // session's MCP/LSP children in one shot (no orphans).
-                let child = app.state::<Daemon>().child.lock().unwrap().take();
-                if let Some(child) = child {
-                    terminate_child(child);
-                }
+                // Fires when the last window closes. Shared with the tray Quit
+                // and Ctrl+Q paths; the AppExiting guard inside makes a
+                // double-fire (programmatic quit then this event) a safe no-op.
+                perform_shutdown(app);
             }
         });
 }

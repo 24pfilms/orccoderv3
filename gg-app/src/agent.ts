@@ -1450,6 +1450,19 @@ export async function setAllWindowsMinimized(minimized?: boolean): Promise<void>
   }
 }
 
+/**
+ * Quit the whole app in one action, preserving every open project window for the
+ * next launch. This is the graceful path — it writes the restore snapshot before
+ * exiting — whereas closing each window's X drops those windows from the set.
+ */
+export async function quitApp(): Promise<void> {
+  try {
+    await invoke("quit_app");
+  } catch (e) {
+    await logError(`quit_app failed: ${String(e)}`);
+  }
+}
+
 export async function arrangeAllWindows(): Promise<void> {
   try {
     await invoke("arrange_all");
