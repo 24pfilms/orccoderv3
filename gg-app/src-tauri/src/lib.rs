@@ -5156,6 +5156,75 @@ fn recreate_all_window_sessions(app: tauri::AppHandle) {
 /// at its project + session, with saved geometry — and record a per-window
 /// restore target so the webview skips the picker. Otherwise fall back to the
 /// single default `main` window at the boot cwd (the picker then shows).
+/// Restore one window: register its target, build it hidden, start its session,
+/// apply its saved geometry, and show it. Returns whether geometry was applied
+/// (so the caller knows whether to tile the set afterwards). Shared by the
+/// immediate first window and the staggered remainder.
+fn restore_one_window(
+    app: &tauri::AppHandle,
+    index: usize,
+    entry: &WorkspaceEntry,
+) -> Result<bool, String> {
+    // First restored window reclaims `main`; the rest get project-N.
+    let label = if index == 0 {
+        "main".to_string()
+    } else {
+        format!("project-{index}")
+    };
+    // Register the target before constructing the webview: even a hidden
+    // webview may execute immediately after build() returns.
+    {
+        let state: State<RestoreTargets> = app.state();
+        register_restore_target(
+            &mut state.map.lock().unwrap(),
+            label.clone(),
+            RestoreEntry {
+                mode: entry.mode,
+                surface: entry.surface,
+                selected_board_id: entry.selected_board_id.clone(),
+                chat_agent: entry.chat_agent,
+                cwd: entry.cwd.clone(),
+                session_path: entry.session_path.clone(),
+            },
+        );
+    }
+    let win = match build_app_window_with_visibility(app, &label, false) {
+        Ok(win) => win,
+        Err(error) => {
+            remove_restore_target(
+                &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+                &label,
+            );
+            return Err(error);
+        }
+    };
+    start_window_session(
+        app.clone(),
+        label.clone(),
+        entry.mode,
+        entry.chat_agent,
+        PathBuf::from(&entry.cwd),
+        entry.session_path.clone(),
+    );
+    set_window_surface_state(
+        &mut app.state::<Windows>().map.lock().unwrap(),
+        &label,
+        entry.surface,
+        entry.selected_board_id.clone(),
+    );
+    let mut any_geometry = false;
+    if let (Some(x), Some(y)) = (entry.x, entry.y) {
+        any_geometry = true;
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    if let (Some(w), Some(h)) = (entry.width, entry.height) {
+        any_geometry = true;
+        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+    }
+    let _ = win.show();
+    Ok(any_geometry)
+}
+
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
@@ -5174,71 +5243,49 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    // Bring the FIRST window back immediately so the app is on screen at once,
+    // then restore the rest one at a time on a short timer.
+    //
+    // Building and hydrating all N windows in one synchronous burst raced the
+    // shared sidecar and the main thread: some webviews were shown before they
+    // had painted or their session had hydrated, and stayed blank until a manual
+    // reload. Staggering lets each window paint and warm the daemon before the
+    // next starts — no reload needed. The delay is deliberately off the main
+    // thread (tokio task) so the UI is responsive while the rest trickle in.
     let count = entries.len();
-    let mut any_geometry = false;
-    for (i, entry) in entries.into_iter().enumerate() {
-        // First restored window reclaims `main`; the rest get project-N.
-        let label = if i == 0 {
-            "main".to_string()
-        } else {
-            format!("project-{i}")
-        };
-        // Register the target before constructing the webview: even a hidden
-        // webview may execute immediately after build() returns.
-        {
-            let state: State<RestoreTargets> = app.state();
-            register_restore_target(
-                &mut state.map.lock().unwrap(),
-                label.clone(),
-                RestoreEntry {
-                    mode: entry.mode,
-                    surface: entry.surface,
-                    selected_board_id: entry.selected_board_id.clone(),
-                    chat_agent: entry.chat_agent,
-                    cwd: entry.cwd.clone(),
-                    session_path: entry.session_path.clone(),
-                },
-            );
+    let mut entries = entries.into_iter().enumerate();
+    let (first_i, first_entry) = entries.next().expect("entries is non-empty");
+    let mut any_geometry = restore_one_window(app, first_i, &first_entry)?;
+
+    let remaining: Vec<(usize, WorkspaceEntry)> = entries.collect();
+    if remaining.is_empty() {
+        if !any_geometry {
+            arrange_windows(app, count);
         }
-        let win = match build_app_window_with_visibility(app, &label, false) {
-            Ok(win) => win,
-            Err(error) => {
-                remove_restore_target(
-                    &mut app.state::<RestoreTargets>().map.lock().unwrap(),
-                    &label,
-                );
-                return Err(error);
+        broadcast_window_order(app);
+        return Ok(());
+    }
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for (i, entry) in remaining {
+            // ~350ms is enough for the previous window's first paint and session
+            // handshake to settle without the restore feeling sluggish.
+            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+            match restore_one_window(&app, i, &entry) {
+                Ok(geo) => any_geometry = any_geometry || geo,
+                Err(error) => log::warn!("failed to restore window {i}: {error}"),
             }
-        };
-        start_window_session(
-            app.clone(),
-            label.clone(),
-            entry.mode,
-            entry.chat_agent,
-            PathBuf::from(&entry.cwd),
-            entry.session_path.clone(),
-        );
-        set_window_surface_state(
-            &mut app.state::<Windows>().map.lock().unwrap(),
-            &label,
-            entry.surface,
-            entry.selected_board_id.clone(),
-        );
-        // Apply saved geometry when present; else we tile after the loop.
-        if let (Some(x), Some(y)) = (entry.x, entry.y) {
-            any_geometry = true;
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+            // Keep the taskbar/order in step as each one lands.
+            broadcast_window_order(&app);
         }
-        if let (Some(w), Some(h)) = (entry.width, entry.height) {
-            any_geometry = true;
-            let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        // Tile only if no window carried saved geometry, matching the old
+        // behaviour — done once at the end so every window exists first.
+        if !any_geometry {
+            arrange_windows(&app, count);
         }
-        let _ = win.show();
-    }
-    if !any_geometry {
-        arrange_windows(app, count);
-    }
-    broadcast_window_order(app);
+        broadcast_window_order(&app);
+    });
     Ok(())
 }
 
