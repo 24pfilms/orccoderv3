@@ -5222,6 +5222,21 @@ fn restore_one_window(
         let _ = win.set_size(tauri::PhysicalSize::new(w, h));
     }
     let _ = win.show();
+
+    // Force a paint shortly after the window is on screen. A window built hidden
+    // and then shown can stay black in WebView2 until something triggers its
+    // first paint — the stagger reduced this but did not eliminate it. One
+    // reload once the window is visible is the programmatic equivalent of the
+    // manual Ctrl+Shift+R that reliably fills a blank panel, and it is safe: the
+    // restore target is registered in Rust for the window's lifetime, so the
+    // reloaded webview re-hydrates the same workspace (the exact
+    // content-process-reload path the app already supports).
+    let win_for_paint = win.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        let _ = win_for_paint.eval("window.location.reload()");
+    });
+
     Ok(any_geometry)
 }
 
