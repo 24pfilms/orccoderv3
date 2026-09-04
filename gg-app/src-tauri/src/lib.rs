@@ -4321,27 +4321,6 @@ fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32)) {
     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
-/// Safety net for the intermittent black window on restore. Building visible and
-/// tiling fixes the common case, but under load one window still occasionally
-/// misses its first paint and comes up black. A one-pixel resize and back forces
-/// WebView2 to present a frame — the reliable way to make a stuck window paint.
-/// Unlike a page reload it does not navigate, so a window that already painted is
-/// untouched (which is why the earlier reload approach was wrong — it blanked
-/// good windows). Deferred so every window has settled first, and each grow is
-/// given a beat to register as its own resize before it is reverted.
-fn repaint_all_windows_soon(app: &tauri::AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        for win in app.webview_windows().values() {
-            let Ok(size) = win.inner_size() else { continue };
-            let _ = win.set_size(tauri::PhysicalSize::new(size.width + 1, size.height + 1));
-            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-            let _ = win.set_size(size);
-        }
-    });
-}
-
 /// Tile the first `count` windows into a grid filling the primary work area.
 /// Synchronous (applies all rects immediately) — used at window-creation time
 /// (`setup_windows` / restore), where the OS commits each before the next shows.
@@ -5193,25 +5172,54 @@ fn recreate_all_window_sessions(app: tauri::AppHandle) {
     }
 }
 
-/// Boot the app's windows. If a workspace snapshot has restorable windows (each
-/// with a cwd that still exists on disk), reopen one window per entry — pointed
-/// at its project + session, with saved geometry — and record a per-window
-/// restore target so the webview skips the picker. Otherwise fall back to the
-/// single default `main` window at the boot cwd (the picker then shows).
-/// Restore one window: register its target, build it visible, and start its
-/// session. The caller tiles the whole set afterwards, so no geometry is applied
-/// here. Shared by the immediate first window and the staggered remainder.
+/// Records which windows' webviews have reported their first paint. The restore
+/// sequence waits on this so it never initialises two windows at once — the
+/// concurrency that left some webviews black (alive but never presenting).
+#[derive(Default)]
+struct PaintGate(std::sync::Mutex<std::collections::HashSet<String>>);
+
+/// Called by each window's frontend once it has painted its first frame.
+#[tauri::command]
+fn window_painted(window: WebviewWindow, gate: State<PaintGate>) {
+    gate.0.lock().unwrap().insert(window.label().to_string());
+}
+
+/// Wait until `label` has reported paint, or give up after a fallback timeout so
+/// a window that never signals cannot stall the whole restore. Polls (rather
+/// than a condvar) to avoid pulling in tokio's `sync` feature.
+async fn await_window_paint(app: &tauri::AppHandle, label: &str) {
+    let start = std::time::Instant::now();
+    loop {
+        if app.state::<PaintGate>().0.lock().unwrap().contains(label) {
+            return;
+        }
+        if start.elapsed() >= std::time::Duration::from_millis(4000) {
+            log::warn!("window {label} did not report paint in time; continuing restore");
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
+/// `main` for the first restored window, `project-N` for the rest.
+fn restore_label(index: usize) -> String {
+    if index == 0 {
+        "main".to_string()
+    } else {
+        format!("project-{index}")
+    }
+}
+
+/// Restore one window: register its target, build it VISIBLE at `rect` (its final
+/// tiled slot, so windows never overlap during restore — overlap was when
+/// WebView2 blanked them), and start its session.
 fn restore_one_window(
     app: &tauri::AppHandle,
     index: usize,
     entry: &WorkspaceEntry,
+    rect: Option<(i32, i32, u32, u32)>,
 ) -> Result<(), String> {
-    // First restored window reclaims `main`; the rest get project-N.
-    let label = if index == 0 {
-        "main".to_string()
-    } else {
-        format!("project-{index}")
-    };
+    let label = restore_label(index);
     // Register the target before constructing the webview: even a hidden
     // webview may execute immediately after build() returns.
     {
@@ -5229,17 +5237,10 @@ fn restore_one_window(
             },
         );
     }
-    // Build the window VISIBLE, not hidden-then-shown. A WebView2 window created
-    // hidden and shown later frequently never paints its first frame, coming up
-    // black until a manual reload; building visible avoids that path entirely.
-    //
-    // Deliberately NOT placed at its saved absolute position: those coordinates
-    // are from whatever monitor layout was connected last time, so on a
-    // different layout they land windows off the current screen (the symptom was
-    // "only one window opened" — the rest were off-screen). The caller tiles the
-    // whole set into the current monitor's work area instead, which is always
-    // visible and is exactly what the header's arrange control does.
-    if let Err(error) = build_app_window_with_visibility(app, &label, true, None) {
+    // Built VISIBLE (a hidden-then-shown WebView2 window often never paints its
+    // first frame) and AT its final tiled slot (so no two windows overlap during
+    // restore — overlap is what WebView2 blanked).
+    if let Err(error) = build_app_window_with_visibility(app, &label, true, rect) {
         remove_restore_target(
             &mut app.state::<RestoreTargets>().map.lock().unwrap(),
             &label,
@@ -5263,6 +5264,17 @@ fn restore_one_window(
     Ok(())
 }
 
+/// Boot the app's windows. With a restorable snapshot, reopen one window per
+/// entry — each pointed at its project + session, BORN at its final tiled slot
+/// in the current monitor's work area, and created strictly one at a time: the
+/// next window is not built until the previous has reported its first paint.
+/// Otherwise fall back to the single default `main` window (the picker shows).
+///
+/// Sequential, non-overlapping creation is what finally made multi-window
+/// restore reliable. Building several overlapping webviews at once made WebView2
+/// leave some of them black — alive but never presenting a frame. One at a time,
+/// each at its own slot, sidesteps that; it costs a couple of seconds to fan out
+/// (deliberately, off the main thread) in exchange for every window painting.
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
@@ -5281,47 +5293,41 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    // Bring the FIRST window back immediately so the app is on screen at once,
-    // then restore the rest one at a time on a short timer.
-    //
-    // Building and hydrating all N windows in one synchronous burst raced the
-    // shared sidecar and the main thread: some webviews were shown before they
-    // had painted or their session had hydrated, and stayed blank until a manual
-    // reload. Staggering lets each window paint and warm the daemon before the
-    // next starts — no reload needed. The delay is deliberately off the main
-    // thread (tokio task) so the UI is responsive while the rest trickle in.
     let count = entries.len();
-    let mut entries = entries.into_iter().enumerate();
-    let (first_i, first_entry) = entries.next().expect("entries is non-empty");
-    restore_one_window(app, first_i, &first_entry)?;
-
-    let remaining: Vec<(usize, WorkspaceEntry)> = entries.collect();
-    if remaining.is_empty() {
-        // One window: tile so it lands in the current work area (it may have been
-        // saved on a monitor that is no longer there).
-        arrange_windows(app, count);
-        repaint_all_windows_soon(app);
-        broadcast_window_order(app);
-        return Ok(());
-    }
+    // Compute the tiled grid up front so each window is BORN at its final,
+    // non-overlapping slot. Empty only if the primary monitor can't be read,
+    // which then gets a tidy-up tile at the end.
+    let rects: Vec<(i32, i32, u32, u32)> = match app.primary_monitor() {
+        Ok(Some(monitor)) => {
+            let area = monitor.work_area();
+            tile_rects(
+                count,
+                area.position.x,
+                area.position.y,
+                area.size.width as i32,
+                area.size.height as i32,
+            )
+        }
+        _ => Vec::new(),
+    };
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        for (i, entry) in remaining {
-            // ~350ms is enough for the previous window's first paint and session
-            // handshake to settle without the restore feeling sluggish.
-            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-            if let Err(error) = restore_one_window(&app, i, &entry) {
+        let have_rects = !rects.is_empty();
+        for (i, entry) in entries.into_iter().enumerate() {
+            if let Err(error) = restore_one_window(&app, i, &entry, rects.get(i).copied()) {
                 log::warn!("failed to restore window {i}: {error}");
+                continue;
             }
-            // Keep the taskbar/order in step as each one lands.
             broadcast_window_order(&app);
+            // Gate: do not build the next window until this one has painted, so
+            // two never initialise at once.
+            await_window_paint(&app, &restore_label(i)).await;
         }
-        // Always tile the restored set into the current monitor's work area, once
-        // every window exists. Saved absolute positions are not trusted: a
-        // different monitor layout would otherwise scatter windows off-screen.
-        arrange_windows(&app, count);
-        repaint_all_windows_soon(&app);
+        // Only needed when windows couldn't be placed at build time.
+        if !have_rects {
+            arrange_windows(&app, count);
+        }
         broadcast_window_order(&app);
     });
     Ok(())
@@ -5403,6 +5409,7 @@ pub fn run() {
         .manage(Windows::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
+        .manage(PaintGate::default())
         // Lazy: constructing this state performs no filesystem or SQLite I/O.
         .manage(boards::BoardStoreState::default())
         .manage(boards::PickerTokenStore::default())
@@ -5498,6 +5505,7 @@ pub fn run() {
             arrange_all,
             set_all_minimized,
             quit_app,
+            window_painted,
             window_restore_target,
             set_window_surface,
             boards::board_list,
