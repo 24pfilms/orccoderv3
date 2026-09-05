@@ -14,6 +14,7 @@ import { Badge } from "./Badge";
  * whole window.
  */
 const HIGHLIGHT_TERMS = [
+  "GPT-6 Astra",
   "MiMo-V2.5-Pro-UltraSpeed",
   "GPT-5.6 Ultra",
   "GPT-5.6",
