@@ -162,7 +162,9 @@ function OceanCurrent(): React.ReactElement {
       }
     }
 
-    startLoop();
+    // A window restored at launch never receives a blur event, so an
+    // unconditional start would loop forever in the background.
+    if (document.hasFocus()) startLoop();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", startLoop);
     window.addEventListener("blur", stopLoop);
