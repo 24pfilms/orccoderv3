@@ -41,9 +41,8 @@ export interface ModelInfo {
   /**
    * The top reasoning tier this model genuinely uses. Used when thinking is
    * enabled to pick the strongest setting per model:
-   *   - OpenAI GPT-5.6-era (Sol/Terra/Luna): `max` (the 5.6 ladder adds `max`
-   *     and `ultra`; gg-ai caps at `max` — `ultra` needs a ThinkingLevel bump)
-   *   - OpenAI GPT-5.5-era: `xhigh`
+   *   - OpenAI GPT-6 Astra: `ultra` (Codex orchestration preset above `max`)
+   *   - OpenAI GPT-5.6-era (Sol/Terra/Luna): `max`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
    *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5 and Sonnet 5: `max`
    *     (the Fable / Mythos line uses always-on adaptive thinking, low→max)
@@ -232,19 +231,6 @@ export const MODELS: ModelInfo[] = [
     supportsVideo: false,
     costTier: "low",
     maxThinkingLevel: "max",
-  },
-  {
-    id: "gpt-5.5",
-    name: "GPT-5.5",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    codexContextWindow: 272_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportsImages: true,
-    supportsVideo: false,
-    costTier: "high",
-    maxThinkingLevel: "xhigh",
   },
   // ── Sakana (Fugu) ──────────────────────────────────────
   // Sakana Fugu is a multi-agent system surfaced as a standard LLM via the

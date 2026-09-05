@@ -283,17 +283,13 @@ async function* runStream(
 
     let hint: string | undefined;
     if (response.status === 400 && text.includes("not supported")) {
-      if (options.model === "gpt-5.5-pro") {
-        hint = "Use gpt-5.5 instead. OpenAI's Codex model catalog does not list gpt-5.5-pro.";
-      } else {
-        hint =
-          "This model is not available through Codex for the authenticated account. " +
-          "Switch to a model listed for OpenAI Codex via the model selector, or check your Codex usage limits.";
-      }
+      hint =
+        "This model is not available through your ChatGPT account. " +
+        "Switch to a model listed for OpenAI via the model selector, or check your ChatGPT usage limits.";
     } else if (response.status === 404 && text.includes("does not exist")) {
       hint =
-        "This model is not in the current OpenAI Codex catalog for this account. " +
-        "Switch to gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, or gpt-5.5 via the model selector.";
+        "This model is not in OpenAI's current catalog for your ChatGPT account. " +
+        "Switch to GPT-6 Astra, GPT-5.6 Sol, GPT-5.6 Terra, or GPT-5.6 Luna via the model selector.";
     }
 
     throw new ProviderError("openai", message, {
