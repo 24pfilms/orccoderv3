@@ -207,6 +207,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   // that ack arrives, and clearing the flag is one-way, so this gates the clear
   // to messages we know really entered the queue.
   const ackedQueueTextsRef = useRef<Map<string, number>>(new Map());
+  const queueSnapshotRef = useRef<QueuedMessage[]>([]);
   const subagentGroupIdRef = useRef<number | null>(null);
   const subagentGroupByAgentRef = useRef<Map<string, number>>(new Map());
   // subagent_state snapshots arrive per tool/turn event PER AGENT — with
@@ -1067,6 +1068,14 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // row can offer an individual cancel.
           const list = Array.isArray(d.messages) ? (d.messages as QueuedMessage[]) : [];
           setQueuedMessages(list);
+          const previousQueue = queueSnapshotRef.current;
+          const cancelled = previousQueue.find((m) => m.id === d.cancelledId);
+          const cancelledIndex = cancelled
+            ? previousQueue
+                .filter((m) => m.text === cancelled.text)
+                .findIndex((m) => m.id === cancelled.id)
+            : -1;
+          queueSnapshotRef.current = list;
           // This event also fires when the agent CONSUMES queued steering at a
           // turn boundary (the sidecar re-broadcasts `queue_drained` here), so
           // drop the pending affordance from bubbles that have left the queue.
@@ -1091,6 +1100,15 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           }
 
           setItems((prev) => {
+            // Remove only a server-confirmed cancellation, before counting drains.
+            // Match its ordinal in the previous queue so duplicate text is safe.
+            if (cancelled && cancelledIndex >= 0) {
+              let index = 0;
+              prev = prev.filter((it) => {
+                if (it.kind !== "user" || !it.queued || it.text !== cancelled.text) return true;
+                return index++ !== cancelledIndex;
+              });
+            }
             // How many queued bubbles exist per text, so the number the agent has
             // taken is (bubbles - still pending).
             const bubbleCount = new Map<string, number>();
@@ -1156,6 +1174,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // session must not gate clears in the new one.
           ackedQueueTextsRef.current.clear();
           idealArmedRef.current = false;
+          queueSnapshotRef.current = [];
           heldTextRef.current = "";
           stickToBottomRef.current = true;
           setItems([]);
