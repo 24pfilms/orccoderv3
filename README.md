@@ -18,13 +18,16 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 26 August 2026
+## Current status — 20 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.53.0`, aligned with the imported GG Framework release                                     |
-| Desktop runtime      | Tauri dev executable rebuilt and launched successfully on Windows                            |
+| Application version  | `0.56.0`                                                                                      |
+| Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
+| Models               | Full provider set plus **GPT-6 Astra** over ChatGPT OAuth, tuned to its catalog defaults     |
+| Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
+| Effects              | Optional thinking orbs, working beams, metal buttons — one toggle in Settings → Effects       |
 | Branding             | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
 | Start page           | Scarlet two-panel deck, compact 1024×660 default window, responsive short-height layout      |
 | Appearance           | Scarlet default plus nine persisted palettes; selector beside Autopilot/New                  |
@@ -36,30 +39,26 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**Today's result: the footer model picker works again, and the console is quiet.**
+**This cycle — a new flagship model, clickable questions, and a batch of polish.**
 
-The model dropdown had been dead for weeks — but only in windows narrower than 900px, which is
-why it read as random. `.footer-right` carries `overflow: hidden` below that breakpoint, and the
-menu opens *upward* out of a 21px-tall box: a 330px popup clipped to nothing. It was never the
-button, the model list, or z-index. Clipping happens before compositing, so no z-index can escape
-it — `z-index: 9999` reordered pixels that had already been discarded. The clip is replaced by
-truncation on the model label, which is what the rule wanted in the first place.
-
-Worth recording *how* it was found. Four theories from screenshots — an invisible overlay, an
-empty model list, a leftover transform, a `backdrop-filter` compositing bug — were all wrong. The
-first measurement of the live page (`getBoundingClientRect` versus `elementFromPoint`, walking the
-ancestor chain) found it in one pass. **Measure the running page before theorising about it.**
-
-Also landed:
-
-- **`error-mom` removed.** Its Railway backend no longer exists and answers every request with a
-  404 that carries no CORS headers — so a deleted service looked like a CORS misconfiguration. Worse,
-  the browser client defaults `captureFailedRequests` and `captureConsoleErrors` to `true`, so each
-  failed report was captured as both and resent: hundreds of console errors per session, climbing.
-  The sidecar entry survives as `scripts/sidecar-bootstrap.mjs`, which is what it always actually was.
-- **One global scrollbar treatment**, replacing seven per-component copies. Styling was opt-in, so
-  any container nobody remembered — the model menu among them — fell back to the native Windows bar.
-- **An empty model list now offers a retry** instead of disabling the picker for the whole session.
+- **GPT-6 Astra** runs over the existing ChatGPT OAuth login, alongside the GPT-5.6 tiers. It now
+  starts at its vendor-catalog default reasoning (Astra/Sol `low`, Terra/Luna `medium`) instead of
+  the ceiling, sends `verbosity: "low"`, and caps plan-mode effort at `medium` — a fresh Astra
+  session used to reason at max effort by default, which was slow and costly. The Codex transport
+  also recovers from a rejected encrypted-reasoning blob instead of failing the whole turn.
+- **Clickable ask cards.** When the agent needs a decision it calls the `ask_user` tool and the
+  question renders as option chips inline in the chat — click one (or press its number) to answer,
+  take the marked recommendation, or type your own. No more digging an answer out of prose.
+- **Optional UI effects.** Thinking orbs, working beams, and metal buttons, all behind a single
+  Settings → Effects toggle (on by default) and kept self-contained under `gg-app/src/effects/` for
+  clean removal. Background windows never animate them.
+- **Fixes.** The internet-radio dialog no longer clips under the window's top bar — modals now
+  portal to `<body>`, so a transformed ancestor (a window's zoom) can't trap a `position: fixed`
+  overlay. Authorized providers show a clear green check instead of a faint dot. Plus a Windows
+  compaction-lock race, a background-command spawn crash, and the unfocused-window repaint drain,
+  ported from upstream GG Framework.
+- **Full OrcaCoder / Orca rebrand** across the UI and the agent's own wording — "GG Coder" and "Ken"
+  no longer surface anywhere a user sees.
 
 ## Board Mode
 

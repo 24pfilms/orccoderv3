@@ -257,7 +257,7 @@ describe("ACP mode over stdio", () => {
     expect(initialize.result).toMatchObject({
       protocolVersion: ACP_PROTOCOL_VERSION,
       authMethods: [],
-      agentInfo: { name: "ggcoder", title: "GG Coder", version: "0.0.0-test" },
+      agentInfo: { name: "ggcoder", title: "OrcaCoder", version: "0.0.0-test" },
     });
     // A client only offers resume and a session list when these are advertised,
     // and `{}` — not `true` — is how ACP spells "supported" for these two.

@@ -9,7 +9,7 @@ const updater = createAutoUpdater({
   packageName: "@kenkaiiii/gg-boss",
   stateFilePath: () => path.join(os.homedir(), ".gg", "boss", "update-state.json"),
   periodicMessage: ({ currentVersion, latestVersion, updateCommand }) =>
-    `Ken just pushed a fresh update — ${currentVersion} → ${latestVersion}! Restart ggboss to grab it (or run ${updateCommand} if you can't wait).`,
+    `A fresh update just landed — ${currentVersion} → ${latestVersion}! Restart ggboss to grab it (or run ${updateCommand} if you can't wait).`,
 });
 
 export const checkAndAutoUpdate = updater.checkAndAutoUpdate;

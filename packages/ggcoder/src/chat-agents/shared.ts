@@ -54,7 +54,7 @@ export function buildChatAgentSystemPrompt(
   return `${rolePrompt}${MEMORY_CURATION_INSTRUCTIONS}${JIWA_CURATION_INSTRUCTIONS}${handoffInstructions}\n\n${runtimeContext}`;
 }
 
-/** Create a chat agent on the shared caching/compaction spine without GG Coder behavior. */
+/** Create a chat agent on the shared caching/compaction spine without OrcaCoder behavior. */
 export function createChatAgentSession(
   agentId: ChatAgentId,
   systemPrompt: string,

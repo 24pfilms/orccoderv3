@@ -17,6 +17,7 @@ import {
 import { toast } from "./toast";
 import { SoundButton } from "./SoundButton";
 import { MemesButton } from "./MemesButton";
+import { EffectsButton } from "./effects/GgUiButton"; // [effects]
 import {
   loadState as loadOrcaTheme,
   setAttentionEnabled,
@@ -170,6 +171,8 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
       <div className="modal-row">
         <SoundButton variant="settings" />
         <MemesButton variant="settings" />
+        {/* [effects] toggle for thinking orbs / working beams / metal buttons */}
+        <EffectsButton />
       </div>
       <div
         className="modal-row"

@@ -675,7 +675,7 @@ function formatRelativeTime(ms: number): string {
 export interface RecentSession {
   /** Session id. */
   id: string;
-  /** Absolute resumable path to a plain or gzip GG Coder session. */
+  /** Absolute resumable path to a plain or gzip OrcaCoder session. */
   path: string;
   /** Legacy saved label, falling back to the first real user prompt. */
   preview: string;
@@ -724,7 +724,7 @@ export async function listRecentSessions(
  *
  * The project picker has always surfaced these stores (`discoverProjects`), so a
  * project can appear *because* it has Claude Code history — and then show an
- * empty session list, because that only read GG Coder's own directory. These
+ * empty session list, because that only read OrcaCoder's own directory. These
  * rows close that gap: each one points at the foreign transcript, tagged with
  * its `source`, and the host imports it on click.
  *

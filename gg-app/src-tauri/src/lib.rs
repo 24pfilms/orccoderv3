@@ -337,7 +337,7 @@ struct ProcInfo {
     command: String,
 }
 
-/// Command substrings that identify a GG Coder *sidecar* process itself.
+/// Command substrings that identify a OrcaCoder *sidecar* process itself.
 /// `app-sidecar` matches both bundled `app-sidecar.mjs` and dev
 /// `app-sidecar.js`. This is our OWN binary name (fully under our control, not
 /// a third-party MCP name), so it's a safe, stable anchor. MCP children are NOT
@@ -1224,6 +1224,31 @@ async fn agent_mcp_elicit(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: answer (or dismiss) an `ask_user` question band. The coding/chat turn
+/// is blocked on this, so both paths must reach the sidecar: `answer` carries
+/// the picked values, `cancel` releases the parked tool call with no answer.
+#[tauri::command]
+async fn agent_ask_user(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+    action: String,
+    answers: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/ask/{}", sidecar_base(port), urlencoding(&id)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "action": action, "answers": answers }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Proxy: disconnect a provider (clear its stored credentials).
 #[tauri::command]
 async fn agent_auth_logout(
@@ -1290,7 +1315,7 @@ async fn agent_kill_task(
 }
 
 /// Proxy: import a Claude Code / Codex / Cursor transcript into a resumable
-/// GG Coder session. Returns the importer's typed result (`{ ok, ... }`),
+/// OrcaCoder session. Returns the importer's typed result (`{ ok, ... }`),
 /// including the failure case, so the webview can show the reason verbatim.
 #[tauri::command]
 async fn agent_import_transcript(
@@ -1536,7 +1561,7 @@ async fn agent_ken_prompt(
     Ok(())
 }
 
-/// Proxy: cancel Ken's in-flight run (leaves GG Coder's run untouched).
+/// Proxy: cancel Ken's in-flight run (leaves OrcaCoder's run untouched).
 #[tauri::command]
 async fn agent_ken_cancel(
     webview: WebviewWindow,
@@ -1635,7 +1660,7 @@ async fn agent_switch_model(
 }
 
 /// Proxy: pin Ken (mentor + autopilot) to a model, or clear the pin so he
-/// follows GG Coder's model again. `model: None` clears. Returns
+/// follows OrcaCoder's model again. `model: None` clears. Returns
 /// `{ kenProvider, kenModel, kenModelOverride }`.
 #[tauri::command]
 async fn agent_switch_ken_model(
@@ -5392,6 +5417,7 @@ pub fn run() {
             agent_auth_oauth_start,
             agent_auth_oauth_code,
             agent_mcp_elicit,
+            agent_ask_user,
             agent_auth_logout,
             agent_kill_task,
             agent_import_transcript,
@@ -6323,7 +6349,7 @@ mod tests {
     fn live_sidecar_with_alive_parent_is_excluded() {
         // The current gg-app (pid 100) is the parent of a live sidecar (pid 200).
         let snap = vec![
-            proc(100, 1, "/Applications/GG Coder.app/Contents/MacOS/gg-app"),
+            proc(100, 1, "/Applications/OrcaCoder.app/Contents/MacOS/gg-app"),
             proc(200, 100, "ggnode app-sidecar.mjs"),
         ];
         let ks = orphan_killset(&snap, 100, &no_ledger());
@@ -6451,8 +6477,8 @@ mod tests {
         // Real `ps -eo pid=,ppid=,pgid=,command=` output: multiple spaces
         // between fields. Columns are pid, ppid, pgid, then the command.
         let raw = "    1     0     1 /sbin/launchd\n\
-                   11541     1 11541 /Applications/GG Coder.app/Contents/MacOS/gg-app\n\
-                   11553 11541 11553 /Applications/GG Coder.app/Contents/MacOS/ggnode app-sidecar.mjs";
+                   11541     1 11541 /Applications/OrcaCoder.app/Contents/MacOS/gg-app\n\
+                   11553 11541 11553 /Applications/OrcaCoder.app/Contents/MacOS/ggnode app-sidecar.mjs";
         let rows = parse_ps_output(raw);
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].pid, 1);
@@ -6529,7 +6555,7 @@ mod tests {
                    1000|4|C:\\Windows\\System32\\cmd.exe\n\
                    5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
                    5001|5000|C:\\nodejs\\node.exe kencode-search\n\
-                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
+                   6000|4|C:\\Program Files\\OrcaCoder\\gg-app.exe\n\
                    6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
         let snapshot = parse_cim_output(raw);
         assert_eq!(snapshot.len(), 6);

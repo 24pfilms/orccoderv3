@@ -103,6 +103,7 @@ import { log } from "./logger.js";
 import { setEstimatorModel, calibrateEstimatorFromUsage } from "./compaction/token-estimator.js";
 import { calculateActiveContextTokens } from "./compaction/active-context.js";
 import { resolveCompactionPolicy } from "./compaction/policy.js";
+import { clampThinkingForPlanMode } from "./thinking-level.js";
 import { pruneStaleToolResults } from "./compaction/tool-result-pruner.js";
 import { discoverAgents } from "./agents.js";
 import { enhancePrompt, type EnhanceResult } from "../utils/prompt-enhancer.js";
@@ -279,7 +280,7 @@ export interface AgentSessionOptions {
   subagentWorker?: boolean;
   /** Session storage root override. Chat agents use a dedicated namespace. */
   sessionRootDir?: string;
-  /** Register GG Coder built-in/prompt/custom slash commands. Defaults to true. */
+  /** Register OrcaCoder built-in/prompt/custom slash commands. Defaults to true. */
   coderSlashCommands?: boolean;
   /** Enable loop-break, re-grounding, and Ideal review hooks. Defaults to true. */
   selfCorrectionHooks?: boolean;
@@ -287,9 +288,9 @@ export interface AgentSessionOptions {
   projectCustomization?: boolean;
   /** Register global + bundled subagents without loading project customization. */
   globalSubagents?: boolean;
-  /** Load GG Coder extensions. Defaults to true. */
+  /** Load OrcaCoder extensions. Defaults to true. */
   loadExtensions?: boolean;
-  /** Inject GG Coder's model-specific subagent orchestration prompt. Defaults to true. */
+  /** Inject OrcaCoder's model-specific subagent orchestration prompt. Defaults to true. */
   orchestrationPrompt?: boolean;
   /** Host-provided tools appended to this session only (for example, chat delegation). */
   additionalTools?: AgentTool[];
@@ -366,7 +367,7 @@ export class AgentSession {
 
   private messages: Message[] = [];
   // Ken Kai (mentor agent) turns recorded against this build session. Advisory
-  // only — NEVER part of `messages` (GG Coder must not see them), but persisted
+  // only — NEVER part of `messages` (OrcaCoder must not see them), but persisted
   // alongside the session and reloaded on resume so they reappear in the
   // transcript. Each carries the non-system message count at record time so the
   // webview can interleave them chronologically.
@@ -784,7 +785,7 @@ export class AgentSession {
           });
         });
     }
-    // GG Coder owns its command registry. Other agents start with an isolated
+    // OrcaCoder owns its command registry. Other agents start with an isolated
     // empty registry and can register their own commands in their own file.
     if (this.opts.coderSlashCommands !== false) {
       const builtins = createBuiltinCommands();
@@ -1112,7 +1113,7 @@ export class AgentSession {
         ? parsedInput
         : null;
     if (!parsed) return null;
-    // GG Coder alone can resolve its prompt-template and project commands.
+    // OrcaCoder alone can resolve its prompt-template and project commands.
     const builtinPromptCmd = coderCommands ? getPromptCommand(parsed.name) : undefined;
     const customCmds = coderCommands ? await loadCustomCommands(this.cwd) : [];
     const customPromptCmd = !builtinPromptCmd
@@ -1875,7 +1876,13 @@ export class AgentSession {
         maxTokens: this.maxTokens,
         maxTurns: this.opts.maxTurns,
         maxTurnExtensions: this.opts.maxTurnExtensions,
-        thinking: this.thinkingLevel,
+        // Plan mode caps effort at medium (Codex `plan_mode_reasoning_effort`
+        // preset): read-only exploration doesn't need xhigh/max reasoning, and
+        // deep-reasoning models left at the ceiling burn enormous thinking
+        // budgets re-deriving context they cannot act on.
+        thinking: this.planModeRef.current
+          ? clampThinkingForPlanMode(this.thinkingLevel)
+          : this.thinkingLevel,
         apiKey,
         // Per-turn credential resolution. A run can span many minutes; if any
         // process sharing auth.json refreshes this grant meanwhile, the token
@@ -3608,7 +3615,7 @@ export class AgentSession {
   }
 
   /**
-   * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+   * Import a Claude Code / Codex / Cursor transcript as a resumable OrcaCoder
    * session in this session's sessions directory. Never throws — a bad path or
    * an unrecognized format comes back as `{ ok: false, error }` so both the CLI
    * and the desktop app can show it verbatim.

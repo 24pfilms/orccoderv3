@@ -55,7 +55,7 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 
   it("tells Ken injected transcript lines are his own, not user asks", () => {
-    expect(prompt).toContain("Ken autopilot (injected)");
+    expect(prompt).toContain("Orca autopilot (injected)");
     expect(prompt).toContain("Judge only against the original user request");
   });
 
@@ -68,8 +68,8 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   it("keeps the injected label byte-identical to the digest renderer's", () => {
     // The system prompt names the label in prose; the digest emits it. If the
     // label constant drifts, the prompt's rule points at nothing.
-    expect(INJECTED_PROMPT_LABEL).toContain("Ken autopilot (injected)");
-    expect(prompt).toContain("Ken autopilot (injected)");
+    expect(INJECTED_PROMPT_LABEL).toContain("Orca autopilot (injected)");
+    expect(prompt).toContain("Orca autopilot (injected)");
   });
 
   it("kills the standalone why — reasons live only inside a PROMPT body", () => {

@@ -959,7 +959,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setState((s) => (s ? { ...s, ...(d as Partial<AgentState>) } : s));
           break;
         // Ken's effective model changed — either his pin was set/cleared or he
-        // followed a GG Coder switch. Payload keys (kenProvider/kenModel/
+        // followed a OrcaCoder switch. Payload keys (kenProvider/kenModel/
         // kenModelOverride) match AgentState, so a spread is enough.
         case "ken_model_change":
           setState((s) => (s ? { ...s, ...(d as Partial<AgentState>) } : s));
@@ -1038,7 +1038,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           break;
         case "autopilot_prompted":
           // Autopilot-only plan revision path: Ken rejected/refined the plan and
-          // the sidecar injected a revision prompt into GG Coder. Close the
+          // the sidecar injected a revision prompt into OrcaCoder. Close the
           // stale human review modal so autopilot visibly continues. In
           // non-autopilot mode this frame never exists, so the normal modal +
           // manual Accept/Feedback/Reject flow stays unchanged.

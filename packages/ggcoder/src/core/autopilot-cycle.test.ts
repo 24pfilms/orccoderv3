@@ -209,7 +209,7 @@ describe("driveAutopilotCycle — work branch (unchanged behavior)", () => {
       {
         runPrompt: async (body) => {
           ran.push(body);
-          planMode = true; // GG Coder called enter_plan (no exit_plan) mid-run
+          planMode = true; // OrcaCoder called enter_plan (no exit_plan) mid-run
         },
         isPlanMode: () => planMode,
       },

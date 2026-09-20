@@ -142,7 +142,7 @@ interface DisplayItemPayload {
 }
 
 /** Custom-entry kind for a Ken Kai (mentor agent) turn. Ken's advisory
- *  conversation is NOT part of the LLM message history (GG Coder never sees it),
+ *  conversation is NOT part of the LLM message history (OrcaCoder never sees it),
  *  but it's persisted alongside the build session so it survives resume. Stored
  *  as a `custom` entry with `parentId: null` so it is NEVER on the message DAG
  *  branch — this keeps it out of `getMessages()` AND avoids racing the build
@@ -180,7 +180,7 @@ export interface RecordedPosition {
 
 /** Custom-entry kind for an autopilot verdict marker. Mirrors `ken_turn`:
  *  persisted as a `custom` entry with `parentId: null` so it's never on the
- *  message DAG (GG Coder never sees it) but survives resume/compaction and
+ *  message DAG (OrcaCoder never sees it) but survives resume/compaction and
  *  interleaves back into the transcript via `afterMessageCount`. Covers all
  *  four terminal/near-terminal autopilot markers so a resumed session renders
  *  the exact same Ken bubble the live run showed — never the raw verdict

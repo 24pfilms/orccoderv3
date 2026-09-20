@@ -113,7 +113,7 @@ describe("formatError request too large", () => {
         { statusCode: 400 },
       ),
     );
-    expect(f.guidance).toContain("Restart GG Coder");
+    expect(f.guidance).toContain("Restart OrcaCoder");
     expect(f.guidance).toContain("restored images are resized");
     expect(f.guidance).not.toContain("status.anthropic.com");
   });
@@ -145,7 +145,7 @@ describe("VideoUnsupportedError", () => {
   it("renders headline + guidance only (no bug-report framing)", () => {
     const out = formatErrorForDisplay(new VideoUnsupportedError());
     expect(out).toContain("This model can't analyze video.");
-    expect(out).not.toContain("GG Coder bug");
+    expect(out).not.toContain("OrcaCoder bug");
   });
 });
 
@@ -158,7 +158,7 @@ describe("formatErrorForDisplay", () => {
       [
         "Anthropic returned an error.",
         "  overloaded_error: Overloaded",
-        "  → Anthropic's servers are overloaded right now. Retry in a moment — not a GG Coder issue.",
+        "  → Anthropic's servers are overloaded right now. Retry in a moment — not a OrcaCoder issue.",
       ].join("\n"),
     );
   });
@@ -171,7 +171,7 @@ describe("formatErrorForDisplay", () => {
       [
         "OpenAI returned an error.",
         "  server_error: something broke",
-        "  \u2192 This is an error from OpenAI, not GG Coder. Retry \u2014 if it keeps happening, check status.openai.com.",
+        "  \u2192 This is an error from OpenAI, not OrcaCoder. Retry \u2014 if it keeps happening, check status.openai.com.",
       ].join("\n"),
     );
   });
@@ -200,29 +200,29 @@ describe("formatErrorForDisplay", () => {
       [
         "Gemini returned an error.",
         "  quota exceeded",
-        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a GG Coder issue.",
+        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a OrcaCoder issue.",
       ].join("\n"),
     );
   });
 
-  it("classifies a network GGAIError without a GG Coder bug headline", () => {
+  it("classifies a network GGAIError without a OrcaCoder bug headline", () => {
     const out = formatErrorForDisplay(new GGAIError("fetch failed", { source: "network" }));
     expect(out).toBe(
       [
         "Network error \u2014 couldn't reach the provider.",
         "  fetch failed",
-        "  → Check your internet connection. Not a GG Coder issue — retry shortly.",
+        "  → Check your internet connection. Not a OrcaCoder issue — retry shortly.",
       ].join("\n"),
     );
   });
 
-  it("falls back to the GG Coder-bug headline for unknown errors", () => {
+  it("falls back to the OrcaCoder-bug headline for unknown errors", () => {
     const out = formatErrorForDisplay(new Error("Cannot read property 'foo' of undefined"));
     expect(out).toBe(
       [
-        "GG Coder hit an unexpected error.",
+        "OrcaCoder hit an unexpected error.",
         "  Cannot read property 'foo' of undefined",
-        "  → This looks like a GG Coder bug — please report it to the developer (see /help).",
+        "  → This looks like a OrcaCoder bug — please report it to the developer (see /help).",
       ].join("\n"),
     );
   });

@@ -6,7 +6,7 @@ import type { Item } from "./App";
 /**
  * Ken Kai (mentor agent) client state + event handling, extracted from App.tsx.
  *
- * Ken runs as a second, read-only agent alongside the GG Coder build session, so
+ * Ken runs as a second, read-only agent alongside the OrcaCoder build session, so
  * his activity is fully independent: his own running flag, token count, and
  * thinking timer (mirroring the build session's so his activity bar reads the
  * same), plus his own streaming bubble in the shared transcript. All of it is
@@ -104,7 +104,7 @@ export function useKenMentor(opts: {
       switch (e.type) {
         // ── Ken Kai (mentor agent) ──────────────────────────────
         // Separate event family so Ken's reply renders in its own magenta
-        // bubble and never touches GG Coder's streaming bubble / tool feed.
+        // bubble and never touches OrcaCoder's streaming bubble / tool feed.
         case "ken_run_start":
           setKenRunning(true);
           endKenStreaming();
@@ -164,7 +164,7 @@ export function useKenMentor(opts: {
           setKenIsThinking(false);
           setKenRunStartTs(null);
           // Structured payload from the sidecar's broadcastError; "Ken: " prefix on
-          // the headline keeps it distinguishable from a GG Coder build error.
+          // the headline keeps it distinguishable from a OrcaCoder build error.
           const headline = typeof d.headline === "string" ? d.headline : undefined;
           setItems((prev) => [
             ...prev,

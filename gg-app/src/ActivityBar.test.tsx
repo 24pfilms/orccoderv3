@@ -44,9 +44,11 @@ describe("ActivityBar cancellation state", () => {
     expect(
       (screen.getByRole("button", { name: "Cancel agent run" }) as HTMLButtonElement).disabled,
     ).toBe(false);
-    expect(screen.getByRole("status").querySelector(".spinner")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
+    // [effects] the running indicator is the thinking orb (a <canvas>) when
+    // effects are on (default), replacing the braille .spinner fallback.
+    expect(
+      screen.getByRole("status").querySelector("canvas")?.getAttribute("aria-hidden"),
+    ).toBe("true");
   });
 
   it("announces and disables cancellation while awaiting settlement", () => {

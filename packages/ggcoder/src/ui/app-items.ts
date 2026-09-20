@@ -68,7 +68,7 @@ export interface ErrorItem {
   headline: string;
   /** Detailed message body (clean, no JSON). */
   message: string;
-  /** Action line — "Retry, this is an OpenAI issue" / "Report this GG Coder bug …". */
+  /** Action line — "Retry, this is an OpenAI issue" / "Report this OrcaCoder bug …". */
   guidance: string;
   id: string;
 }

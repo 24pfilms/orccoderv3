@@ -1262,7 +1262,7 @@ export async function* agentLoop(
                 `Your conversation is preserved.`,
               {
                 source: "network",
-                hint: "Retry once. If it keeps happening on this device, disable any VPN or proxy and allow GG Coder through firewall or antivirus web protection.",
+                hint: "Retry once. If it keeps happening on this device, disable any VPN or proxy and allow OrcaCoder through firewall or antivirus web protection.",
                 cause: err,
               },
             ),

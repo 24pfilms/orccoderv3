@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Read `CONTEXT.md` before naming anything.
+
 Read `CLAUDE.md` first — it is the authoritative project context (package
 boundaries, app architecture, workflows, gotchas).
 

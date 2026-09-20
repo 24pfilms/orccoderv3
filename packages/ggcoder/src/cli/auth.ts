@@ -177,7 +177,7 @@ export async function runDoctor(): Promise<void> {
   // ── Banner ──────────────────────────────────────────────────
   console.log();
   for (const row of renderLogoBlock([
-    primary.bold("GG Coder") +
+    primary.bold("OrcaCoder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
       chalk.white.bold("Ken Kai"),

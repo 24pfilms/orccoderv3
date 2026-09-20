@@ -182,7 +182,7 @@ describe("buildKenDigest", () => {
   });
 
   it("autopilot review instruction separates true human decisions from safe implied follow-ups", () => {
-    // GG Coder ending with a question/options is HUMAN only when it needs a
+    // OrcaCoder ending with a question/options is HUMAN only when it needs a
     // real user-level decision. Permission to continue safe work implied by the
     // original ask should become a PROMPT, not a blocker. Ken must also be told
     // injected lines are his own — these are leak regressions.
@@ -193,11 +193,11 @@ describe("buildKenDigest", () => {
       "mechanically implied by the user's original ask",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain(
-      "safe for GG Coder to do without new information",
+      "safe for OrcaCoder to do without new information",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("use PROMPT with the next concrete follow-up");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Original user request");
-    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Ken autopilot (injected)");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Orca autopilot (injected)");
   });
 
   it("buildKenAutopilotPlanContext inlines the plan section + plan instruction", () => {

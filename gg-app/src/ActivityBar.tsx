@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { theme } from "./theme";
+import { ThinkingOrbGlyph } from "./effects/ThinkingOrbGlyph"; // [effects]
 
 // Braille rotation spinner — the native language of CLI coding tools (ora,
 // npm, cargo). Smooth, monospace, and unmistakably "ours" rather than the
@@ -254,13 +255,20 @@ export function ActivityBar({
       aria-live="polite"
     >
       <span className="statusrow-left">
-        <span
-          className="statusrow-icon spinner"
-          style={{ color: theme.primary }}
-          aria-hidden="true"
-        >
-          {FRAMES[frame]}
-        </span>
+        {/* [effects] thinking orb replaces the braille spinner while effects are
+            on; passing the spinner as fallback keeps this to one line. To remove,
+            replace this <ThinkingOrbGlyph .../> with just its `fallback` value. */}
+        <ThinkingOrbGlyph
+          fallback={
+            <span
+              className="statusrow-icon spinner"
+              style={{ color: theme.primary }}
+              aria-hidden="true"
+            >
+              {FRAMES[frame]}
+            </span>
+          }
+        />
         <span className="working" style={{ color: theme.text }}>
           {"Working\u2026"}
         </span>

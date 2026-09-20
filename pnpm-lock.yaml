@@ -15,9 +15,15 @@ overrides:
   picomatch: ^2.3.2
 
 patchedDependencies:
+  border-beam@1.3.0:
+    hash: 98cd55a0bb33d17ea8d32dbd988fa0348c6e512ebaca179245e0d65d0caa90e6
+    path: patches/border-beam@1.3.0.patch
   ink@7.0.2:
     hash: c093b542a6016d76c2dd97256fc9c48e09eb7aaf9b0b0f637ec683d2d5fe70b5
     path: patches/ink@7.0.2.patch
+  metal-fx@2.0.10:
+    hash: 28ef0aab9fd2c7161ca43f801746fc27522a95e8fa7780087dc24d3ffd8808cd
+    path: patches/metal-fx@2.0.10.patch
 
 importers:
 
@@ -81,9 +87,6 @@ importers:
       '@fontsource-variable/space-grotesk':
         specifier: 5.3.0
         version: 5.3.0
-      '@kenkaiiii/error-mom':
-        specifier: ^0.3.3
-        version: 0.3.3
       '@mediapipe/tasks-vision':
         specifier: ^0.10.18
         version: 0.10.35
@@ -99,6 +102,9 @@ importers:
       '@tauri-apps/plugin-opener':
         specifier: ^2
         version: 2.5.4
+      border-beam:
+        specifier: 1.3.0
+        version: 1.3.0(patch_hash=98cd55a0bb33d17ea8d32dbd988fa0348c6e512ebaca179245e0d65d0caa90e6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       highlight.js:
         specifier: ^11.10.0
         version: 11.11.1
@@ -108,6 +114,9 @@ importers:
       marked:
         specifier: ^15.0.12
         version: 15.0.12
+      metal-fx:
+        specifier: 2.0.10
+        version: 2.0.10(patch_hash=28ef0aab9fd2c7161ca43f801746fc27522a95e8fa7780087dc24d3ffd8808cd)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react:
         specifier: ^19.1.0
         version: 19.2.6
@@ -123,6 +132,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      thinking-orbs:
+        specifier: 0.3.1
+        version: 0.3.1(react@19.2.6)
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1813,12 +1825,6 @@ packages:
   '@kenkaiiii/agent-home-sdk@0.3.8':
     resolution: {integrity: sha512-RH/5ZsqRgHWLqjQcjpvclK1tUrItRUTbJzoubFvyK2cT2YGjotrPIu+1+54eZdhR/oH8Bk77KRnjAw5SOBRbcw==}
 
-  '@kenkaiiii/error-mom-protocol@0.1.1':
-    resolution: {integrity: sha512-ecu7gxJ5KJoTGvDFspGLWq3+lZ/IzifxGhgcjkV5S2xYytjhWOeuajvMJ49iZkSoEOBR+6b7kMUz0ZKxW23hLg==}
-
-  '@kenkaiiii/error-mom@0.3.3':
-    resolution: {integrity: sha512-UgZfqr1KCyRDiP+FQyvEsWJJ3+vXAPmQYl0jAez7CAVhvnAPLBAQPlg+9YSKny47+9JHrG7VHaZzjXSIFQJS7Q==}
-
   '@kenkaiiii/ink@6.8.0-gg.2':
     resolution: {integrity: sha512-b2dmymMYLo/iFFQ1qZKGSFTR2bB5J67EhHhcfLUbppZY9XlKWVpVlLxnoXfud93Fq1qy6NDtOR3qGYK5KDfXYw==}
     engines: {node: '>=20'}
@@ -2652,6 +2658,12 @@ packages:
 
   boolbase@1.0.0:
     resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
+
+  border-beam@1.3.0:
+    resolution: {integrity: sha512-oZSISp3aQau4ASTmzm5pzxeBinO6Fh2HW0gyEixJgtpUZvRiU0vNpP+IwGRrNpIyqPjA7Rf5EBnVqDSJ49cm5w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   brace-expansion@5.0.5:
     resolution: {integrity: sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ==}
@@ -3640,6 +3652,12 @@ packages:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
 
+  metal-fx@2.0.10:
+    resolution: {integrity: sha512-XOeKBZl4xFw+l+7oe/zBt0AK2w87QWpa7QoSgd0c0MzkglQr49vejCVvkl+E3acKHW1K+SEJ8Pyis8v8BCjDpQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
 
@@ -4343,6 +4361,11 @@ packages:
 
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
+
+  thinking-orbs@0.3.1:
+    resolution: {integrity: sha512-3BG1aeB1RUTxItCml/BBuIz5JRM4kZqGuyx+vouv0fXTtcR9ZNoKjWGneHPx94y74GxgArwJZ1qbJR5dt54kSw==}
+    peerDependencies:
+      react: '>=18.0.0'
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
@@ -5831,14 +5854,6 @@ snapshots:
 
   '@kenkaiiii/agent-home-sdk@0.3.8': {}
 
-  '@kenkaiiii/error-mom-protocol@0.1.1':
-    dependencies:
-      zod: 4.4.3
-
-  '@kenkaiiii/error-mom@0.3.3':
-    dependencies:
-      '@kenkaiiii/error-mom-protocol': 0.1.1
-
   '@kenkaiiii/ink@6.8.0-gg.2(@types/react@19.2.14)(react@19.2.5)':
     dependencies:
       '@alcalzone/ansi-tokenize': 0.2.5
@@ -6741,6 +6756,11 @@ snapshots:
 
   boolbase@1.0.0:
     optional: true
+
+  border-beam@1.3.0(patch_hash=98cd55a0bb33d17ea8d32dbd988fa0348c6e512ebaca179245e0d65d0caa90e6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   brace-expansion@5.0.5:
     dependencies:
@@ -7955,6 +7975,11 @@ snapshots:
 
   merge2@1.4.1: {}
 
+  metal-fx@2.0.10(patch_hash=28ef0aab9fd2c7161ca43f801746fc27522a95e8fa7780087dc24d3ffd8808cd)(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
   micromark-core-commonmark@2.0.3:
     dependencies:
       decode-named-character-reference: 1.3.0
@@ -8900,6 +8925,10 @@ snapshots:
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
+
+  thinking-orbs@0.3.1(react@19.2.6):
+    dependencies:
+      react: 19.2.6
 
   tinybench@2.9.0: {}
 

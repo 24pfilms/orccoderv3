@@ -21,6 +21,10 @@
 
   /* Accents — true sibling set; dot/icon/border/verb colors (NOT body text). */
   --primary: #4d9dff;
+  /* Ink on a filled primary surface (matches .btn-primary color) + a brighter
+     primary for hover, used by the ask_user question band. */
+  --on-primary: #f4f8ff;
+  --primary-hi: #6fb1ff;
   --success: #36c489;
   --warning: #e3a23f;
   --error: #f2716e;
@@ -907,14 +911,20 @@ body {
   flex-wrap: wrap;
   justify-content: center;
 }
-.login-conn-dot {
+/* Authorized badge: a filled green circle with a white check. Replaced the
+   8px dot, which read as too subtle to tell an authorized provider apart. */
+.login-conn-check {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 8px;
-  height: 8px;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--success);
+  color: #fff;
   box-shadow: 0 0 0 3px rgba(54, 196, 137, 0.18);
 }
 /* Narrow windows (480-640px): tighter padding, slightly smaller logo. */
@@ -1430,6 +1440,14 @@ body {
    usage meter as its volume control. */
 .radio-modal {
   width: min(480px, 90vw);
+  /* Never taller than the window. A long station list used to push the modal's
+     head up under Tauri's top window edge and clip it (the whole dialog is
+     centered, so overflow spills off the top). Cap the dialog to the viewport
+     and lay it out as a column so the station list shrinks to fit while the
+     head, Play, and Volume controls stay visible. */
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Station list ─────────────────────────────────────────────────────────
@@ -1442,10 +1460,19 @@ body {
   flex-direction: column;
   gap: 4px;
   max-height: min(46vh, 360px);
-  /* Room for the scrollbar so the thumb never sits on a station name. */
-  padding: 2px 6px 2px 2px;
+  /* In the radio modal's flex column, shrink to fit a short window (min-height:0
+     lets a flex item go below its content height) instead of overflowing and
+     clipping the modal's head off the top. Still capped at 360px on tall ones. */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Breathing room on all sides so the first row's focus ring (this list is
+     auto-focused when the modal opens) and the last row are never clipped by
+     the scroll edge. `scrollbar-gutter: stable` reserves the scrollbar lane so
+     the thumb sits clear of the station names instead of over them. */
+  padding: 6px;
   margin: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 .radio-station {
@@ -2603,7 +2630,7 @@ body {
   color: var(--ken);
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
 }
-/* "Sent to GG Coder" bubble (from a Ken prompt-block button): same faint Ken
+/* "Sent to OrcaCoder" bubble (from a Ken prompt-block button): same faint Ken
    tint as a @Ken bubble, with the shimmer label carrying Ken's color. */
 .user-msg.user-ken-sent {
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
@@ -2994,7 +3021,7 @@ body {
   background: var(--surface-2);
 }
 /* Ken Kai (mentor agent): the whole reply is tinted in Ken's color — that tint
-   IS the only signal it's Ken, not GG Coder. No border line, no badge. Color the
+   IS the only signal it's Ken, not OrcaCoder. No border line, no badge. Color the
    markdown text and its inline elements (headings, list markers, bold, links),
    but leave the runnable-prompt block to its own styling below. */
 .ken-msg .assistant-text,
@@ -3006,7 +3033,7 @@ body {
   color: var(--ken);
   text-decoration-color: color-mix(in srgb, var(--ken) 50%, transparent);
 }
-/* Ken's activity bar reuses the GG Coder ActivityBar's running statusrow as-is
+/* Ken's activity bar reuses the OrcaCoder ActivityBar's running statusrow as-is
    (same top border, padding, spinner, layout, meta readout) so it's the same
    control aligned to what we have, just tinted to Ken. Only the spinner glow is
    re-tinted from brand-blue to Ken's color. */
@@ -6279,4 +6306,228 @@ button.img-open:focus-visible {
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 10px;
+}
+
+/* ── ask_user question band ──
+   The agent's question, inside the reply it belongs to. Deliberately built from
+   the app's existing vocabulary rather than a look of its own: every option is a
+   .btn ghost pill, the recommendation is a .badge, and color stays a data
+   signal (only the chosen/primary action is tinted). The band itself is a plain
+   surface block with a neutral keyline — it must not glow blue at the reader. */
+.ask-band {
+  /* Shrink-wrapped, not full-bleed: a two-word confirm and a three-row choice
+     should not occupy the same width. `fit-content` sizes to the longest
+     question or option, and `max-width: 100%` stops a long one overflowing the
+     transcript column. */
+  width: fit-content;
+  max-width: 100%;
+  margin: 10px 0 6px;
+  padding: 12px 14px;
+  /* A step above the transcript, plus a hairline: at --surface-1 the band was
+     the same value as the canvas behind it and simply dissolved into it. */
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+/* Resolved or dead: no surface at all, just a quiet line in the transcript. */
+.ask-band.is-done,
+.ask-band.is-closed {
+  /* Once answered the card is gone entirely — what remains is just a message
+     in the transcript, so it must not keep the band's surface or hairline.
+     It must also drop `fit-content`: the answer bubble aligns to its parent's
+     right edge, and a shrink-wrapped parent left it stranded mid-column
+     instead of on the transcript's edge like every other user message. */
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+}
+/* Answered: the reply IS a message the user sent, so it renders as a user
+   bubble on the right like every other one — not as a left-aligned status
+   line. Shimmer matches the "ideal?" hook treatment. */
+.ask-answered {
+  display: flex;
+  justify-content: flex-end;
+}
+.ask-answered-bubble {
+  --shimmer-base: var(--text-muted);
+  --shimmer-bright: var(--text);
+  display: inline-block;
+  margin: 0;
+}
+.ask-closed {
+  font-size: 12.5px;
+  /* Dim measured 3.37:1 on the bare transcript canvas this line sits on, under
+     the 4.5:1 floor. Muted clears it and still reads as the quietest row. */
+  color: var(--text-muted);
+}
+.ask-subq-q {
+  margin: 0 0 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text);
+}
+.ask-detail {
+  margin: -3px 0 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* Secondary, not muted: this sits on a raised surface, and muted grey on grey
+     was genuinely hard to read. */
+  color: var(--text-secondary);
+}
+.ask-subq-num {
+  margin-right: 7px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  /* Dim measured 2.84:1 on the band's surface. These numbers are permanent now
+     that answered questions stay on screen, so they have to clear 4.5:1. */
+  color: var(--text-muted);
+}
+/* Several questions in one band: numbered, each resolving on its own. */
+/* Separator between questions. --border (7% alpha white) vanishes against the
+   band's raised surface, so this needs its own stronger value to actually read
+   as a division. */
+.ask-subq + .ask-subq {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-strong);
+}
+
+/* One shape for every question. Options stack full-width instead of flowing as
+   inline chips: a two-word yes/no laid out as chips read as a different
+   component from a hinted choice laid out as rows, and a chip row also could not
+   survive a 480px window once a label grew. Stacking always is the cheaper
+   answer than a rule deciding which questions get which layout. */
+.ask-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  /* Inside a fit-content band the rows still align to each other, so the band
+     sizes to the LONGEST row rather than each row sizing independently. */
+  min-width: 100%;
+}
+/* AFFORDANCE, and it belongs to EVERY option. `.btn-ghost` fills with
+   --surface-2, which is exactly the band's own background: an option had no
+   edge, no fill of its own and no hover, so the choices read as static text with
+   numbers in front of them. Each one gets its own raised surface plus a
+   hairline, so it reads as a control before it is touched — the border doubles
+   as the division between rows, which a bare divider line could not do (a
+   divider separates list items; an edge says "press me").
+
+   This was once scoped to stacked rows alone, which is why a short yes/no
+   confirm — the one shape that rendered as chips — looked like a different
+   component from every other question the app asks. */
+.ask-options .btn {
+  justify-content: flex-start;
+  align-items: flex-start;
+  text-align: left;
+  /* `.btn` is nowrap for chips; a long label here must wrap inside the
+     transcript column rather than push the whole band past its right edge. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  max-width: 100%;
+  border-radius: var(--radius-button);
+  padding: 9px 12px;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast);
+}
+.ask-options .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-3));
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
+}
+/* Pressed: the option dips back toward its resting fill so the click is
+   confirmed even when the answer re-renders the band immediately. */
+.ask-options .btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface-3));
+}
+.ask-options .btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* Selected. In a band of several questions this fill IS the answered state: the
+   question stays on screen with its pick filled, so it can be changed while the
+   others are still being decided. The fill and its ink have to be re-stated (not
+   inherited from `.btn-primary`) because the rule above is the more specific
+   selector and would otherwise leave near-black label text on the dark row. */
+.ask-options .btn.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: transparent;
+}
+.ask-options .btn.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hi);
+  border-color: transparent;
+}
+/* The index and the badge sit on the label's FIRST line, not centred against a
+   two-line block, so they align with the text they belong to. */
+.ask-options .ask-num {
+  margin-top: 1px;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+/* The badge is a separate idea from the label, so it is pushed to the far edge
+   rather than trailing it with the button's own 8px gap. */
+.ask-options .badge {
+  margin-top: 1px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* `margin-left: auto` only guarantees air while the row is short. Once the hint
+   line runs long the badge is pushed back until just the button's own 8px gap
+   is left, and the two read as one run of text — so reserve the rest here. */
+.ask-options .ask-row-main {
+  padding-inline-end: 14px;
+}
+.ask-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* The plain label (no hint) has no flex container of its own: without
+   `min-width: 0` a long one keeps its intrinsic width and overflows the row. */
+.ask-options .btn > span:not(.ask-num):not(.badge) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ask-row-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  /* On the pill's own gradient, --text-dim measured ~2.2:1 — under the 4.5:1
+     floor for text this size. Muted clears it. */
+  color: var(--text-muted);
+}
+/* Selected: the fill is a light periwinkle, so the row's muted grey hint drops
+   to ~1.6:1 on it. Both the hint and the accelerator index switch to the fill's
+   own near-black ink, softened rather than lightened. */
+.btn-primary .ask-row-hint {
+  color: color-mix(in srgb, var(--on-primary) 78%, var(--primary));
+}
+/* Accelerator index. Dim and unboxed — a hint, never competing with the label. */
+.ask-num {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.btn-primary .ask-num {
+  color: color-mix(in srgb, var(--on-primary) 70%, var(--primary));
+}
+/* The band's only footer: a multi-select's confirm. Everything else that used
+   to live down here (a free-text link, a send button, an answered counter) is
+   gone — the options are the whole interface. */
+.ask-foot {
+  display: flex;
+  margin-top: 10px;
 }

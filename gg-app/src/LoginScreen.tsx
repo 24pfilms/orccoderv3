@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { theme } from "./theme";
 import { authStatus, subscribe, type AuthProvider, type SidecarEvent } from "./agent";
 import { Badge } from "./Badge";
@@ -95,7 +96,9 @@ export function LoginScreen({ onClose }: Props): React.ReactElement {
             return (
               <button key={p.value} className="login-tile" onClick={() => setActive(p)}>
                 {p.connected && (
-                  <span className="login-conn-dot" title="Connected" aria-label="Connected" />
+                  <span className="login-conn-check" title="Connected" aria-label="Connected">
+                    <Check size={12} strokeWidth={3} aria-hidden="true" />
+                  </span>
                 )}
                 <span className="login-tile-logo">
                   {logo ? (

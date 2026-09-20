@@ -1,0 +1,82 @@
+/* [effects] All styling for the decorative UI effects (thinking orbs draw their
+   own styles from the thinking-orbs package). Imported by main.tsx. To remove
+   the effects entirely, delete this file, the effects/ folder, its import in
+   main.tsx, and the // [effects] marked lines in ActivityBar/App/SettingsModal.
+   See effects/README.md. */
+
+/* ── Metal buttons ──────────────────────────────────────────
+   Keep each button's existing fill/ink beneath a non-interactive metal rim. */
+.metal-button {
+  position: relative;
+  display: inline-grid;
+  vertical-align: middle;
+  isolation: isolate;
+}
+/* Decorative rim only; the original button remains the hit target and fallback. */
+.metal-button > .action-metal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.metal-button > .action-metal.metal-fx-root {
+  background: transparent;
+  color: inherit;
+}
+.metal-button > .action-metal .metal-fx-inner {
+  display: none;
+}
+.metal-button > .action-metal.metal-fx-root::before {
+  background-image: radial-gradient(ellipse at 50% 40%, rgb(255 255 255 / 12%), transparent 70%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 45%),
+    inset 0 0 8px rgb(255 255 255 / 15%);
+}
+/* The real button sits above the rim and keeps its own fill. */
+.metal-button > button {
+  position: relative;
+  z-index: 1;
+}
+.action-metal-surface {
+  border-radius: var(--radius-pill);
+}
+
+/* ── Working beam ───────────────────────────────────────────
+   Sibling overlays avoid nesting Beam's generated descendant selectors. They
+   cannot intercept clicks, clip menus, or change the composer's layout. */
+.working-beam[data-beam] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.inputwrap > .working-beam {
+  inset: -1px;
+}
+.working-beam-surface {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-input, 14px);
+}
+.working-beam-sm .working-beam-surface {
+  border-radius: var(--radius-pill);
+}
+/* Freeze the beam in unfocused windows (matches the app's focus-pause policy). */
+.app:not(.window-focused) .working-beam,
+.app:not(.window-focused) .working-beam::before,
+.app:not(.window-focused) .working-beam::after,
+.app:not(.window-focused) .working-beam [data-beam-bloom] {
+  animation-play-state: paused !important;
+}
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  /* These decorative beams are optional; retain the status text and focus
+     borders without motion. */
+  .working-beam[data-beam],
+  .working-beam[data-beam]::before,
+  .working-beam[data-beam]::after,
+  .working-beam[data-beam] [data-beam-bloom] {
+    display: none;
+    animation: none !important;
+  }
+}

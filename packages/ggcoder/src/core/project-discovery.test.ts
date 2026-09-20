@@ -319,7 +319,7 @@ describe("discoverProjects (ggcoder store)", () => {
           message: {
             role: "user",
             content:
-              "[Autopilot] This turn was triggered by Ken, GG Coder's automated reviewer — fix it",
+              "[Autopilot] This turn was triggered by Orca, OrcaCoder's automated reviewer — fix it",
           },
         },
         {
@@ -413,7 +413,7 @@ describe("discoverProjects (ggcoder store)", () => {
     expect(sessions[0]?.preview).toBe("Original user request");
   });
 
-  it("discovers and deduplicates an archived GG Coder session", async () => {
+  it("discovers and deduplicates an archived OrcaCoder session", async () => {
     const projectPath = path.join(tmp, "projects", "archived");
     await fs.mkdir(projectPath, { recursive: true });
     const timestamp = new Date().toISOString();

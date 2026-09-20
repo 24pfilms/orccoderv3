@@ -1,8 +1,8 @@
 /**
  * Ken's context digest — assembled fresh on each `@Ken` question.
  *
- * The build session (GG Coder) and Ken are two separate `AgentSession` objects.
- * Ken never appears in GG Coder's transcript; on each question we read GG
+ * The build session (OrcaCoder) and Ken are two separate `AgentSession` objects.
+ * Ken never appears in OrcaCoder's transcript; on each question we read GG
  * Coder's `getMessages()`, distill it into a cheap text digest, and prepend it
  * to the user's question as Ken's prompt body. Ken's read-only tools fill any
  * gap the digest misses (he can read the actual files or screenshot the UI).
@@ -38,7 +38,7 @@ const ORIGINAL_REQUEST_CAP = 4000;
  *  Without it, multi-round cycles render Ken's own fix prompts as `**User:**`
  *  and he starts reviewing against his own last prompt instead of the user's
  *  original ask. Referenced by the autopilot system prompt — keep in sync. */
-export const INJECTED_PROMPT_LABEL = "**Ken autopilot (injected):**";
+export const INJECTED_PROMPT_LABEL = "**Orca autopilot (injected):**";
 
 export interface KenDigestInput {
   /** The user's `@Ken …` text (already stripped of the mention). */
@@ -123,7 +123,7 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
 
   if (msg.role === "assistant") {
     if (typeof msg.content === "string") {
-      return msg.content.trim() ? `**GG Coder:** ${cap(msg.content)}` : null;
+      return msg.content.trim() ? `**OrcaCoder:** ${cap(msg.content)}` : null;
     }
     const parts: string[] = [];
     const calls: string[] = [];
@@ -134,7 +134,7 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
     const segments: string[] = [];
     if (parts.length > 0) segments.push(cap(parts.join("\n")));
     if (calls.length > 0) segments.push(`[tools: ${calls.join(", ")}]`);
-    return segments.length > 0 ? `**GG Coder:** ${segments.join(" ")}` : null;
+    return segments.length > 0 ? `**OrcaCoder:** ${segments.join(" ")}` : null;
   }
 
   if (msg.role === "tool") {
@@ -161,23 +161,23 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
 
 /**
  * Fixed instruction fed into the digest's `question` slot in autopilot mode.
- * Autopilot Ken doesn't answer a user — he reviews the just-finished GG Coder
+ * Autopilot Ken doesn't answer a user — he reviews the just-finished OrcaCoder
  * turn against the user's original ask and replies with a verdict only. The
  * verdict format itself is taught by his system prompt; this just points him at
  * the transcript and demands the machine-parseable answer.
  */
 export const AUTOPILOT_REVIEW_INSTRUCTION =
-  "GG Coder just finished a turn. Review its work against the user's original " +
-  "ask (the 'Original user request' section above; lines labeled 'Ken " +
+  "OrcaCoder just finished a turn. Review its work against the user's original " +
+  "ask (the 'Original user request' section above; lines labeled 'Orca " +
   "autopilot (injected)' are your own earlier fix prompts, NOT user asks). " +
   "Reply with your verdict ONLY — the first line must be exactly PROMPT, " +
-  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If GG Coder ended by " +
+  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If OrcaCoder ended by " +
   "asking the user a question or presenting options, use HUMAN only when the " +
   "answer requires an actual user-level decision: intent, preference, missing " +
   "product requirement, credential/secret, external access, budget/cost, or " +
   "destructive/irreversible approval. If the question is only permission to " +
   "continue work that is mechanically implied by the user's original ask and " +
-  "safe for GG Coder to do without new information, use PROMPT with the next " +
+  "safe for OrcaCoder to do without new information, use PROMPT with the next " +
   "concrete follow-up instead. No greetings, no mentorship prose.";
 
 /** Inputs the sidecar gathers for an autopilot review digest (everything
@@ -208,7 +208,7 @@ const PLAN_CONTENT_CAP = 8000;
  * defensively), so the instruction forbids it outright.
  */
 export const AUTOPILOT_PLAN_REVIEW_INSTRUCTION =
-  "GG Coder submitted an implementation plan (the 'Plan under review' section " +
+  "OrcaCoder submitted an implementation plan (the 'Plan under review' section " +
   "above). You are the reviewer — there is no user in the loop. Reply with " +
   "your verdict ONLY — the first line must be exactly ALL_CLEAR (approve — the " +
   "plan is sound and implementation starts immediately), PROMPT + feedback " +
@@ -278,7 +278,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   const sections: string[] = [];
 
   sections.push(
-    `## Who you are\nYou are Ken Kai, mentoring the user inside GG Coder. Your persona is in your system prompt. Below is what GG Coder and the user are working on.`,
+    `## Who you are\nYou are Orca, mentoring the user inside OrcaCoder. Your persona is in your system prompt. Below is what OrcaCoder and the user are working on.`,
   );
 
   const building: string[] = [];
@@ -306,7 +306,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   }
 
   sections.push(
-    `## Recent activity (GG Coder and user)\n${
+    `## Recent activity (OrcaCoder and user)\n${
       renderedRecent.length > 0 ? renderedRecent.join("\n\n") : "(no conversation yet)"
     }`,
   );

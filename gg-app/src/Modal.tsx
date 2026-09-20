@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { theme } from "./theme";
 
 const FOCUSABLE_SELECTOR = [
@@ -77,7 +78,13 @@ export function Modal({
     };
   }, []);
 
-  return (
+  // Portal to <body>: a modal can be rendered from anywhere in the tree,
+  // including the chat header (RadioButton) whose ancestors carry a `transform`
+  // (per-window zoom). A `transform` ancestor makes `position: fixed` resolve
+  // against THAT ancestor, not the viewport — which clipped the radio dialog's
+  // top under the window's top bar. At <body> the backdrop is always anchored to
+  // the viewport. Theme vars live on `:root`, so styling is unaffected.
+  return createPortal(
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
@@ -109,6 +116,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

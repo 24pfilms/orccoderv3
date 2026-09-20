@@ -255,7 +255,7 @@ export function buildSandboxSettings(
     filesystem: {
       denyRead: sensitiveReadPaths(home),
       // SRT adds its platform-required temporary paths; these are the only
-      // product-owned write roots supplied by GG Coder.
+      // product-owned write roots supplied by OrcaCoder.
       allowWrite: platform === "win32" ? writeRoots : [...writeRoots, "/dev/null"],
       // `.git/hooks` is a mandatory sandbox protection with no opt-out, which
       // is worth keeping: it stops a command installing a hook that later runs

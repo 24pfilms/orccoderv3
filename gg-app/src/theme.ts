@@ -23,6 +23,8 @@ export const theme = {
 
   // Accents — true sibling set (OKLCH L 69–76); dot/icon/border/verb colors.
   primary: "#4d9dff",
+  // Ink on a filled primary surface (matches .btn-primary color in App.css).
+  onPrimary: "#f4f8ff",
   secondary: "#9b8cf7",
   success: "#36c489",
   warning: "#e3a23f",
@@ -48,8 +50,8 @@ export const theme = {
   // replies (and the @Ken active chip in the input), so it must read well as
   // body text on the dark canvas: a lighter, calmer hue than the saturated
   // magenta it replaced (which vibrated as full paragraphs). Distinct from the
-  // GG Coder blue dot and the greener `info` teal — the color IS the only
-  // signal that a reply is Ken's, not GG Coder's.
+  // OrcaCoder blue dot and the greener `info` teal — the color IS the only
+  // signal that a reply is Ken's, not OrcaCoder's.
   ken: "#5ad1e6",
 } as const;
 

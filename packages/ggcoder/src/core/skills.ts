@@ -33,7 +33,7 @@ export async function discoverSkills(options: {
     for (const skill of skills) skillsByName.set(skill.name.toLowerCase(), skill);
   };
 
-  // Bundled defaults ship with GG Coder. Global and project definitions with
+  // Bundled defaults ship with OrcaCoder. Global and project definitions with
   // the same name override them, preserving user control.
   addSkills(await loadBundledSkills());
   addSkills(await loadSkillsFromDir(options.globalSkillsDir, "global"));

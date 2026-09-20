@@ -141,7 +141,7 @@ describe("parseAutopilotVerdict", () => {
       parseAutopilotVerdict("Waiting on input.\nprompt the user for their API key first.").kind,
     ).toBe("human");
     expect(
-      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for GG Coder here.").kind,
+      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for OrcaCoder here.").kind,
     ).toBe("human");
   });
 
@@ -162,7 +162,7 @@ describe("parseAutopilotVerdict", () => {
     // reason after the keyword and drop the prose — HUMAN stops either way.
     const reply =
       "The screenshot shows a clean squared inward spiral that matches the " +
-      "reference. Tests green. GG Coder asked whether to dress it up with art — " +
+      "reference. Tests green. OrcaCoder asked whether to dress it up with art — " +
       "that's a taste/product call the user should own.\nHUMAN\nStructural spiral " +
       "is done; dressing it up with art is a taste call only you can make.";
     const v = parseAutopilotVerdict(reply);

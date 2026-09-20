@@ -9,7 +9,7 @@ interface Props {
 
 /**
  * Autopilot review status row. Shown in the activity-bar region (not the
- * transcript) while Ken is silently auto-reviewing GG Coder's just-finished
+ * transcript) while Ken is silently auto-reviewing OrcaCoder's just-finished
  * turn — same braille spinner + statusrow layout as the run/Ken bars, tinted to
  * Ken and labelled "Ken reviewing…". No timer/tokens: the review is short and
  * its verdict lands as a Ken bubble, so this is a pure activity indicator.

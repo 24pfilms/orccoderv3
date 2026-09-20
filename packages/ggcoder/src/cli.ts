@@ -140,7 +140,7 @@ function printHelp(): void {
   // Banner — matches the interactive TUI banner layout
   console.log();
   for (const row of renderLogoBlock([
-    primary.bold("GG Coder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
+    primary.bold("OrcaCoder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
     dim("AI coding agent"),
   ])) {
     console.log(row);
@@ -1056,7 +1056,7 @@ async function runTelegramSetup(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("OrcaCoder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
       chalk.white.bold("Ken Kai"),
@@ -1331,7 +1331,7 @@ async function runAgentHomeLogin(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("OrcaCoder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
       chalk.white.bold("Ken Kai"),

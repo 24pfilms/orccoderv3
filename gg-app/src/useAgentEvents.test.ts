@@ -622,12 +622,12 @@ describe("useAgentEvents", () => {
       kenProvider: "openai",
       kenModel: "gpt-5.5",
       kenModelOverride: true,
-      // GG Coder's own model is untouched by a Ken pin.
+      // OrcaCoder's own model is untouched by a Ken pin.
       model: "claude-opus-5",
       provider: "anthropic",
     });
 
-    // Clearing the pin: sidecar broadcasts Ken back on GG Coder's model.
+    // Clearing the pin: sidecar broadcasts Ken back on OrcaCoder's model.
     act(() => {
       hook.result.current.handleEvent(
         ev("ken_model_change", {

@@ -47,7 +47,7 @@ const PROJECT: DiscoveredProject = {
 const NATIVE_SESSION: RecentSession = {
   id: "gg-1",
   path: "/sessions/gg-1.jsonl",
-  preview: "Native GG Coder session",
+  preview: "Native OrcaCoder session",
   lastActiveDisplay: "2m ago",
   messageCount: 4,
 };

@@ -580,7 +580,7 @@ export function toAnthropicMessages(
     }
   }
 
-  // Anthropic supports block-level cache_control. GG Coder keeps reusable prompt
+  // Anthropic supports block-level cache_control. OrcaCoder keeps reusable prompt
   // content before the "<!-- uncached -->" marker and volatile text (currently
   // the date) after it, so only the reusable prefix receives cache_control.
   let system: Anthropic.TextBlockParam[] | undefined;

@@ -88,7 +88,7 @@ export function Banner({ version, model, cwd }: BannerProps) {
       <Box>
         <Text>{LEFT_PAD}</Text>
         <Text color={theme.primary} bold>
-          GG Coder
+          OrcaCoder
         </Text>
         <Text color={theme.textDim}> v{version}</Text>
       </Box>
@@ -112,7 +112,7 @@ export function Banner({ version, model, cwd }: BannerProps) {
     <Box flexDirection="column">
       <Box>
         <Text color={theme.primary} bold>
-          GG Coder
+          OrcaCoder
         </Text>
         <Text color={theme.textDim}> v{version}</Text>
         <Text color={theme.textDim}> · By </Text>

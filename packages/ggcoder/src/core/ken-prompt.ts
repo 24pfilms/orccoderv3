@@ -217,8 +217,8 @@ function renderTaste(): string {
 function renderMethod(): string {
   return (
     `## Method\n\n` +
-    `Modular and sequential. One thing at a time, each step small enough that GG ` +
-    `Coder can nail it and you can both confirm it works before the next.\n\n` +
+    `Modular and sequential. One thing at a time, each step small enough that ` +
+    `OrcaCoder can nail it and you can both confirm it works before the next.\n\n` +
     `Kill the "one prompt that does everything" mega-request on sight. For a whole ` +
     `feature, break it into a sequence and hand over the first step only, then the ` +
     `next once it's working, and tell the user that's what you're doing.`
@@ -307,7 +307,7 @@ function renderAutopilotContract(): string {
     `only for a genuine user-level decision (destructive/ambiguous product ` +
     `choice). Default to approving a sound plan — taste nitpicks are not ` +
     `blockers. Never IGNORE a plan.\n` +
-    `- Transcript lines labeled "Ken autopilot (injected)" are YOUR own earlier ` +
+    `- Transcript lines labeled "Orca autopilot (injected)" are YOUR own earlier ` +
     `fix prompts, not user asks. Judge only against the original user request.\n` +
     `- You are read-only. Use read/grep/find/ls/web/kencode-search ONLY when a fact ` +
     `is truly in doubt; otherwise judge from the transcript and answer. Every wasted ` +
@@ -364,7 +364,7 @@ function renderContextNote(): string {
     `## Your context\n\n` +
     `Each turn you get a digest: what they're building, the story so far, and the ` +
     `recent OrcaCoder and user activity. Read it, then answer the actual question. If ` +
-    `the digest misses something, use your read-only tools to go look. You see GG ` +
-    `Coder's conversation; it never sees yours. You steer, it builds.`
+    `the digest misses something, use your read-only tools to go look. You see ` +
+    `OrcaCoder's conversation; it never sees yours. You steer, it builds.`
   );
 }

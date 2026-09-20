@@ -189,6 +189,8 @@ import {
   type MCPScope,
   type MCPServerConfig,
 } from "./core/mcp/index.js";
+import { createAskUserBridge, type AskUserResult } from "./core/ask-user.js";
+import { createAskUserTool } from "./tools/ask-user.js";
 import type { ElicitResult } from "@modelcontextprotocol/client";
 import { buildSnapshot, levelForXp, rankForLevel } from "./core/progress/ranks.js";
 import { loadProgress, peekProgress, updateProgress } from "./core/progress/store.js";
@@ -253,8 +255,8 @@ interface AppSettings {
    *  (one window = one cwd); absent/false → off. Restored on boot. */
   autopilot?: Record<string, boolean>;
   /** Ken's model override keyed by normalized project cwd. Absent → Ken follows
-   *  GG Coder's model (the historical behavior). Set → Ken (chat + autopilot)
-   *  uses this model regardless of GG Coder's. */
+   *  OrcaCoder's model (the historical behavior). Set → Ken (chat + autopilot)
+   *  uses this model regardless of OrcaCoder's. */
   kenModels?: Record<string, KenModelPref>;
   /** Extra folders scanned for projects alongside `projectsRoot`. */
   projectRoots?: string[];
@@ -456,7 +458,7 @@ interface HistoryEntryForWire {
     /** Stable seed derived from persisted marker data for deterministic all-clear copy. */
     copySeed?: string;
   };
-  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+  /** True when this user prompt came from a Ken "Send to OrcaCoder" button —
    *  the webview renders the shimmering label instead of the prompt body. */
   kenSent?: boolean;
   /** Enhancer highlight segments for this user prompt (unedited enhanced sends). */
@@ -1787,6 +1789,16 @@ async function createSession(
       }),
   });
 
+  // ── ask_user bridge ────────────────────────────────────────
+  // The `ask_user` tool parks the turn on a human answer. Same shape as the
+  // elicitation bridge: broadcast the question band over SSE, resolve it when
+  // the webview POSTs /ask/:id.
+  const asks = createAskUserBridge({
+    broadcast: (prompt) => broadcast("ask_user", prompt),
+    onTimeout: (prompt) => log("WARN", "app-sidecar", "ask_user timed out", { id: prompt.id }),
+  });
+  const askUserTool = createAskUserTool(asks.park);
+
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
   const resumeSessionPath = opts.sessionPath;
@@ -1813,7 +1825,7 @@ async function createSession(
     session = createChatAgent(chatAgent, {
       ...baseSessionOptions,
       sessionsDir: paths.sessionsDir,
-      additionalTools: [...buildMemoryTools(memoryStore), ...buildJiwaTools(jiwaStore)],
+      additionalTools: [askUserTool, ...buildMemoryTools(memoryStore), ...buildJiwaTools(jiwaStore)],
       getSystemPromptTail: () =>
         `${memoryStore.renderForPrompt()}\n\n${jiwaStore.renderForPrompt()}`,
       onAgentChange: async (nextAgent) => {
@@ -1830,6 +1842,7 @@ async function createSession(
   } else {
     session = new AgentSession({
       ...baseSessionOptions,
+      additionalTools: [askUserTool],
       // Plan mode belongs only to the coding agent.
       onEnterPlan: async (reason) => {
         deactivateApprovedPlan();
@@ -2486,7 +2499,7 @@ async function createSession(
   // cycles drift into Ken reviewing against his own last prompt. Cleared
   // whenever the conversation resets (new session / plan accept / task run).
   let injectedAutopilotPrompts: string[] = [];
-  // The plan GG Coder submitted via exit_plan that still awaits a decision
+  // The plan OrcaCoder submitted via exit_plan that still awaits a decision
   // (Ken's auto-review in autopilot, or the user's modal). Path + the content
   // read at submission time (fallback if the file becomes unreadable).
   let pendingPlanPath: string | null = null;
@@ -2529,7 +2542,7 @@ async function createSession(
 
   // ── Ken Kai (mentor agent) ─────────────────────────────────
   // A second, read-only AgentSession on this same window. The user talks to him
-  // with `@Ken …`; he reads GG Coder's transcript (one-way — GG Coder never sees
+  // with `@Ken …`; he reads OrcaCoder's transcript (one-way — OrcaCoder never sees
   // Ken's) and hands back runnable prompts + mentorship. Created lazily on the
   // first `@Ken` so windows that never use Ken pay zero cost. His events ride the
   // SAME SSE stream with `ken_`-prefixed types, routed to the Ken bubble.
@@ -2541,7 +2554,7 @@ async function createSession(
 
   // Ken's per-project model override. null → Ken (chat + autopilot) follows GG
   // Coder's model, including live switches (the historical behavior). Set → Ken
-  // is pinned to his own model and GG Coder switches no longer touch him. A
+  // is pinned to his own model and OrcaCoder switches no longer touch him. A
   // stale persisted pin (model dropped from the registry / provider logged
   // out) validates to null so Ken degrades to following instead of erroring.
   let kenModelOverride: KenModelPref | null = validateKenModelPref(await loadKenModelPref(cwd), {
@@ -2556,7 +2569,7 @@ async function createSession(
     kenModelOverride = null;
   }
 
-  /** The model Ken uses next turn: the pin when set, else GG Coder's. */
+  /** The model Ken uses next turn: the pin when set, else OrcaCoder's. */
   function kenCurrentModel(): { provider: Provider; model: string } {
     if (kenModelOverride) return kenModelOverride;
     const st = session.getState();
@@ -2607,7 +2620,7 @@ async function createSession(
     });
     await ken.initialize();
     // Bridge Ken's bus to the shared SSE fan-out with ken_-prefixed types so the
-    // webview routes them to the Ken bubble, never GG Coder's.
+    // webview routes them to the Ken bubble, never OrcaCoder's.
     ken.eventBus.on("text_delta", (d) => broadcast("ken_text_delta", d));
     ken.eventBus.on("thinking_delta", (d) => broadcast("ken_thinking_delta", d));
     ken.eventBus.on("tool_call_start", (d) => {
@@ -2637,7 +2650,7 @@ async function createSession(
 
   // ── Autopilot Ken (auto-reviewer) ──────────────────────────
   // A THIRD read-only AgentSession, separate from chat Ken. In autopilot mode
-  // Ken silently reviews each finished GG Coder turn and returns a verdict
+  // Ken silently reviews each finished OrcaCoder turn and returns a verdict
   // (PROMPT / ALL_CLEAR / HUMAN). Its bus is intentionally NOT bridged to the
   // ken_* chat bubbles — the review is silent; we read its final assistant text
   // and parse it. Uses the lean autopilot system prompt + the same read-only
@@ -2674,7 +2687,7 @@ async function createSession(
       // there, and keep the daemon's sessions uniformly interactive so they
       // share one pooled MCP connection.
       onMcpElicit: elicitations.onElicit,
-      // Autopilot review rounds routinely span the injected GG Coder run
+      // Autopilot review rounds routinely span the injected OrcaCoder run
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
@@ -2699,6 +2712,8 @@ async function createSession(
     // the promise lives in the bridge. Release it, or the aborted turn's tool
     // call never returns.
     elicitations.cancelAll();
+    // Same for an `ask_user` question parked on the user.
+    asks.cancelAll();
     // Stop a run-all sweep and every async child through AgentSession's signal.
     taskRunAll = false;
     autopilotCancelled = true;
@@ -2960,7 +2975,7 @@ async function createSession(
           return true;
         },
         runImplement: () => {
-          // Autopilot-injected run: frame it so GG Coder knows no human is
+          // Autopilot-injected run: frame it so OrcaCoder knows no human is
           // watching the implementation. Record the framed string so Ken's
           // digest labels it as injected, not as the user's ask. The run_start
           // label stays the clean prompt.
@@ -2972,14 +2987,14 @@ async function createSession(
         },
         // Lean context per user turn: wipe prior review history so each new
         // turn starts cheap, while within this cycle the few review messages
-        // persist so Ken remembers what he already asked GG Coder to fix.
+        // persist so Ken remembers what he already asked OrcaCoder to fix.
         resetReviewer: async () => {
           await kenAutoSession?.newSession().catch(() => {});
         },
         review: () => runAutopilotReview(originalRequest),
         // prompt → record the injected body (so later digests label it as
         // Ken's, not the user's), show a compact Ken-tinted marker (not the
-        // prompt body), then feed GG Coder bracketed by runAgent so the run
+        // prompt body), then feed OrcaCoder bracketed by runAgent so the run
         // streams normally; the shared finally never re-triggers autopilot,
         // so this can't recurse.
         onInjected: (body, round) => {
@@ -2995,7 +3010,7 @@ async function createSession(
           broadcast("autopilot_prompted", { round, body });
           void session.persistAutopilotMarker("prompted", { body });
         },
-        // Autopilot-injected run: GG Coder receives the framed prompt (no human
+        // Autopilot-injected run: OrcaCoder receives the framed prompt (no human
         // is watching this turn) while run_start keeps the clean label.
         runPrompt: (body) =>
           runAgent(body, () =>
@@ -3744,7 +3759,7 @@ async function createSession(
           if (!turns) return;
           kenByCount.delete(count);
           for (const turn of turns) {
-            history.push({ role: "user", text: `@Ken ${turn.question}`, ken: true });
+            history.push({ role: "user", text: `@Orca ${turn.question}`, ken: true });
             history.push({ role: "assistant", text: turn.reply, ken: true });
           }
         };
@@ -3854,7 +3869,7 @@ async function createSession(
                   scope: "interrupted_run",
                   headline: "A run was interrupted",
                   message:
-                    "GG Coder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
+                    "OrcaCoder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
                   guidance:
                     "Review the working tree, then re-send the request if you still want it.",
                 },
@@ -4133,6 +4148,13 @@ async function createSession(
             json(res, 400, { error: "empty prompt" });
             return;
           }
+          // A typed prompt supersedes any question parked on the user: they
+          // answered with a message of their own. Release the blocked tool call
+          // NOW — otherwise it waits out its ten-minute timeout while this very
+          // message sits behind it as steering that only drains once the tool
+          // returns, so the turn looks frozen. The webview closes the band on
+          // send; a racing /ask POST just 409s.
+          asks.cancelAll({ action: "cancel", superseded: true });
           if (
             runLifecycle.running &&
             runLifecycle.isCancellationRequested(runLifecycle.generation)
@@ -4237,7 +4259,7 @@ async function createSession(
           // failed runs add no assistant work to judge; a turn that ended in plan
           // mode has a pending Accept/Reject modal Ken must not preempt. This is
           // the ONLY entry point into the cycle besides the stranded-queue drain —
-          // it drives any follow-up GG Coder runs itself, so the shared runAgent
+          // it drives any follow-up OrcaCoder runs itself, so the shared runAgent
           // finally never recurses.
           const decision = shouldStartAutopilotCycle({
             enabled: autopilot,
@@ -4577,7 +4599,7 @@ async function createSession(
           }
         }
         await session.switchModel(target.provider, target.id);
-        // Ken follows GG Coder's model only while un-pinned; a user-set Ken
+        // Ken follows OrcaCoder's model only while un-pinned; a user-set Ken
         // override survives GG model switches untouched.
         if (!kenModelOverride) {
           await syncKenModel(target.provider, target.id);
@@ -4623,7 +4645,7 @@ async function createSession(
     }
 
     // Set or clear Ken's model pin. Body: { model: "<id>" } to pin, or
-    // { model: null } / "" to clear (Ken resumes following GG Coder). Applies
+    // { model: null } / "" to clear (Ken resumes following OrcaCoder). Applies
     // to BOTH Ken sessions (chat + autopilot reviewer); a switch landing while
     // either is mid-run defers via the pending-model mechanics.
     if (method === "POST" && url === "/ken/model") {
@@ -4638,7 +4660,7 @@ async function createSession(
           return;
         }
         if (modelId === null) {
-          // Clear the pin → follow GG Coder again, syncing both sessions back.
+          // Clear the pin → follow OrcaCoder again, syncing both sessions back.
           kenModelOverride = null;
           await saveKenModelPref(cwd, null);
           const st = session.getState();
@@ -5088,6 +5110,50 @@ async function createSession(
         // the tool call has moved on, so the answer has nowhere to go.
         if (!elicitations.settle(id, result)) {
           json(res, 409, { error: "no elicitation is awaiting a response" });
+          return;
+        }
+        json(res, 200, { ok: true });
+      });
+      return;
+    }
+
+    // Answer (or dismiss) an `ask_user` question band. The turn is blocked on
+    // this, so both paths must land: "answer" carries the picked values,
+    // "cancel" releases the tool call with no answer.
+    if (method === "POST" && url.startsWith("/ask/")) {
+      const id = decodeURIComponent(url.slice("/ask/".length));
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
+        let result: AskUserResult;
+        try {
+          const parsed = JSON.parse(raw) as {
+            action?: string;
+            answers?: Record<string, unknown>;
+          };
+          if (parsed.action !== "answer" && parsed.action !== "cancel") {
+            json(res, 400, { error: "action must be answer or cancel" });
+            return;
+          }
+          if (parsed.action === "cancel") {
+            result = { action: "cancel" };
+          } else {
+            // Only strings and string arrays are answers; anything else is a
+            // malformed client, not a value to hand the model.
+            const answers: Record<string, string | string[]> = {};
+            for (const [key, value] of Object.entries(parsed.answers ?? {})) {
+              if (typeof value === "string") answers[key] = value;
+              else if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+                answers[key] = value as string[];
+              }
+            }
+            result = { action: "answer", answers };
+          }
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!asks.settle(id, result)) {
+          json(res, 409, { error: "no question is awaiting an answer" });
           return;
         }
         json(res, 200, { ok: true });
@@ -5578,6 +5644,7 @@ async function createSession(
 
   async function dispose(): Promise<void> {
     elicitations.cancelAll();
+    asks.cancelAll();
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
     gitPollStopped = true;

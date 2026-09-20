@@ -380,7 +380,7 @@ export function sessionToMarkdown(
       flushPending();
       rows++;
       out.push("");
-      out.push("## ✨ GG Coder");
+      out.push("## ✨ OrcaCoder");
       out.push("");
       out.push(blockText.trim());
     }

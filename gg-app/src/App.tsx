@@ -61,8 +61,20 @@ import {
   readDroppedFileAttachment,
   type Attachment,
   type PromptSegment,
+  answerAskUser,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
+import { AskBand } from "./AskBand";
+// [effects] Decorative UI effects. Remove per gg-app/src/effects/README.md.
+import { WorkingBeam } from "./effects/WorkingBeam";
+import { MetalButton } from "./effects/MetalButton";
+import { useGgUiEnabled } from "./effects/gg-ui";
+import {
+  dropSupersededAsks,
+  mergeAskAnswers,
+  isAskUserPrompt,
+  type AskUserPrompt,
+} from "./ask-user";
 import { KenActivityBar } from "./KenActivityBar";
 import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useKenMentor } from "./useKenMentor";
@@ -146,6 +158,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 import "./orca/orca-theme.css";
 import "./orca/scarlet.css";
+import "./effects/effects.css"; // [effects]
 
 const DEFAULT_INPUT_PLACEHOLDER = "Send the pod a mission, / command, @ file, or @Orca";
 const INPUT_PLACEHOLDERS = [
@@ -278,6 +291,19 @@ export type Item =
   | { kind: "generating_image"; id: number; prompt: string }
   // Plan-mode entry banner (ASCII logo + optional reason).
   | { kind: "plan"; id: number; reason: string }
+  // A question from the `ask_user` tool — clickable options rendered inline in
+  // the thread. The turn is blocked until the answers are sent, or until the
+  // run ends without them (`cancelled`, which closes the band).
+  | {
+      kind: "ask";
+      id: number;
+      prompt: AskUserPrompt;
+      /** Answers so far. Partial until every question in the band has one. */
+      answers?: Record<string, string | string[]>;
+      /** The complete set reached the blocked tool call. */
+      sent?: boolean;
+      cancelled?: boolean;
+    }
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
@@ -819,6 +845,72 @@ function App(): React.ReactElement {
   const stateRef = useRef<AgentState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── ask_user question band ─────────────────────────────────
+  // The agent's `ask_user` tool parks its turn on a human answer: the sidecar
+  // broadcasts an `ask_user` frame and blocks until we POST the answer to
+  // /ask/:id. We render it inline as a transcript "ask" item (clickable
+  // options), and close it when the run ends without an answer.
+  useEffect(() => {
+    const unsub = subscribe((e) => {
+      if (e.type === "ask_user") {
+        if (!isAskUserPrompt(e.data)) return;
+        const prompt = e.data;
+        setItems((prev) =>
+          prev.some((it) => it.kind === "ask" && it.prompt.id === prompt.id)
+            ? prev
+            : [...prev, { kind: "ask", id: nextId(), prompt }],
+        );
+        return;
+      }
+      // A run that ends with a band still open means the parked tool call was
+      // released without an answer (timeout/abort/superseded on the sidecar) —
+      // close the band so it stops offering dead buttons.
+      if (e.type === "run_end" || e.type === "agent_done") {
+        setItems((prev) =>
+          prev.map((it) =>
+            it.kind === "ask" && it.sent !== true && it.cancelled !== true
+              ? { ...it, cancelled: true }
+              : it,
+          ),
+        );
+      }
+    });
+    return () => unsub();
+  }, [nextId, setItems]);
+
+  // Record answers for an ask band. Once every question has one, settle the
+  // parked tool call and collapse the band (`sent`).
+  const answerAsk = useCallback(
+    (itemId: number, delta: Record<string, string | string[]>) => {
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.kind !== "ask" || it.id !== itemId) return it;
+          const { answers, complete } = mergeAskAnswers(it.answers, delta, it.prompt.questions);
+          if (complete) void answerAskUser(it.prompt.id, "answer", answers).catch(() => {});
+          return { ...it, answers, sent: complete ? true : it.sent };
+        }),
+      );
+    },
+    [setItems],
+  );
+
+  // "Type your own answer instead": focus the composer, seeded with the first
+  // keystroke. Sending it supersedes the band — the sidecar releases the parked
+  // call when the prompt lands, and `dismissOpenAsks` drops the dead band.
+  const askTypeInstead = useCallback(
+    (_questionId: string, seed?: string) => {
+      if (seed) setInput((prev) => prev + seed);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [setInput],
+  );
+
+  // A prompt sent while a band is open supersedes it — drop the dead band.
+  const dismissOpenAsks = useCallback(() => {
+    setItems(dropSupersededAsks);
+  }, [setItems]);
+
   // NOTE: the build-session event machine's private refs (streaming bubble id,
   // rAF buffer, per-run accumulators, sub-agent / compaction group ids) now live
   // inside the useAgentEvents hook. Only the cross-cutting refs that App's render
@@ -1185,6 +1277,8 @@ function App(): React.ReactElement {
   // document.hasFocus() so a window restored at launch (which never gets a blur
   // event) doesn't animate forever unattended.
   const windowFocused = useWindowFocused();
+  // [effects] Master on/off for decorative UI effects (default on).
+  const ggUiEnabled = useGgUiEnabled();
 
   // Position in the multi-window reading order (e.g. window 2 of 4), plus
   // whether this window is the focused one. Driven by the Rust `window-order`
@@ -1969,6 +2063,10 @@ function App(): React.ReactElement {
     // hint that the directory you just chose went nowhere.
     const disposition = submitDisposition(trimmed, readyRef.current, running);
     if (disposition === "ignore") return;
+    // Sending a message of your own answers any open `ask_user` band: the
+    // sidecar releases the parked tool call when this prompt lands, so drop the
+    // now-dead band rather than leaving its buttons in the transcript.
+    dismissOpenAsks();
     const queued = disposition === "queue";
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
@@ -2758,7 +2856,13 @@ function App(): React.ReactElement {
                   ))}
                 <PromptSendProvider value={sendKenRecommendedPrompt}>
                   {items.map((it) => (
-                    <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
+                    <TranscriptRow
+                      key={it.id}
+                      item={it}
+                      onImageLoad={maybeScrollToBottom}
+                      onAskAnswer={answerAsk}
+                      onAskTypeInstead={askTypeInstead}
+                    />
                   ))}
                 </PromptSendProvider>
               </>
@@ -2815,6 +2919,8 @@ function App(): React.ReactElement {
             scheduleInvalid ? " schedule-invalid" : ""
           }`}
         >
+          {/* [effects] decorative beam around the composer while a run is active */}
+          <WorkingBeam active={running && ggUiEnabled} />
           {scheduleDraft ? (
             <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
           ) : (
@@ -2851,13 +2957,18 @@ function App(): React.ReactElement {
                 e.target.value = "";
               }}
             />
-            <button
+            {/* [effects] representative metal-rimmed button; MetalButton passes
+                className/title/onClick straight to the real <button>. To remove,
+                change <MetalButton windowFocused={windowFocused} …> back to a
+                plain <button …> and drop the extra prop. */}
+            <MetalButton
+              windowFocused={windowFocused}
               className="attach-btn"
               title="Attach files"
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={16} />
-            </button>
+            </MetalButton>
             <span className="prompt" style={{ color: theme.primary }}>
               {">"}
             </span>
@@ -3216,9 +3327,15 @@ function App(): React.ReactElement {
 const TranscriptRow = memo(function TranscriptRow({
   item,
   onImageLoad,
+  onAskAnswer,
+  onAskTypeInstead,
 }: {
   item: Item;
   onImageLoad?: () => void;
+  /** Answer one `ask_user` band's question(s); App settles the tool call. */
+  onAskAnswer?: (itemId: number, delta: Record<string, string | string[]>) => void;
+  /** Route a typed answer to the composer instead of clicking an option. */
+  onAskTypeInstead?: (questionId: string, seed?: string) => void;
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
@@ -3443,6 +3560,17 @@ const TranscriptRow = memo(function TranscriptRow({
       );
     case "plan":
       return <PlanModeLogo reason={item.reason} />;
+    case "ask":
+      return (
+        <AskBand
+          prompt={item.prompt}
+          answers={item.answers}
+          sent={item.sent}
+          cancelled={item.cancelled}
+          onAnswer={(delta) => onAskAnswer?.(item.id, delta)}
+          onTypeInstead={(questionId, seed) => onAskTypeInstead?.(questionId, seed)}
+        />
+      );
     case "task":
       return (
         <div className="line task-row">
