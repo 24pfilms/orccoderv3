@@ -158,9 +158,17 @@ describe("model registry context windows", () => {
 
   it("keeps non-OpenAI providers on their model context windows", () => {
     expect(usesOpenAICodexTransport({ provider: "anthropic", accountId: "acct_123" })).toBe(false);
+    // Claude advertises 1M but only serves it with the context-1m beta (tier-4),
+    // which we don't request — so the compaction-relevant served window is 200K.
     expect(
       getContextWindow("claude-sonnet-5", { provider: "anthropic", accountId: "acct_123" }),
-    ).toBe(1_000_000);
+    ).toBe(200_000);
+    // The raw registry capability is unchanged (used for display / future 1M opt-in).
+    expect(getModel("claude-sonnet-5")?.contextWindow).toBe(1_000_000);
+    // Same served-window cap for Opus 5 (the model that overflowed), and Haiku's
+    // real 200K is unaffected.
+    expect(getContextWindow("claude-opus-5", { provider: "anthropic" })).toBe(200_000);
+    expect(getContextWindow("claude-haiku-4-5-20251001", { provider: "anthropic" })).toBe(200_000);
   });
 
   it("defaults Moonshot to multimodal K3 while retaining K2.7 Code", () => {

@@ -723,6 +723,16 @@ export function getContextWindow(modelId: string, options?: ContextWindowOptions
   if (usesOpenAICodexTransport(options) && model.codexContextWindow) {
     return model.codexContextWindow;
   }
+  // Anthropic's Claude models advertise a 1M context window, but 1M is only
+  // SERVED with the `context-1m` beta on tier-4 accounts — which this app does
+  // not request. Without it the served window is the standard 200K, so
+  // compaction must target 200K or the request overflows Anthropic's real limit
+  // and is rejected as `request_too_large` (seen on Opus 5 over OAuth). Cap the
+  // served window here — the raw `model.contextWindow` stays 1M for display and
+  // for the day we opt into the 1M beta.
+  if (model.provider === "anthropic" && model.contextWindow > 200_000) {
+    return 200_000;
+  }
   return model.contextWindow;
 }
 
