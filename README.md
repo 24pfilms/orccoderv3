@@ -18,12 +18,12 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 20 September 2026
+## Current status — 21 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.56.0`                                                                                      |
+| Application version  | `0.56.2`                                                                                      |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Models               | Full provider set plus **GPT-6 Astra** over ChatGPT OAuth, tuned to its catalog defaults     |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
@@ -35,7 +35,7 @@ ComfyUI, and Houdini workflows.
 | Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
 | Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
 | Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
-| Board Mode           | Mero board ported behind a production-off flag; editing, video, generation, export verified  |
+| Board Mode           | Mero board with drag-in image display fixed in packaged builds; editing, video, export verified |
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
@@ -52,7 +52,12 @@ ComfyUI, and Houdini workflows.
 - **Optional UI effects.** Thinking orbs, working beams, and metal buttons, all behind a single
   Settings → Effects toggle (on by default) and kept self-contained under `gg-app/src/effects/` for
   clean removal. Background windows never animate them.
-- **Fixes.** The internet-radio dialog no longer clips under the window's top bar — modals now
+- **Fixes.** Board Mode now shows dragged-in images in packaged builds — the production security
+  policy (CSP) was blocking the `board-asset` channel that serves them, so the bytes saved fine but
+  never displayed (dev builds don't enforce that policy, which is why it hid until release). Claude
+  models no longer throw `request_too_large`: their usable context is capped at the 200K that ships
+  without the tier-4 1M beta, so compaction now triggers on time (~75–80%) instead of aiming past the
+  real ceiling. The internet-radio dialog no longer clips under the window's top bar — modals now
   portal to `<body>`, so a transformed ancestor (a window's zoom) can't trap a `position: fixed`
   overlay. Authorized providers show a clear green check instead of a faint dot. Plus a Windows
   compaction-lock race, a background-command spawn crash, and the unfocused-window repaint drain,
