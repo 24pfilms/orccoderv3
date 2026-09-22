@@ -318,7 +318,7 @@ describe("streamOpenAICodex", () => {
     const fetchMock = vi.mocked(fetch);
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-6-sol",
       messages: [{ role: "user", content: longMessage }],
       apiKey: "test-credential",
       accountId: "acct",
@@ -535,7 +535,7 @@ describe("streamOpenAICodex", () => {
 
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",
@@ -548,6 +548,36 @@ describe("streamOpenAICodex", () => {
     await expect(result.response).resolves.toMatchObject({
       usage: { inputTokens: 1024, outputTokens: 8, cacheRead: 2048, cacheWrite: 1024 },
     });
+  });
+
+  it.each([
+    ["gpt-5.5", "none"],
+    ["gpt-6-luna", "low"],
+    ["gpt-6-sol", "low"],
+    ["gpt-6-astra", "low"],
+    ["gpt-5.6-terra", "low"],
+  ])("uses a supported default effort for %s without explicit thinking", async (model, effort) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createSseResponse([
+          {
+            type: "response.completed",
+            response: { usage: { input_tokens: 1, output_tokens: 1 } },
+          },
+        ]),
+      ),
+    );
+    const result = streamOpenAICodex({
+      provider: "openai",
+      model,
+      messages: [{ role: "user", content: "Rewrite this prompt" }],
+      apiKey: "test-key",
+      accountId: "acct",
+    });
+    await result;
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]?.[1]?.body as string);
+    expect(body.reasoning.effort).toBe(effort);
   });
 
   it("uses the official Codex Responses-Lite identity and request shape for GPT-5.6", async () => {
@@ -566,7 +596,7 @@ describe("streamOpenAICodex", () => {
     const fetchMock = vi.mocked(fetch);
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",
@@ -586,7 +616,7 @@ describe("streamOpenAICodex", () => {
       "X-OpenAI-Internal-Codex-Responses-Lite": "true",
     });
     expect(body).toMatchObject({
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       parallel_tool_calls: false,
       reasoning: { effort: "low", summary: "auto", context: "all_turns" },
       // Catalog parity: responses-lite models declare default_verbosity "low".
@@ -740,7 +770,7 @@ describe("streamOpenAICodex", () => {
 
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-6-sol",
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",
