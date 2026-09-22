@@ -110,7 +110,7 @@ describe("getFastModel", () => {
   });
 
   it("picks Haiku for Anthropic and Luna for OpenAI", () => {
-    expect(getFastModel("anthropic", "claude-opus-5").costTier).toBe("low");
+    expect(getFastModel("anthropic", "claude-opus-5-5").costTier).toBe("low");
     expect(getFastModel("openai", "gpt-5.6-sol").id).toBe("gpt-5.6-luna");
   });
 });
@@ -165,9 +165,10 @@ describe("model registry context windows", () => {
     ).toBe(200_000);
     // The raw registry capability is unchanged (used for display / future 1M opt-in).
     expect(getModel("claude-sonnet-5")?.contextWindow).toBe(1_000_000);
-    // Same served-window cap for Opus 5 (the model that overflowed), and Haiku's
-    // real 200K is unaffected.
-    expect(getContextWindow("claude-opus-5", { provider: "anthropic" })).toBe(200_000);
+    // Same served-window cap for Opus 5.5 (the Opus line that overflowed), and
+    // Haiku's real 200K is unaffected.
+    expect(getModel("claude-opus-5-5")?.contextWindow).toBe(1_000_000);
+    expect(getContextWindow("claude-opus-5-5", { provider: "anthropic" })).toBe(200_000);
     expect(getContextWindow("claude-haiku-4-5-20251001", { provider: "anthropic" })).toBe(200_000);
   });
 
@@ -205,8 +206,8 @@ describe("model registry context windows", () => {
     expect(
       getDefaultThinkingLevel("kimi-k2.7-code", { baseUrl: "https://api.kimi.com/coding/v1" }),
     ).toBe("high");
-    expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
-    expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
+    expect(getDefaultThinkingLevel("claude-opus-5-5")).toBe("max");
+    expect(getDefaultThinkingLevel("claude-opus-5-5")).toBe("max");
   });
 
   it("starts Codex models at their catalog default, not the ladder ceiling", () => {
