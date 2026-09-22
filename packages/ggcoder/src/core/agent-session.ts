@@ -1846,7 +1846,15 @@ export class AgentSession {
         activeTokens: activeTokens === undefined ? "estimated" : String(activeTokens),
         triggerLimit: String(policy.targetTokens),
       });
-      if (shouldCompact(this.messages, contextWindow, policy.threshold, activeTokens)) {
+      if (
+        shouldCompact(
+          this.messages,
+          contextWindow,
+          policy.threshold,
+          activeTokens,
+          policy.targetTokens,
+        )
+      ) {
         try {
           await this.compact(creds, "automatic");
           if (this.lastCompactionCompacted) {
@@ -2016,7 +2024,15 @@ export class AgentSession {
               activeTokens: String(activeTokens),
               triggerLimit: String(policy.targetTokens),
             });
-            if (!shouldCompact(messages, contextWindow, policy.threshold, activeTokens))
+            if (
+              !shouldCompact(
+                messages,
+                contextWindow,
+                policy.threshold,
+                activeTokens,
+                policy.targetTokens,
+              )
+            )
               return messages;
           }
 
@@ -3520,7 +3536,13 @@ export class AgentSession {
     });
     const needsLoadCompaction =
       this.settingsManager.get("autoCompact") &&
-      shouldCompact(this.messages, contextWindow, loadPolicy.threshold);
+      shouldCompact(
+        this.messages,
+        contextWindow,
+        loadPolicy.threshold,
+        undefined,
+        loadPolicy.targetTokens,
+      );
     if (needsLoadCompaction && this.opts.deferLoadCompaction) {
       // Canonicalize again immediately before the first prompt is persisted:
       // another process may create the shared checkpoint after this load.
