@@ -127,16 +127,18 @@ describe("shouldCompact", () => {
     }
     const estimated = estimateConversationTokens(messages);
 
-    const opusContext = getContextWindow("claude-opus-5-5");
+    // GLM-5.3 serves its full 1M window. (Claude advertises 1M too, but only
+    // serves 200K without the context-1m beta, so it can't be the big example.)
+    const glmContext = getContextWindow("glm-5.3");
     const kimiContext = getContextWindow("kimi-k2.7-code");
 
-    // Sanity: Opus has 1M, Kimi has 256k
-    expect(opusContext).toBe(1_000_000);
+    // Sanity: GLM-5.3 has 1M, Kimi has 256k
+    expect(glmContext).toBe(1_000_000);
     expect(kimiContext).toBe(262_144);
 
-    // Under Opus (1M): conversation is under 80% threshold (800k) — no compaction
-    expect(shouldCompact(messages, opusContext, 0.8)).toBe(false);
-    expect(estimated).toBeLessThan(opusContext * 0.8);
+    // Under GLM-5.3 (1M): conversation is under 80% threshold (800k) — no compaction
+    expect(shouldCompact(messages, glmContext, 0.8)).toBe(false);
+    expect(estimated).toBeLessThan(glmContext * 0.8);
 
     // Under Kimi (256k): same conversation exceeds 80% threshold (~210k) — must compact
     expect(shouldCompact(messages, kimiContext, 0.8)).toBe(true);
@@ -201,7 +203,11 @@ describe("compaction thresholds across all models", () => {
     const contextWindow = getContextWindow(model.id, { provider: model.provider });
     const boundary = Math.ceil(contextWindow * 0.85);
 
-    expect(contextWindow).toBe(model.contextWindow);
+    // Compaction targets the SERVED window: Claude's advertised 1M is served
+    // as 200K without the context-1m beta; every other model serves as listed.
+    const servedWindow =
+      model.provider === "anthropic" ? Math.min(model.contextWindow, 200_000) : model.contextWindow;
+    expect(contextWindow).toBe(servedWindow);
     expect(shouldCompact(messages, contextWindow, undefined, boundary - 1)).toBe(false);
     expect(shouldCompact(messages, contextWindow, undefined, boundary)).toBe(true);
   });
