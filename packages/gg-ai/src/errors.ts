@@ -11,7 +11,7 @@
  *
  *   ✗ OrcaCoder hit an unexpected error.
  *     Cannot read property 'foo' of undefined
- *     → This is a OrcaCoder bug — please report it.
+ *     → This is an OrcaCoder bug — please report it.
  */
 
 export type ErrorSource = "provider" | "ggcoder" | "network" | "auth" | "capability";
@@ -344,7 +344,7 @@ function finaliseBySource(
         headline: "Network error — couldn't reach the provider.",
         source,
         message,
-        guidance: hint ?? "Check your internet connection. Not a OrcaCoder issue — retry shortly.",
+        guidance: hint ?? "Check your internet connection. Not an OrcaCoder issue — retry shortly.",
         ...(requestId ? { requestId } : {}),
       };
     case "auth":
@@ -380,7 +380,7 @@ function finaliseBySource(
         source,
         message,
         guidance:
-          hint ?? "This looks like a OrcaCoder bug — please report it to the developer (see /help).",
+          hint ?? "This looks like an OrcaCoder bug — please report it to the developer (see /help).",
         ...(requestId ? { requestId } : {}),
       };
   }
@@ -461,7 +461,7 @@ function providerGuidance(
     return `${name} needs a newer OrcaCoder to serve this model. Update OrcaCoder to the latest version and retry, or switch to another ${name} model via the model selector.`;
   }
   if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
-    return `${name}'s servers are overloaded right now. Retry in a moment — not a OrcaCoder issue.`;
+    return `${name}'s servers are overloaded right now. Retry in a moment — not an OrcaCoder issue.`;
   }
   if (
     lower.includes("insufficient balance") ||
@@ -469,16 +469,16 @@ function providerGuidance(
     lower.includes("recharge") ||
     lower.includes("no resource package")
   ) {
-    return `Your ${name} account has a billing or quota issue — check your balance. Not a OrcaCoder issue.`;
+    return `Your ${name} account has a billing or quota issue — check your balance. Not an OrcaCoder issue.`;
   }
   if (statusCode === 429 || lower.includes("rate limit") || lower.includes("too many requests")) {
-    return `${name} rate limit hit. Wait a moment then retry — not a OrcaCoder issue.`;
+    return `${name} rate limit hit. Wait a moment then retry — not an OrcaCoder issue.`;
   }
   if (statusCode === 502 || lower.includes("bad gateway")) {
     return `${name} returned a bad gateway. Retry — this is on their side, not OrcaCoder.`;
   }
   if (statusCode === 503 || lower.includes("service unavailable")) {
-    return `${name} is temporarily unavailable. Retry shortly — not a OrcaCoder issue.`;
+    return `${name} is temporarily unavailable. Retry shortly — not an OrcaCoder issue.`;
   }
   if (
     statusCode === 507 ||
@@ -496,7 +496,7 @@ function providerGuidance(
       : `This is an error from ${name}, not OrcaCoder. Retry — if it keeps happening, try a different model via the model selector.`;
   }
   if (lower.includes("timeout") || lower.includes("timed out")) {
-    return `Request to ${name} timed out. Their servers may be slow — retry. Not a OrcaCoder issue.`;
+    return `Request to ${name} timed out. Their servers may be slow — retry. Not an OrcaCoder issue.`;
   }
   if (
     lower.includes("does not recognize the requested model") ||

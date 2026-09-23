@@ -158,7 +158,7 @@ describe("formatErrorForDisplay", () => {
       [
         "Anthropic returned an error.",
         "  overloaded_error: Overloaded",
-        "  → Anthropic's servers are overloaded right now. Retry in a moment — not a OrcaCoder issue.",
+        "  → Anthropic's servers are overloaded right now. Retry in a moment — not an OrcaCoder issue.",
       ].join("\n"),
     );
   });
@@ -214,18 +214,18 @@ describe("formatErrorForDisplay", () => {
       [
         "Gemini returned an error.",
         "  quota exceeded",
-        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a OrcaCoder issue.",
+        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not an OrcaCoder issue.",
       ].join("\n"),
     );
   });
 
-  it("classifies a network GGAIError without a OrcaCoder bug headline", () => {
+  it("classifies a network GGAIError without an OrcaCoder bug headline", () => {
     const out = formatErrorForDisplay(new GGAIError("fetch failed", { source: "network" }));
     expect(out).toBe(
       [
         "Network error \u2014 couldn't reach the provider.",
         "  fetch failed",
-        "  → Check your internet connection. Not a OrcaCoder issue — retry shortly.",
+        "  → Check your internet connection. Not an OrcaCoder issue — retry shortly.",
       ].join("\n"),
     );
   });
@@ -236,7 +236,7 @@ describe("formatErrorForDisplay", () => {
       [
         "OrcaCoder hit an unexpected error.",
         "  Cannot read property 'foo' of undefined",
-        "  → This looks like a OrcaCoder bug — please report it to the developer (see /help).",
+        "  → This looks like an OrcaCoder bug — please report it to the developer (see /help).",
       ].join("\n"),
     );
   });
