@@ -183,7 +183,7 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
   const settings = await loadSettings();
   const { bossProvider, bossModel, workerProvider, workerModel } = await resolveBossAuth({
     bossProvider: settings.bossProvider ?? "anthropic",
-    bossModel: cliBossModel ?? settings.bossModel ?? "claude-opus-5",
+    bossModel: cliBossModel ?? settings.bossModel ?? "claude-opus-5-5",
     workerProvider: settings.workerProvider ?? "anthropic",
     workerModel: cliWorkerModel ?? settings.workerModel ?? "claude-sonnet-5",
   });
@@ -212,7 +212,7 @@ const ALL_PROVIDERS: Provider[] = [
 
 /** Boss wants the strongest model; on anthropic that's Opus, else the provider default. */
 function bossDefaultModel(provider: Provider): string {
-  return provider === "anthropic" ? "claude-opus-5" : getDefaultModel(provider).id;
+  return provider === "anthropic" ? "claude-opus-5-5" : getDefaultModel(provider).id;
 }
 
 /**
@@ -302,7 +302,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   // restarts so the user doesn't have to re-pick every session.
   const settings = await loadSettings();
   const preferredBossProvider = args.bossProvider ?? settings.bossProvider ?? "anthropic";
-  const preferredBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-5";
+  const preferredBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-5-5";
   const preferredWorkerProvider = args.workerProvider ?? settings.workerProvider ?? "anthropic";
   const preferredWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-5";
 
