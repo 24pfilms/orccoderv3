@@ -126,6 +126,10 @@ export async function enhancePrompt(opts: {
   apiKey?: string;
   baseUrl?: string;
   accountId?: string;
+  projectId?: string;
+  /** Anthropic OAuth gates newer models on the advertised Claude Code version,
+   *  so this must be the live `claude-cli/<version>` UA, not the stale default. */
+  userAgent?: string;
   signal?: AbortSignal;
 }): Promise<EnhanceResult> {
   // Append a one-line, fact-only stack hint so terminology is idiomatic to the
@@ -150,6 +154,8 @@ export async function enhancePrompt(opts: {
     apiKey: opts.apiKey,
     baseUrl: opts.baseUrl,
     accountId: opts.accountId,
+    projectId: opts.projectId,
+    userAgent: opts.userAgent,
     signal: opts.signal,
   });
 

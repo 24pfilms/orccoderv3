@@ -3336,7 +3336,10 @@ export class AgentSession {
    */
   async enhancePrompt(text: string): Promise<EnhanceResult> {
     if (!text.trim()) return { enhanced: text, segments: [{ kind: "text", text }] };
-    const creds = await this.authStorage.resolveCredentials(this.provider, {
+    // Keep the model selected at click time, even if the user switches models
+    // while credential resolution is pending.
+    const { provider, model, baseUrl } = this;
+    const creds = await this.authStorage.resolveCredentials(provider, {
       storageKeys: this.currentAuthStorageKeys(),
     });
     // Cheap, best-effort stack detection from the project root so terminology is
@@ -3348,13 +3351,15 @@ export class AgentSession {
       /* detection is best-effort — fall back to no stack hint */
     }
     return enhancePrompt({
-      provider: this.provider,
-      model: this.model,
+      provider,
+      model,
       prompt: text,
       stack,
       apiKey: creds.accessToken,
-      baseUrl: this.baseUrl ?? creds.baseUrl,
+      baseUrl: baseUrl ?? creds.baseUrl,
       accountId: creds.accountId,
+      projectId: creds.projectId,
+      userAgent: provider === "anthropic" ? await getClaudeCliUserAgent() : undefined,
       signal: this.opts.signal,
     });
   }
