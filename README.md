@@ -18,14 +18,14 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 21 September 2026
+## Current status — 24 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.56.2`                                                                                      |
+| Application version  | `0.57.0`                                                                                      |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
-| Models               | Full provider set plus **GPT-6 Astra** over ChatGPT OAuth, tuned to its catalog defaults     |
+| Models               | **Opus 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash       |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
 | Effects              | Optional thinking orbs, working beams, metal buttons — one toggle in Settings → Effects       |
 | Branding             | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
@@ -39,7 +39,23 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle — a new flagship model, clickable questions, and a batch of polish.**
+**This cycle (0.57.0) — a model generation catch-up with upstream GG Framework v0.70.3.**
+
+- **New models.** Claude Opus 5 → **Opus 5.5** and Fable 5 → **Fable 5.1**; the GPT-5.6 tiers
+  are retired in favour of **GPT-6 Sol** and **GPT-6 Luna** (Astra unchanged); Grok 4.5/4.6 →
+  **Grok 4.7**; MiMo v2.5 → **MiMo v2.6**; and **GLM-5.3-Flash** joins GLM-5.3 as its low-cost tier.
+  Our 200K served-window cap for Claude is kept — upstream still advertises 1M without the beta.
+- **Prompt enhance works on Opus 5.5.** Enhance never forwarded the live Claude Code version, so
+  Anthropic OAuth saw a stale `claude-cli/2.1.75` and rejected Opus 5.5 (needs ≥ 2.1.280). It now
+  sends the live version (and the Google `projectId` for Gemini logins).
+- **Reliability, ported from upstream.** An identical tool call repeated in one reply runs once (no
+  double writes or commands); revoking network access aborts an in-flight fetch and re-checks
+  redirects; a shell that fails to launch reports a real error; safer edit matching; fixed queue
+  cancellation races; Windows temp-file access; ACP tool images in history; and latency-capped
+  compaction triggers, so slow-prefill providers (GLM) compact near 150K instead of stalling.
+- Verified: 5,217 tests across all 10 suites (9 TypeScript + the Rust backend), 0 failures.
+
+**Previous cycle (0.56.x) — a new flagship model, clickable questions, and a batch of polish.**
 
 - **GPT-6 Astra** runs over the existing ChatGPT OAuth login, alongside the GPT-5.6 tiers. It now
   starts at its vendor-catalog default reasoning (Astra/Sol `low`, Terra/Luna `medium`) instead of
