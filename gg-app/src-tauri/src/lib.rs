@@ -5227,9 +5227,10 @@ fn restore_one_window(
             },
         );
     }
-    // Built VISIBLE: a hidden-then-shown WebView2 window often never paints its
-    // first frame.
-    let win = match build_app_window(app, &label) {
+    // With saved geometry, build HIDDEN, place it, then show — as upstream GG
+    // Coder does. Moving and resizing an already-visible WebView2 window while
+    // it presents its first frame left the last restored window black.
+    let win = match build_app_window_with_visibility(app, &label, geometry.is_none()) {
         Ok(win) => win,
         Err(error) => {
             remove_restore_target(
@@ -5241,11 +5242,12 @@ fn restore_one_window(
     };
     // The snapshot records PHYSICAL pixels (outer_position / inner_size), so
     // restore with the physical setters. The builder's position/inner_size
-    // take LOGICAL units: on a 188%-scaled 4K screen that restored every
-    // window ~1.9x too large and too far along, off the edge of the monitor.
+    // take LOGICAL units: on a 125%-scaled screen that restored every window
+    // 1.25x too large and partly off the edge of the monitor.
     if let Some((x, y, width, height)) = geometry {
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
         let _ = win.set_size(tauri::PhysicalSize::new(width, height));
+        let _ = win.show();
     }
     start_window_session(
         app.clone(),
@@ -5268,6 +5270,40 @@ fn restore_one_window(
 /// captured — a partial rect would place a window at a stale or default spot.
 fn saved_geometry(entry: &WorkspaceEntry) -> Option<(i32, i32, u32, u32)> {
     Some((entry.x?, entry.y?, entry.width?, entry.height?))
+}
+
+/// Delays after a multi-window restore at which every window gets a one-pixel
+/// resize-and-back. Restoring several WebView2 windows at once intermittently
+/// leaves ONE of them black — alive and fully loaded, just never presented —
+/// and which one varies run to run. A resize forces WebView2 to present a
+/// frame. It must come late: a nudge at 500ms (0.54.6) fired before the GPU
+/// settled and did nothing, while the same fix by hand seconds later works.
+/// The second pass is a backstop for a slow start.
+const RESTORE_REPAINT_DELAYS_MS: [u64; 2] = [4_000, 8_000];
+
+/// Resize-nudge every restored window after `RESTORE_REPAINT_DELAYS_MS`. Does
+/// not navigate, so an already-painted window is untouched. Maximized and
+/// minimized windows are skipped: resizing would change their state.
+fn repaint_restored_windows_later(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut elapsed = 0;
+        for delay in RESTORE_REPAINT_DELAYS_MS {
+            tokio::time::sleep(std::time::Duration::from_millis(delay - elapsed)).await;
+            elapsed = delay;
+            for win in app.webview_windows().values() {
+                if win.is_maximized().unwrap_or(false) || win.is_minimized().unwrap_or(false) {
+                    continue;
+                }
+                let Ok(size) = win.inner_size() else { continue };
+                let _ = win.set_size(tauri::PhysicalSize::new(size.width + 1, size.height + 1));
+                // Give the grow a beat to register as its own resize.
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                let _ = win.set_size(size);
+            }
+            log::info!("restore repaint pass at {delay}ms done");
+        }
+    });
 }
 
 /// Pure: whether a saved physical rect can still be grabbed on one of the
@@ -5321,6 +5357,9 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     if restored > 0 {
         if !any_geometry {
             arrange_windows(app, restored);
+        }
+        if restored > 1 {
+            repaint_restored_windows_later(app);
         }
         broadcast_window_order(app);
         return Ok(());
@@ -5896,6 +5935,14 @@ mod tests {
         assert!(!rect_on_screens((3790, 100, 1280, 701), &main_only));
         // Title strip above the top of every screen: unreachable.
         assert!(!rect_on_screens((100, -800, 1280, 701), &main_only));
+    }
+
+    #[test]
+    fn restore_repaint_delays_are_late_and_increasing() {
+        // Late enough for restored windows to have started (~3s); strictly
+        // increasing, since the pass loop sleeps `delay - elapsed`.
+        assert!(RESTORE_REPAINT_DELAYS_MS[0] >= 3_000);
+        assert!(RESTORE_REPAINT_DELAYS_MS.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]
