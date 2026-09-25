@@ -18,12 +18,13 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 24 September 2026
+## Current status — 25 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.0`                                                                                      |
+| Application version  | `0.57.2`                                                                                      |
+| Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Models               | **Opus 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash       |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
@@ -39,7 +40,27 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.0) — a model generation catch-up with upstream GG Framework v0.70.3.**
+**This cycle (0.57.1 – 0.57.2) — back where you left off, with more room to work.**
+
+- **Every window comes back.** Quitting and relaunching reopens all windows that were on a
+  project, each on its project and chat and at its saved position and size. Multi-window restore
+  had been parked since 0.54.9 (restored windows came up black); the root cause, idle windows
+  animating and starving the GPU compositor, was fixed in 0.55, so it is back on. Restored windows
+  are placed while hidden, then shown, and get a late repaint 4s and 8s in. A window that still
+  comes up black recovers with **Ctrl+Shift+R**.
+- **Restore fixes.** Saved geometry is in physical pixels and is now restored with the physical
+  setters (on a 125%-scaled screen windows came back 1.25× too large), and a window saved on a
+  since-unplugged monitor opens on-screen. OrcaCoder now keeps its own snapshot,
+  `~/.gg/orcacoder-workspace.json`: GG Coder, installed alongside it, writes
+  `gg-app-workspace.json` in the same folder, and the two apps overwrote each other's windows.
+- **Compact title bar (Windows).** Windows open without the native title bar; OrcaCoder's header
+  is the title bar, with its own minimise / maximise / close. Drag and double-click-to-maximise
+  work as before, edges still resize, and every window gains the native bar's height. Settings →
+  Effects → **Compact title bar** brings the native bar back, live, in every window.
+- Known issues: a window dragged to a monitor with different scaling can go blank; a board can
+  open read-only after windows restore in a different order.
+
+**Previous cycle (0.57.0) — a model generation catch-up with upstream GG Framework v0.70.3.**
 
 - **New models.** Claude Opus 5 → **Opus 5.5** and Fable 5 → **Fable 5.1**; the GPT-5.6 tiers
   are retired in favour of **GPT-6 Sol** and **GPT-6 Luna** (Astra unchanged); Grok 4.5/4.6 →
@@ -55,7 +76,7 @@ ComfyUI, and Houdini workflows.
   compaction triggers, so slow-prefill providers (GLM) compact near 150K instead of stalling.
 - Verified: 5,217 tests across all 10 suites (9 TypeScript + the Rust backend), 0 failures.
 
-**Previous cycle (0.56.x) — a new flagship model, clickable questions, and a batch of polish.**
+**Earlier cycle (0.56.x) — a new flagship model, clickable questions, and a batch of polish.**
 
 - **GPT-6 Astra** runs over the existing ChatGPT OAuth login, alongside the GPT-5.6 tiers. It now
   starts at its vendor-catalog default reasoning (Astra/Sol `low`, Terra/Luna `medium`) instead of
