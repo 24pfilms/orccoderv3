@@ -72,7 +72,12 @@ if (isBoardFixture) {
 } else {
   // Load the Tauri-only application graph after browser fixture routes have
   // branched, so fixture evidence never initializes native window APIs.
-  void import("./App").then(({ default: App }) => {
+  void Promise.all([
+    import("./App"),
+    import("./compact-titlebar"),
+    import("./WindowControls"),
+  ]).then(([{ default: App }, { initCompactTitlebar }, { WindowControls }]) => {
+    initCompactTitlebar();
     // No StrictMode: its intentional double-invocation of effects and state
     // updaters double-registers the single Tauri `agent-event` listener and was
     // amplifying state-updater impurity. A desktop webview gains nothing from it.
@@ -80,6 +85,7 @@ if (isBoardFixture) {
       <AppUpdateProvider>
         <App />
         <ZoomController />
+        <WindowControls />
         {/* <GazeController /> */}
       </AppUpdateProvider>,
     );

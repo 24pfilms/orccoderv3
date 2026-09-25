@@ -1110,6 +1110,47 @@ body {
 .platform-macos .chat-head-strip {
   padding: 0 14px 0 82px;
 }
+/* Compact title bar (Windows, see compact-titlebar.ts): the native title bar is
+   gone, so the header strips are the title bar and reserve the right edge for
+   the in-app window controls — the mirror of the macOS traffic-light gutter. */
+.compact-titlebar .chat-head-strip,
+.compact-titlebar .titlebar {
+  padding-right: 132px;
+}
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Above every in-app layer (max 400), like the native title bar it replaces. */
+  z-index: 500;
+  display: flex;
+  height: 38px;
+}
+.window-control {
+  width: 42px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+.window-control:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+.window-control-close:hover {
+  /* The Windows close-button red. */
+  background: #e81123;
+  color: #fff;
+}
+.window-control:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
 /* The visible window title shows project context: cwd, current branch, then the
    uncommitted-file count and GitHub issue/PR chips. It grows into available
    space; on narrow windows the segments truncate in priority order (folder

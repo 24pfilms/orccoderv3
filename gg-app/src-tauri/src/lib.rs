@@ -3550,6 +3550,11 @@ fn build_app_window_with_visibility(
     #[cfg(target_os = "windows")]
     {
         builder = builder
+            // Compact title bar: born without the native title bar, so windows
+            // never flash it at startup. OrcaCoder's header is the drag region
+            // and draws minimise / maximise / close (WindowControls.tsx); with
+            // the setting off, the frontend restores decorations at boot.
+            .decorations(false)
             .disable_drag_drop_handler()
             // Disable WebView2's native window-occlusion calculation. Without
             // this, WebView2 SUSPENDS PAINTING for a window it judges occluded or

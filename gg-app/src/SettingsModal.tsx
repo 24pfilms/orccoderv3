@@ -18,6 +18,7 @@ import { toast } from "./toast";
 import { SoundButton } from "./SoundButton";
 import { MemesButton } from "./MemesButton";
 import { EffectsButton } from "./effects/GgUiButton"; // [effects]
+import { CompactTitlebarButton } from "./WindowControls";
 import {
   loadState as loadOrcaTheme,
   setAttentionEnabled,
@@ -173,6 +174,7 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
         <MemesButton variant="settings" />
         {/* [effects] toggle for thinking orbs / working beams / metal buttons */}
         <EffectsButton />
+        <CompactTitlebarButton />
       </div>
       <div
         className="modal-row"
