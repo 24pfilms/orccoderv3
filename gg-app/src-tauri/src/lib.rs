@@ -3538,9 +3538,6 @@ fn build_app_window_with_visibility(
     app: &tauri::AppHandle,
     label: &str,
     visible: bool,
-    // Saved (x, y, width, height). When present, the window is BORN at this
-    // geometry rather than moved after the fact — see the restore path.
-    geometry: Option<(i32, i32, u32, u32)>,
 ) -> Result<WebviewWindow, String> {
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title("OrcaCoder")
@@ -3548,11 +3545,6 @@ fn build_app_window_with_visibility(
         .min_inner_size(480.0, 360.0)
         .background_color(APP_BG)
         .visible(visible);
-    if let Some((x, y, w, h)) = geometry {
-        builder = builder
-            .position(x as f64, y as f64)
-            .inner_size(w as f64, h as f64);
-    }
     // Windows needs HTML5 drop enabled for the existing browser attachment path.
     // macOS keeps Tauri's native handler so folder drops include absolute paths.
     #[cfg(target_os = "windows")]
@@ -3579,7 +3571,7 @@ fn build_app_window_with_visibility(
 }
 
 fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, String> {
-    build_app_window_with_visibility(app, label, true, None)
+    build_app_window_with_visibility(app, label, true)
 }
 
 /// Open enough new project windows to reach `count` total (each with its own
@@ -5209,14 +5201,13 @@ fn restore_label(index: usize) -> String {
     }
 }
 
-/// Restore one window: register its target, build it VISIBLE at `rect` (its
-/// saved geometry, when captured — so it is born where the user left it rather
-/// than moved after the fact), and start its session.
+/// Restore one window: register its target, build it, move it to `geometry`
+/// (its saved physical rect, when captured), and start its session.
 fn restore_one_window(
     app: &tauri::AppHandle,
     index: usize,
     entry: &WorkspaceEntry,
-    rect: Option<(i32, i32, u32, u32)>,
+    geometry: Option<(i32, i32, u32, u32)>,
 ) -> Result<(), String> {
     let label = restore_label(index);
     // Register the target before constructing the webview: even a hidden
@@ -5236,14 +5227,25 @@ fn restore_one_window(
             },
         );
     }
-    // Built VISIBLE (a hidden-then-shown WebView2 window often never paints its
-    // first frame) and AT its saved geometry when there is one.
-    if let Err(error) = build_app_window_with_visibility(app, &label, true, rect) {
-        remove_restore_target(
-            &mut app.state::<RestoreTargets>().map.lock().unwrap(),
-            &label,
-        );
-        return Err(error);
+    // Built VISIBLE: a hidden-then-shown WebView2 window often never paints its
+    // first frame.
+    let win = match build_app_window(app, &label) {
+        Ok(win) => win,
+        Err(error) => {
+            remove_restore_target(
+                &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+                &label,
+            );
+            return Err(error);
+        }
+    };
+    // The snapshot records PHYSICAL pixels (outer_position / inner_size), so
+    // restore with the physical setters. The builder's position/inner_size
+    // take LOGICAL units: on a 188%-scaled 4K screen that restored every
+    // window ~1.9x too large and too far along, off the edge of the monitor.
+    if let Some((x, y, width, height)) = geometry {
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        let _ = win.set_size(tauri::PhysicalSize::new(width, height));
     }
     start_window_session(
         app.clone(),
@@ -5268,6 +5270,22 @@ fn saved_geometry(entry: &WorkspaceEntry) -> Option<(i32, i32, u32, u32)> {
     Some((entry.x?, entry.y?, entry.width?, entry.height?))
 }
 
+/// Pure: whether a saved physical rect can still be grabbed on one of the
+/// connected screens — at least 100px of its title strip must overlap one. A
+/// window saved on a since-unplugged monitor would otherwise restore off-screen.
+fn rect_on_screens(rect: (i32, i32, u32, u32), screens: &[(i32, i32, u32, u32)]) -> bool {
+    const TITLE_STRIP: i64 = 30;
+    const MIN_GRAB: i64 = 100;
+    let (x, y, w, h) = (rect.0 as i64, rect.1 as i64, rect.2 as i64, rect.3 as i64);
+    let strip = TITLE_STRIP.min(h);
+    screens.iter().any(|&(sx, sy, sw, sh)| {
+        let (sx, sy, sw, sh) = (sx as i64, sy as i64, sw as i64, sh as i64);
+        let overlap_x = (x + w).min(sx + sw) - x.max(sx);
+        let overlap_y = (y + strip).min(sy + sh) - y.max(sy);
+        overlap_x >= MIN_GRAB.min(w) && overlap_y > 0
+    })
+}
+
 /// Boot the app's windows. With a restorable snapshot, reopen EVERY saved
 /// window — each on its project, session and saved geometry — so relaunching
 /// returns to where the user left off, as upstream GG Coder does. Otherwise
@@ -5281,10 +5299,17 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
 
+    let screens: Vec<(i32, i32, u32, u32)> = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| (m.position().x, m.position().y, m.size().width, m.size().height))
+        .collect();
+
     let mut restored = 0;
     let mut any_geometry = false;
     for entry in &entries {
-        let geometry = saved_geometry(entry);
+        let geometry = saved_geometry(entry).filter(|rect| rect_on_screens(*rect, &screens));
         any_geometry |= geometry.is_some();
         // `restored` (not the loop index) keeps labels contiguous — main,
         // project-1, … — even when an earlier window fails to restore.
@@ -5855,6 +5880,22 @@ mod tests {
         };
         assert_eq!(saved_geometry(&no_size), None);
         assert_eq!(saved_geometry(&WorkspaceEntry::default()), None);
+    }
+
+    #[test]
+    fn rect_on_screens_keeps_windows_grabbable() {
+        // A 4K main screen plus a 1080p screen to its left (physical pixels).
+        let both = [(0, 0, 3840, 2160), (-1920, 634, 1920, 1080)];
+        let main_only = [(0, 0, 3840, 2160)];
+        assert!(rect_on_screens((2400, 1310, 1280, 701), &both));
+        // Saved on the left monitor: kept while it is plugged in…
+        assert!(rect_on_screens((-1800, 700, 1280, 701), &both));
+        // …dropped once it is unplugged, so the window opens on-screen instead.
+        assert!(!rect_on_screens((-1800, 700, 1280, 701), &main_only));
+        // Only 50px of the window still on the screen: not enough to grab.
+        assert!(!rect_on_screens((3790, 100, 1280, 701), &main_only));
+        // Title strip above the top of every screen: unreachable.
+        assert!(!rect_on_screens((100, -800, 1280, 701), &main_only));
     }
 
     #[test]
