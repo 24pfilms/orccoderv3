@@ -2013,9 +2013,12 @@ struct Workspace {
     windows: Vec<WorkspaceEntry>,
 }
 
-/// Absolute path to ~/.gg/gg-app-workspace.json.
+/// Absolute path to ~/.gg/orcacoder-workspace.json. OrcaCoder keeps its own
+/// window snapshot: upstream GG Coder (installed alongside it) writes
+/// gg-app-workspace.json in the same ~/.gg, and sharing one file let each app
+/// overwrite — and restore — the other's windows.
 fn app_workspace_path() -> PathBuf {
-    home_dir().join(".gg").join("gg-app-workspace.json")
+    home_dir().join(".gg").join("orcacoder-workspace.json")
 }
 
 /// Read the workspace snapshot; missing/invalid file → an empty workspace.
@@ -5206,9 +5209,9 @@ fn restore_label(index: usize) -> String {
     }
 }
 
-/// Restore one window: register its target, build it VISIBLE at `rect` (its final
-/// tiled slot, so windows never overlap during restore — overlap was when
-/// WebView2 blanked them), and start its session.
+/// Restore one window: register its target, build it VISIBLE at `rect` (its
+/// saved geometry, when captured — so it is born where the user left it rather
+/// than moved after the fact), and start its session.
 fn restore_one_window(
     app: &tauri::AppHandle,
     index: usize,
@@ -5234,8 +5237,7 @@ fn restore_one_window(
         );
     }
     // Built VISIBLE (a hidden-then-shown WebView2 window often never paints its
-    // first frame) and AT its final tiled slot (so no two windows overlap during
-    // restore — overlap is what WebView2 blanked).
+    // first frame) and AT its saved geometry when there is one.
     if let Err(error) = build_app_window_with_visibility(app, &label, true, rect) {
         remove_restore_target(
             &mut app.state::<RestoreTargets>().map.lock().unwrap(),
@@ -5260,37 +5262,46 @@ fn restore_one_window(
     Ok(())
 }
 
-/// Boot the app's window. With a restorable snapshot, reopen the FIRST window —
-/// pointed at its project + session — as a single window. Otherwise fall back to
-/// the single default `main` window (the project picker shows).
+/// Pure: a window's saved (x, y, width, height), only when all four were
+/// captured — a partial rect would place a window at a stale or default spot.
+fn saved_geometry(entry: &WorkspaceEntry) -> Option<(i32, i32, u32, u32)> {
+    Some((entry.x?, entry.y?, entry.width?, entry.height?))
+}
+
+/// Boot the app's windows. With a restorable snapshot, reopen EVERY saved
+/// window — each on its project, session and saved geometry — so relaunching
+/// returns to where the user left off, as upstream GG Coder does. Otherwise
+/// open the single default `main` window (the project picker shows).
 ///
-/// Multi-window auto-restore is PARKED. Creating several webviews during startup
-/// triggers a WebView2 GPU bug: spawning a new webview disrupts the shared GPU
-/// compositor and blanks the windows already up (they stay alive but stop
-/// presenting — the "black window" symptom). Every automated heal timed during
-/// startup — reload, immediate re-arrange, resize-nudge, and even strict
-/// one-at-a-time paint-gated creation — failed, while the same actions performed
-/// by hand a few seconds later (Ctrl+Shift+R, the arrange button) reliably
-/// recover the windows, because by then the GPU has settled. Rather than ship a
-/// flaky multi-window restore, we restore a single window (which never blacks)
-/// and the user reopens any others. A late self-heal remains a possible future
-/// approach; see git history for the parked sequential/paint-gate machinery.
+/// Multi-window restore was parked in 0.54.9 because restored windows came up
+/// black. The cause was GPU-compositor starvation from every idle window
+/// animating at once, fixed in 0.55 (unfocused windows pause decorative
+/// animation — see useWindowFocused), so all windows restore again.
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
 
-    // Restore only the first window (single-window restore is reliable). `None`
-    // geometry gives it the normal default size, like a fresh boot.
-    if let Some(entry) = entries.into_iter().next() {
-        if let Err(error) = restore_one_window(app, 0, &entry, None) {
-            log::warn!("restore failed, falling back to default main window: {error}");
-        } else {
-            broadcast_window_order(app);
-            return Ok(());
+    let mut restored = 0;
+    let mut any_geometry = false;
+    for entry in &entries {
+        let geometry = saved_geometry(entry);
+        any_geometry |= geometry.is_some();
+        // `restored` (not the loop index) keeps labels contiguous — main,
+        // project-1, … — even when an earlier window fails to restore.
+        match restore_one_window(app, restored, entry, geometry) {
+            Ok(()) => restored += 1,
+            Err(error) => log::warn!("restore of window for {} failed: {error}", entry.cwd),
         }
     }
+    if restored > 0 {
+        if !any_geometry {
+            arrange_windows(app, restored);
+        }
+        broadcast_window_order(app);
+        return Ok(());
+    }
 
-    // Fresh boot / nothing to restore / restore failed: the usual single main.
+    // Fresh boot / nothing to restore / every restore failed: the usual main.
     build_app_window(app, "main")?;
     start_window_session(
         app.clone(),
@@ -5825,6 +5836,34 @@ mod tests {
         let kept = filter_restorable(windows, |c| c == "/exists/a");
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].cwd, "/exists/a");
+    }
+
+    #[test]
+    fn saved_geometry_requires_all_four_values() {
+        let full = WorkspaceEntry {
+            x: Some(-1900),
+            y: Some(40),
+            width: Some(1024),
+            height: Some(660),
+            ..Default::default()
+        };
+        assert_eq!(saved_geometry(&full), Some((-1900, 40, 1024, 660)));
+        // A partial rect must not place a window — it gets the default slot.
+        let no_size = WorkspaceEntry {
+            width: None,
+            ..full.clone()
+        };
+        assert_eq!(saved_geometry(&no_size), None);
+        assert_eq!(saved_geometry(&WorkspaceEntry::default()), None);
+    }
+
+    #[test]
+    fn workspace_file_is_orcacoder_owned() {
+        // GG Coder writes gg-app-workspace.json in the same ~/.gg; sharing it
+        // let each app restore the other's windows.
+        let path = app_workspace_path();
+        assert_eq!(path.file_name().unwrap(), "orcacoder-workspace.json");
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), ".gg");
     }
 
     #[test]
