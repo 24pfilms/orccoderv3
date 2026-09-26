@@ -192,7 +192,10 @@ export async function runDoctor(): Promise<void> {
   const ggDir = path.join(home, ".gg");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
-  const myUid = process.getuid!();
+  // uid/gid and Unix permission bits do not exist on Windows, so the
+  // ownership and mode checks below run on POSIX only.
+  const posix = process.platform !== "win32";
+  const myUid = posix ? process.getuid!() : -1; // -1: unused, gated by `posix` below
   let fixed = 0;
 
   // ── Environment ─────────────────────────────────────────────
@@ -201,12 +204,14 @@ export async function runDoctor(): Promise<void> {
   console.log(dim(`    $HOME:     ${process.env.HOME ?? "(not set)"}`));
   console.log(dim(`    Node.js:   ${process.version}`));
   console.log(dim(`    Platform:  ${process.platform} ${process.arch}`));
-  console.log(dim(`    UID:       ${myUid}  EUID: ${process.geteuid!()}`));
+  if (posix) {
+    console.log(dim(`    UID:       ${myUid}  EUID: ${process.geteuid!()}`));
+  }
 
   if (process.env.HOME && process.env.HOME !== home) {
     console.log(warn("\n    ⚠ $HOME differs from os.homedir() — this can cause auth mismatches"));
   }
-  if (myUid !== process.geteuid!()) {
+  if (posix && myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
     console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
@@ -223,7 +228,7 @@ export async function runDoctor(): Promise<void> {
     console.log(dim(`    Mode:  0o${mode.toString(8)}  UID: ${stat.uid}`));
 
     // Fix ownership
-    if (stat.uid !== myUid) {
+    if (posix && stat.uid !== myUid) {
       console.log(warn(`    ⚠ Owned by uid ${stat.uid}, expected ${myUid}`));
       try {
         await fsP.chown(ggDir, myUid, process.getgid!());
@@ -235,7 +240,7 @@ export async function runDoctor(): Promise<void> {
     }
 
     // Fix permissions (should be 0o700)
-    if (mode !== 0o700) {
+    if (posix && mode !== 0o700) {
       try {
         await fsP.chmod(ggDir, 0o700);
         console.log(good("    ✓ Fixed directory permissions → 0o700"));
@@ -289,7 +294,7 @@ export async function runDoctor(): Promise<void> {
     );
 
     // Fix ownership
-    if (stat.uid !== myUid) {
+    if (posix && stat.uid !== myUid) {
       console.log(warn(`    ⚠ Owned by uid ${stat.uid}, expected ${myUid}`));
       try {
         await fsP.chown(authFile, myUid, process.getgid!());
@@ -301,7 +306,7 @@ export async function runDoctor(): Promise<void> {
     }
 
     // Fix permissions (should be 0o600)
-    if (mode !== 0o600) {
+    if (posix && mode !== 0o600) {
       try {
         await fsP.chmod(authFile, 0o600);
         console.log(good("    ✓ Fixed file permissions → 0o600"));
