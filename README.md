@@ -18,7 +18,7 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 25 September 2026
+## Current status — 27 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
@@ -26,6 +26,7 @@ ComfyUI, and Houdini workflows.
 | Application version  | `0.57.2`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
+| Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
 | Models               | **Opus 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash       |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
 | Effects              | Optional thinking orbs, working beams, metal buttons — one toggle in Settings → Effects       |
@@ -57,6 +58,14 @@ ComfyUI, and Houdini workflows.
   is the title bar, with its own minimise / maximise / close. Drag and double-click-to-maximise
   work as before, edges still resize, and every window gains the native bar's height. Settings →
   Effects → **Compact title bar** brings the native bar back, live, in every window.
+- **Images reach the phone.** The pew2 phone app runs this repo's GG Coder
+  (`packages/ggcoder/dist/cli.js acp`), and ACP forwards any image a tool returns. Screenshots and
+  `generate_image` pictures already did; images a script only saved to disk (charts, renders,
+  exported frames) never reached the phone. A standing **Showing images** rule in the code/ACP
+  system prompt (not chat) now has the agent open those with `read`, at most 3 per reply.
+  Phone-tested: a script-made sine-wave chart and a generated image both appear.
+- **`ggcoder doctor` on Windows.** It crashed on `process.getuid` (undefined on Windows); the
+  ownership and Unix-mode checks now run on POSIX only.
 - Known issues: a window dragged to a monitor with different scaling can go blank; a board can
   open read-only after windows restore in a different order.
 
