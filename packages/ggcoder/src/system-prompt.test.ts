@@ -105,6 +105,9 @@ describe("buildSystemPrompt", () => {
       sectionIndex(prompt, "## How to Work"),
     );
     expect(sectionIndex(prompt, "## How to Work")).toBeLessThan(
+      sectionIndex(prompt, "## Showing images"),
+    );
+    expect(sectionIndex(prompt, "## Showing images")).toBeLessThan(
       sectionIndex(prompt, "## Research & Verification"),
     );
     expect(sectionIndex(prompt, "## Research & Verification")).toBeLessThan(
@@ -497,9 +500,11 @@ describe("buildSystemPrompt", () => {
     // batched questions with recommended answers) — misalignment is the most
     // common failure mode, and these two lines are the always-on floor the
     // `clarify` skill then deepens on demand.
-    expect(measurements.normal.characters).toBeLessThan(9_600);
-    expect(measurements.planMode.characters).toBeLessThan(10_800);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_000);
+    // Raised for "Showing images": open created images with read so ACP
+    // clients (the pew2 phone app) and the desktop preview actually show them.
+    expect(measurements.normal.characters).toBeLessThan(10_000);
+    expect(measurements.planMode.characters).toBeLessThan(11_200);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_400);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -542,7 +547,8 @@ describe("buildSystemPrompt", () => {
     // Raised again with the 2026-08 guardrail additions (see size-budget test).
     // And again for the kencode-search staple sentence in Research.
     // And again for the alignment guardrails (see size-budget test).
-    expect(audit.size.characters).toBeLessThan(13_700);
+    // And again for "Showing images" (see size-budget test).
+    expect(audit.size.characters).toBeLessThan(14_100);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

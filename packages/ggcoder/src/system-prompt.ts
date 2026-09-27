@@ -79,6 +79,18 @@ function renderWorkSection(): string {
   );
 }
 
+// An image the read tool returns is forwarded to ACP clients (modes/acp-images.ts)
+// and shown in the desktop tool preview; images a script only saves to disk are not.
+function renderShowingImagesSection(): string {
+  return (
+    `## Showing images\n\n` +
+    `When you create or save an image the user should see — a screenshot taken by a script, a chart,\n` +
+    `a render, an exported frame — open it with the read tool once the file exists, so it is shown to\n` +
+    `the user. Images from the screenshot and generate_image tools are already shown; don't open those\n` +
+    `again. Show at most 3 images per reply: the ones that matter.`
+  );
+}
+
 function renderPlanModeSection(): string {
   return (
     `## Plan Mode (ACTIVE)\n\n` +
@@ -515,6 +527,7 @@ export async function buildSystemPrompt(
     renderIdentitySection(provider),
     renderTalkSection(),
     renderWorkSection(),
+    renderShowingImagesSection(),
   ];
 
   if (planMode) sections.push(renderPlanModeSection());
