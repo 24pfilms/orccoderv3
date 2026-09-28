@@ -18,12 +18,12 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 27 September 2026
+## Current status — 28 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.2`                                                                                      |
+| Application version  | `0.57.3`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
@@ -41,7 +41,22 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.1 – 0.57.2) — back where you left off, with more room to work.**
+**This cycle (0.57.3) — stability fixes from upstream GG Framework v0.72.1.**
+
+- **Ask cards no longer blank the window.** `ask_user` gives every option-less yes/no question the
+  same Yes/No array; the sidecar's redactor marked the second copy `[CIRCULAR]`, and rendering it
+  crashed the whole window. Only a true cycle is now marked, and the card tolerates a bad value.
+- **Long work is no longer cut off.** The stream watchdog killed healthy turns: a large `write` /
+  `edit` streams in bursts with multi-minute gaps, and adaptive-thinking models (Opus 5.5) think
+  silently for 4-5 minutes, so the 90-second idle limit aborted them and every retry died the
+  same way. Open tool calls and silent thinking now get a 5-minute idle allowance.
+- **Radio at launch.** The radio waited on nothing and failed with `daemon not ready`; it now
+  waits for the sidecar. Plus a flaky LSP pool test that raced under load.
+- Not taken from upstream: the dither home background / settings-screen / Phosphor-icon UI
+  overhaul (would replace the Scarlet look), CI and Dependabot plumbing, and two test refactors
+  that depend on upstream-only helpers and a new esbuild test dependency.
+
+**Previous cycle (0.57.1 – 0.57.2) — back where you left off, with more room to work.**
 
 - **Every window comes back.** Quitting and relaunching reopens all windows that were on a
   project, each on its project and chat and at its saved position and size. Multi-window restore
@@ -69,7 +84,7 @@ ComfyUI, and Houdini workflows.
 - Known issues: a window dragged to a monitor with different scaling can go blank; a board can
   open read-only after windows restore in a different order.
 
-**Previous cycle (0.57.0) — a model generation catch-up with upstream GG Framework v0.70.3.**
+**Earlier cycle (0.57.0) — a model generation catch-up with upstream GG Framework v0.70.3.**
 
 - **New models.** Claude Opus 5 → **Opus 5.5** and Fable 5 → **Fable 5.1**; the GPT-5.6 tiers
   are retired in favour of **GPT-6 Sol** and **GPT-6 Luna** (Astra unchanged); Grok 4.5/4.6 →
