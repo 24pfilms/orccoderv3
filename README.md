@@ -18,16 +18,16 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 28 September 2026
+## Current status — 29 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.3`                                                                                      |
+| Application version  | `0.57.4`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
-| Models               | **Opus 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash       |
+| Models               | **Opus 5.5**, **Sonnet 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
 | Effects              | Optional thinking orbs, working beams, metal buttons — one toggle in Settings → Effects       |
 | Branding             | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
@@ -41,7 +41,15 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.3) — stability fixes from upstream GG Framework v0.72.1.**
+**This cycle (0.57.4) — Claude Sonnet 5.5.**
+
+- **Sonnet 5 → Sonnet 5.5** in the catalog, the Anthropic defaults and background compaction
+  summaries (upstream GG Framework `b893bd9c`). Our 200K served-window cap applies to it as to
+  every Claude model. `gg-boss` defaults follow the rename.
+- Not taken from upstream this round: the **Motion** workspace (HyperFrames video mode, +40 MB,
+  16 conflicts with the Scarlet home, compact title bar and engine) — parked by choice.
+
+**Previous cycle (0.57.3) — stability fixes from upstream GG Framework v0.72.1.**
 
 - **Ask cards no longer blank the window.** `ask_user` gives every option-less yes/no question the
   same Yes/No array; the sidecar's redactor marked the second copy `[CIRCULAR]`, and rendering it
@@ -56,7 +64,7 @@ ComfyUI, and Houdini workflows.
   overhaul (would replace the Scarlet look), CI and Dependabot plumbing, and two test refactors
   that depend on upstream-only helpers and a new esbuild test dependency.
 
-**Previous cycle (0.57.1 – 0.57.2) — back where you left off, with more room to work.**
+**Earlier cycle (0.57.1 – 0.57.2) — back where you left off, with more room to work.**
 
 - **Every window comes back.** Quitting and relaunching reopens all windows that were on a
   project, each on its project and chat and at its saved position and size. Multi-window restore
