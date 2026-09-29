@@ -185,7 +185,7 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
     bossProvider: settings.bossProvider ?? "anthropic",
     bossModel: cliBossModel ?? settings.bossModel ?? "claude-opus-5-5",
     workerProvider: settings.workerProvider ?? "anthropic",
-    workerModel: cliWorkerModel ?? settings.workerModel ?? "claude-sonnet-5",
+    workerModel: cliWorkerModel ?? settings.workerModel ?? "claude-sonnet-5-5",
   });
 
   await runBossServeMode({
@@ -304,7 +304,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const preferredBossProvider = args.bossProvider ?? settings.bossProvider ?? "anthropic";
   const preferredBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-5-5";
   const preferredWorkerProvider = args.workerProvider ?? settings.workerProvider ?? "anthropic";
-  const preferredWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-5";
+  const preferredWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-5-5";
 
   // Fall back to a logged-in provider instead of crashing when the saved
   // boss/worker provider isn't authenticated (matches ggcoder startup).
