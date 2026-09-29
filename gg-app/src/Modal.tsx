@@ -83,7 +83,8 @@ export function Modal({
   // (per-window zoom). A `transform` ancestor makes `position: fixed` resolve
   // against THAT ancestor, not the viewport — which clipped the radio dialog's
   // top under the window's top bar. At <body> the backdrop is always anchored to
-  // the viewport. Theme vars live on `:root`, so styling is unaffected.
+  // the viewport. Theme vars live on `:root` and base typography on `body`
+  // (not `.app`), so the portaled modal keeps the app's colours and font.
   return createPortal(
     <div
       className="modal-backdrop"

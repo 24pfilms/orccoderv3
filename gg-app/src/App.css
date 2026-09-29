@@ -366,6 +366,15 @@ body {
   /* Base colour lives here, not on .app. `.app` isolates a stacking context, so an
      opaque background there paints over the .orca-wallpaper layer inside it. */
   background: var(--bg);
+  /* Base typography lives here, not on .app, so content portaled to <body>
+     (Modal, the background-tasks and schedules popovers, Markdown's preview)
+     inherits the app font instead of the browser's serif default. */
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.011em;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
@@ -376,12 +385,6 @@ body {
      CSS `zoom` < 1 the shell came up short and the footer floated up. % chains
      through #root/body/html (all 100%) and scales correctly with zoom. */
   height: 100%;
-  font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.55;
-  letter-spacing: -0.011em;
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
 }
 
 .app-restoring {
@@ -1430,7 +1433,8 @@ body {
   font-size: 12px;
   line-height: 1.55;
   margin-top: 8px;
-  word-break: break-all;
+  /* Wrap long unbroken paths, but never split ordinary words ("c / leared"). */
+  overflow-wrap: anywhere;
 }
 /* A hint sitting directly above an input needs breathing room below it,
    otherwise the field is flush against the description text. */
