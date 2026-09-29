@@ -23,7 +23,7 @@ ComfyUI, and Houdini workflows.
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.4`                                                                                      |
+| Application version  | `0.57.5`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
@@ -41,7 +41,17 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.4) — Claude Sonnet 5.5.**
+**This cycle (0.57.5) — dialogs look like OrcaCoder again.**
+
+- **Themed modals.** Since 0.56.0 modals portal to `<body>` (the fix for the radio dialog clipping
+  under the title bar), but the base font, size, spacing and text colour were set on `.app`, so
+  every modal (New Session, Settings, radio…) fell back to the browser's serif default. Base
+  typography now lives on `body`, which also covers the background-tasks, schedules and Markdown
+  popovers.
+- **No more split words.** Modal hints used `word-break: break-all` (meant for long paths), which
+  broke ordinary words mid-way ("c / leared"); they now wrap only when something doesn't fit.
+
+**Previous cycle (0.57.4) — Claude Sonnet 5.5.**
 
 - **Sonnet 5 → Sonnet 5.5** in the catalog, the Anthropic defaults and background compaction
   summaries (upstream GG Framework `b893bd9c`). Our 200K served-window cap applies to it as to
@@ -49,7 +59,7 @@ ComfyUI, and Houdini workflows.
 - Not taken from upstream this round: the **Motion** workspace (HyperFrames video mode, +40 MB,
   16 conflicts with the Scarlet home, compact title bar and engine) — parked by choice.
 
-**Previous cycle (0.57.3) — stability fixes from upstream GG Framework v0.72.1.**
+**Earlier cycle (0.57.3) — stability fixes from upstream GG Framework v0.72.1.**
 
 - **Ask cards no longer blank the window.** `ask_user` gives every option-less yes/no question the
   same Yes/No array; the sidecar's redactor marked the second copy `[CIRCULAR]`, and rendering it
