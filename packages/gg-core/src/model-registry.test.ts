@@ -108,7 +108,7 @@ describe("Claude Sonnet 5.5", () => {
       maxThinkingLevel: "max",
     });
     expect(getModelsForProvider("anthropic")).toContain(model);
-    expect(getModel("claude-sonnet-5-5")).toBeUndefined();
+    expect(getModel("claude-sonnet-5")).toBeUndefined();
     expect(getDefaultModel("anthropic")).toBe(model);
     expect(getSummaryModel("anthropic", "claude-opus-5-5")).toBe(model);
   });
