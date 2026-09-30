@@ -23,7 +23,7 @@ ComfyUI, and Houdini workflows.
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.6`                                                                                      |
+| Application version  | `0.58.0`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
@@ -37,11 +37,24 @@ ComfyUI, and Houdini workflows.
 | Chat images          | Enlarged hover/focus preview with a slower 280ms fade-and-scale reveal                       |
 | Mentor               | Public name and address are `Orca` / `@Orca`; internal `ken_*` protocol is retained          |
 | Motion/copy          | Ocean-current empty state with 10 six-second rotating lines per mode                         |
+| Orca Motion          | Home-screen **Motion** button: HyperFrames video sessions; Settings toggle hides it          |
 | Board Mode           | Mero board with drag-in image display fixed in packaged builds; editing, video, export verified |
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.6) — GPT-6.1 Sol and fixes from upstream GG Framework v0.73.2.**
+**This cycle (0.58.0) — Orca Motion: make videos from the home screen.**
+
+- **Motion button** in Mission Controls (clapperboard icon). It opens your past videos and
+  **+ New video**; a Motion session has video starter cards, its own agent and HyperFrames
+  0.8.82 bundled (no downloads). Videos live in an `Orca Motion` folder in your projects folder,
+  which the project list skips. Ported from upstream GG Framework, rebranded; licences (MIT,
+  Apache-2.0, SIL OFL, CC BY 4.0, CC0) in `packages/ggcoder/assets/motion/THIRD-PARTY.md`.
+- **Easy to undo** (`docs/motion-removal.md`): Settings → **Motion on/off** hides it live; a build
+  without `VITE_MOTION_ENABLED=true` leaves Motion out entirely (~70 MB smaller); every shared
+  line is marked `[motion]` and the port is four revertable commits.
+- Verified in dev with a real product-launch video, edited over several rounds.
+
+**Previous cycle (0.57.6) — GPT-6.1 Sol and fixes from upstream GG Framework v0.73.2.**
 
 - **GPT-6.1 Sol replaces GPT-6 Sol** (Astra and Luna unchanged), starting at `low` effort per the
   Codex catalog. OpenAI serves it to ChatGPT logins only from Codex client 0.159.0, so OrcaCoder
@@ -58,7 +71,7 @@ ComfyUI, and Houdini workflows.
   applies a type-level message to the checks and our 4.4 does not.
 - **Builds and tests.** The Node runtime download retries with backoff, and a flaky sub-agent cap
   test is fixed.
-- Not taken: the **Motion** workspace (its own project), the "Ideal review" sub-agent time-limit
+- Not taken then: the **Motion** workspace (added in 0.58.0), the "Ideal review" sub-agent time-limit
   fix (that feature is not in OrcaCoder), and the UI overhaul (tooltips, dither home, Phosphor).
 
 **Previous cycle (0.57.5) — dialogs look like OrcaCoder again.**
