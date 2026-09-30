@@ -67,15 +67,30 @@ export const BINARY_EXTENSIONS = new Set([
   ".idx",
 ]);
 
+// Models sometimes pass a line range such as "[98, 242]" as `offset`. Zod's
+// default "expected number, received string" did not teach Haiku the right
+// shape: it repeated the range until three identical invalid calls stopped the
+// whole run. Name the fix. Each message is set on the type check AND on
+// `.int()`/`.min()`: zod 4.5 lets a type-level `error` cover the checks, but the
+// zod we ship (4.4) does not, so `offset: 0` would fall back to "Too small".
+const OFFSET_ERROR =
+  "offset must be ONE line number (an integer >= 1), not a range or string. " +
+  "To read lines 98-242, pass offset: 98 and limit: 145.";
+const LIMIT_ERROR = "limit must be ONE line count (an integer >= 1), not a range or string.";
 const ReadParams = z.object({
   file_path: z.string().describe("The file path to read"),
   offset: z
-    .number()
-    .int()
-    .min(1)
+    .number({ error: OFFSET_ERROR })
+    .int(OFFSET_ERROR)
+    .min(1, OFFSET_ERROR)
     .optional()
     .describe("Line number to start reading from (1-based)"),
-  limit: z.number().int().min(1).optional().describe("Maximum number of lines to read"),
+  limit: z
+    .number({ error: LIMIT_ERROR })
+    .int(LIMIT_ERROR)
+    .min(1, LIMIT_ERROR)
+    .optional()
+    .describe("Maximum number of lines to read"),
   anchors: z
     .boolean()
     .optional()
