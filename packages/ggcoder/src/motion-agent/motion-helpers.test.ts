@@ -306,7 +306,7 @@ describe("hyperframes launcher", () => {
     const result = await runHelper("hyperframes.mjs", ["skills", "update"]);
 
     expect(result.code).not.toBe(0);
-    expect(result.stderr).toContain("bundled with GG Motion");
+    expect(result.stderr).toContain("bundled with Orca Motion");
   });
 
   it("runs the pinned CLI version the skills were bundled for", async () => {
@@ -351,8 +351,8 @@ describe("reveal", () => {
     ["win32", "explorer.exe", (file: string) => [`/select,"${file}"`]],
     ["linux", "xdg-open", (file: string) => [path.dirname(file)]],
   ])("selects a finished video in the %s file manager", async (platform, cmd, expected) => {
-    // A space in the folder name, as in the real "GG Motion" workspace.
-    const file = path.join(tmp, "GG Motion", "brag.mp4");
+    // A space in the folder name, as in the real "Orca Motion" workspace.
+    const file = path.join(tmp, "Orca Motion", "brag.mp4");
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, "");
 

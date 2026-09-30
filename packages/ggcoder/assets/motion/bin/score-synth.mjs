@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion score synth: render a beat-locked music bed and sound effects from
+// Orca Motion score synth: render a beat-locked music bed and sound effects from
 // a small JSON score, fully offline and deterministic (same score + seed =>
 // identical audio). No samples, no API keys, no licensing questions.
 //

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion PDF ingest: text per page, metadata, and embedded images, using the
+// Orca Motion PDF ingest: text per page, metadata, and embedded images, using the
 // `unpdf` package GG already ships. No network, no extra installs.
 //
 // Usage: node pdf-extract.mjs <input.pdf> <output-dir>
@@ -19,7 +19,7 @@ let unpdf;
 try {
   unpdf = await import("unpdf");
 } catch {
-  process.stderr.write("PDF support is missing from this GG install (unpdf not found).\n");
+  process.stderr.write("PDF support is missing from this OrcaCoder install (unpdf not found).\n");
   process.exit(1);
 }
 

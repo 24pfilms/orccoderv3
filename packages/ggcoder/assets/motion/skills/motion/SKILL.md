@@ -1,11 +1,11 @@
 ---
 name: motion
-description: Entry point for GG Motion video creation and edits. Plan the video's concept and motion language, bind brand and content, build or edit, then check and deliver. Load once per Motion session; the craft guide sets the quality bar.
+description: Entry point for Orca Motion video creation and edits. Plan the video's concept and motion language, bind brand and content, build or edit, then check and deliver. Load once per Motion session; the craft guide sets the quality bar.
 ---
 
-# GG Motion
+# Orca Motion
 
-GG Motion designs every video itself. The craft guide,
+Orca Motion designs every video itself. The craft guide,
 [Motion language](../../references/motion-language.md), sets the bar, the short
 plan to record before building and the principles: read it before planning a
 new video. Keep the work proportionate to the request: a copy edit does not

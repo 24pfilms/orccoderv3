@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion contact sheet: tile frame PNGs into one labeled grid image so a
+// Orca Motion contact sheet: tile frame PNGs into one labeled grid image so a
 // critique pass costs one image read instead of N (each image read re-prices
 // the whole context). `hf snapshot` already writes a full-size sheet; the
 // main use here is --phone, which shows the same frames at phone size.
@@ -39,7 +39,7 @@ try {
   const hfPkg = require.resolve("hyperframes/package.json");
   sharp = createRequire(hfPkg)("sharp");
 } catch {
-  fail("Contact sheets need the HyperFrames bundled with GG. Reinstall GG Coder to restore Motion mode.");
+  fail("Contact sheets need the HyperFrames bundled with OrcaCoder. Reinstall OrcaCoder to restore Motion mode.");
 }
 
 const framesDir = resolve(framesArg);

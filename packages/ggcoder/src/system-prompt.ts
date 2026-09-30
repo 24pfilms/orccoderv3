@@ -451,6 +451,8 @@ export const SUBAGENT_RETURN_CONTRACT =
  *   section never advertises something the allow-list strips.
  * @param opts.context — `"none"` skips project instruction files, for recon
  *   agents where conventions are dead weight.
+ * @param opts.role — `"primary"` omits the sub-agent return contract, for a
+ *   user-facing specialist agent (Motion) that talks to the user directly.
  */
 export async function buildSubAgentSystemPrompt(
   agentBody: string,
@@ -460,6 +462,7 @@ export async function buildSubAgentSystemPrompt(
     /** Tools available via `tool_search` but not carrying a schema this turn. */
     deferredToolNames?: readonly string[];
     context?: "project" | "none";
+    role?: "subagent" | "primary";
     environment?: SystemPromptEnvironment;
     /** Byte budgets for skill catalog / project instructions / total ceiling. */
     contextLimits?: ContextLimits;
@@ -483,8 +486,8 @@ export async function buildSubAgentSystemPrompt(
     if (projectContextSection) sections.push(projectContextSection);
   }
 
+  if ((opts.role ?? "subagent") === "subagent") sections.push(SUBAGENT_RETURN_CONTRACT);
   sections.push(
-    SUBAGENT_RETURN_CONTRACT,
     // Environment + date stay last so the cached prefix matches the parent's
     // layout: everything above is stable, the date suffix is the uncached tail.
     renderEnvironmentSection(opts.cwd, opts.environment),

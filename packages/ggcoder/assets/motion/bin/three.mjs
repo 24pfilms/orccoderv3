@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion 3D: install the bundled, pinned Three.js build and addons into a
+// Orca Motion 3D: install the bundled, pinned Three.js build and addons into a
 // video project so 3D scenes render offline and identically every time.
 //
 // Usage: node three.mjs add <project-dir>

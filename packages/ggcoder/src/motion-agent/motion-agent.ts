@@ -57,7 +57,6 @@ export type MotionAgentOptions = Omit<
   | "globalSubagents"
   | "loadExtensions"
   | "orchestrationPrompt"
-  | "completionReview"
   | "allowedTools"
   | "allowedMcpServers"
 > & {
@@ -110,7 +109,7 @@ export function motionSfxDir(bundle: MotionBundle): string {
 export async function createMotionAgentSession(options: MotionAgentOptions): Promise<AgentSession> {
   const bundle = await findMotionBundle();
   if (!bundle) {
-    throw new Error("Motion mode is unavailable: this GG install is missing its Motion bundle.");
+    throw new Error("Motion mode is unavailable: this OrcaCoder install is missing its Motion bundle.");
   }
   const skills = await loadMotionSkills(bundle);
   const { sessionsDir, ...sessionOptions } = options;
@@ -125,7 +124,6 @@ export async function createMotionAgentSession(options: MotionAgentOptions): Pro
   const studioPrompt = motionStudioPrompt(studio);
   return new AgentSession({
     ...sessionOptions,
-    completionReview: undefined,
     additionalTools: [
       ...(sessionOptions.additionalTools ?? []),
       createMotionCheckTool(options.cwd, bundle),

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion reveal: open the user's file manager at a finished video, with the
+// Orca Motion reveal: open the user's file manager at a finished video, with the
 // file selected where the OS supports it (Finder, Explorer). Linux file
 // managers have no common "select" flag, so the containing folder opens.
 //

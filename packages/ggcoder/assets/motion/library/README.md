@@ -1,4 +1,4 @@
-# GG Motion style library
+# Orca Motion style library
 
 Curated, render-verified building blocks for Motion videos, used through
 `bin/library.mjs`. Two kinds of entry:

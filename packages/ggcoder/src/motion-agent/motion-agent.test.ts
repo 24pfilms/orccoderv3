@@ -59,7 +59,7 @@ describe("Motion agent", () => {
       { skill: "motion" },
       { signal: new AbortController().signal, toolCallId: "motion-skill-test" },
     );
-    expect(result).toContain("GG Motion designs every video itself");
+    expect(result).toContain("Orca Motion designs every video itself");
     expect(result).not.toContain("## GG Motion scope");
     expect(await fs.readFile(file, "utf8")).toBe(before);
   });
@@ -317,7 +317,7 @@ describe("Motion agent", () => {
       sessionsDir: "/tmp/gg/sessions",
     });
     const options = optionsOf(agent);
-    expect(options.agentPrompt).toContain("You are GG Motion");
+    expect(options.agentPrompt).toContain("You are Orca Motion");
     expect(options.agentRole).toBe("primary");
     expect(options.agentContext).toBe("none");
     expect(options.promptCacheKeyPrefix).toBe("ggmotion");
@@ -327,7 +327,6 @@ describe("Motion agent", () => {
     expect(options.loadExtensions).toBe(false);
     expect(options.contextLimits).toEqual({ skillCatalogBytes: MOTION_SKILL_CATALOG_BYTES });
     expect(options.onEnterPlan).toBeUndefined();
-    expect(options.completionReview).toBeUndefined();
     expect(options.selfCorrectionHooks).toBe(false);
     expect(options.globalSubagents).toBe(false);
     expect(options.allowedTools).toEqual([...MOTION_TOOL_NAMES]);

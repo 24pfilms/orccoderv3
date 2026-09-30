@@ -1,4 +1,4 @@
-# Third-party content in GG Motion
+# Third-party content in Orca Motion
 
 Motion exposes GG-authored skills and craft references. The old upstream
 creative/workflow skills and guidance adapters have been removed. Retained

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GG Motion style library: curated, render-verified looks (art directions)
+// Orca Motion style library: curated, render-verified looks (art directions)
 // and pieces (seek-safe building blocks), each with a preview image.
 //
 // Usage:
