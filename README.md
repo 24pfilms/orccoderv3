@@ -18,16 +18,16 @@ the upstream coding workflow while adding the Scarlet Orca identity, public **Or
 mentor, appearance controls, ocean-themed motion, and a base for OrcaVoice, media inspection,
 ComfyUI, and Houdini workflows.
 
-## Current status — 29 September 2026
+## Current status — 30 September 2026
 
 | Area                 | Status                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Repository           | [`24pfilms/orccoderv3`](https://github.com/24pfilms/orccoderv3) — private during development |
-| Application version  | `0.57.5`                                                                                      |
+| Application version  | `0.57.6`                                                                                      |
 | Windows & restore    | Relaunch reopens every window on its project and spot; compact title bar (Settings toggle)   |
 | Desktop runtime      | Tauri on Windows; dev executable and packaged installer both verified                        |
 | Phone (pew2 / ACP)   | pew2 runs this build's GG Coder over ACP; screenshots, generated and script-made images show |
-| Models               | **Opus 5.5**, **Sonnet 5.5**, Fable 5.1, **GPT-6 Astra/Sol/Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash |
+| Models               | **Opus 5.5**, **Sonnet 5.5**, Fable 5.1, **GPT-6 Astra / GPT-6.1 Sol / GPT-6 Luna**, Grok 4.7, MiMo v2.6, GLM-5.3 + Flash |
 | Ask cards            | The agent asks with **clickable option cards** inline in the chat (`ask_user` tool)          |
 | Effects              | Optional thinking orbs, working beams, metal buttons — one toggle in Settings → Effects       |
 | Branding             | OrcaCoder name, `com.orcacoder.desktop`, Scarlet native icons and favicon                    |
@@ -41,7 +41,27 @@ ComfyUI, and Houdini workflows.
 | Updater              | Intentionally inert until Orca owns a release endpoint and signing key                       |
 | Distribution         | Development build only; no Orca-signed public installer yet                                  |
 
-**This cycle (0.57.5) — dialogs look like OrcaCoder again.**
+**This cycle (0.57.6) — GPT-6.1 Sol and fixes from upstream GG Framework v0.73.2.**
+
+- **GPT-6.1 Sol replaces GPT-6 Sol** (Astra and Luna unchanged), starting at `low` effort per the
+  Codex catalog. OpenAI serves it to ChatGPT logins only from Codex client 0.159.0, so OrcaCoder
+  now advertises **0.159.1**; below that gate the login answers "model is not supported when using
+  Codex with a ChatGPT account". Model-id matching for the Codex transport, responses-lite and the
+  six-rung effort ladder also accepts dotted point releases (`gpt-6.*`).
+- **Scrolling up mid-reply stays put.** The transcript pin followed distance (within 48px of the
+  bottom), and every streaming commit re-pinned it, so a wheel notch or trackpad glide snapped
+  straight back down. It now follows the reader's direction (`transcript-pin.ts`, 15 tests).
+- **Sub-agents.** A child whose loop stopped on an error but returned normally was reported to its
+  parent as completed, so mid-task narration passed as the final report; it now fails the turn.
+- **`read` explains bad line ranges.** `offset`/`limit` given as a range or string now say to pass
+  ONE number (offset 98, limit 145). The message sits on each check because upstream's zod 4.5
+  applies a type-level message to the checks and our 4.4 does not.
+- **Builds and tests.** The Node runtime download retries with backoff, and a flaky sub-agent cap
+  test is fixed.
+- Not taken: the **Motion** workspace (its own project), the "Ideal review" sub-agent time-limit
+  fix (that feature is not in OrcaCoder), and the UI overhaul (tooltips, dither home, Phosphor).
+
+**Previous cycle (0.57.5) — dialogs look like OrcaCoder again.**
 
 - **Themed modals.** Since 0.56.0 modals portal to `<body>` (the fix for the radio dialog clipping
   under the title bar), but the base font, size, spacing and text colour were set on `.app`, so
@@ -51,7 +71,7 @@ ComfyUI, and Houdini workflows.
 - **No more split words.** Modal hints used `word-break: break-all` (meant for long paths), which
   broke ordinary words mid-way ("c / leared"); they now wrap only when something doesn't fit.
 
-**Previous cycle (0.57.4) — Claude Sonnet 5.5.**
+**Earlier cycle (0.57.4) — Claude Sonnet 5.5.**
 
 - **Sonnet 5 → Sonnet 5.5** in the catalog, the Anthropic defaults and background compaction
   summaries (upstream GG Framework `b893bd9c`). Our 200K served-window cap applies to it as to
