@@ -6,7 +6,7 @@ import {
 
 describe("AgentSession tool-result policy", () => {
   it("passes the Codex 10k-token approximation for OpenAI OAuth sessions", () => {
-    expect(resolveSessionToolResultCharLimit("gpt-6-sol", "openai", "acct_123")).toBe(40_000);
+    expect(resolveSessionToolResultCharLimit("gpt-6.1-sol", "openai", "acct_123")).toBe(40_000);
   });
 
   it("retains the generic context-relative allowance for other transports", () => {
@@ -14,7 +14,7 @@ describe("AgentSession tool-result policy", () => {
     expect(resolveSessionToolResultCharLimit("claude-sonnet-5-5", "anthropic", "acct_123")).toBe(
       210_000,
     );
-    expect(resolveSessionToolResultCharLimit("gpt-6-sol", "openai")).toBe(1_102_500);
+    expect(resolveSessionToolResultCharLimit("gpt-6.1-sol", "openai")).toBe(1_102_500);
   });
 });
 
@@ -25,8 +25,8 @@ describe("AgentSession per-turn tool-result budget", () => {
     expect(resolveSessionTurnToolResultCharLimit("claude-sonnet-5-5", "anthropic", "acct_123")).toBe(
       105_000,
     );
-    // OpenAI public API gpt-6-sol: 15% of ctx*3.5, within floor/ceiling.
-    const publicApi = resolveSessionTurnToolResultCharLimit("gpt-6-sol", "openai");
+    // OpenAI public API gpt-6.1-sol: 15% of ctx*3.5, within floor/ceiling.
+    const publicApi = resolveSessionTurnToolResultCharLimit("gpt-6.1-sol", "openai");
     expect(publicApi).toBeGreaterThanOrEqual(100_000);
     expect(publicApi).toBeLessThanOrEqual(240_000);
   });

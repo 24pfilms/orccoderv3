@@ -49,7 +49,7 @@ function manager(
     cwd: options.cwd ?? process.cwd(),
     agents: options.agentDefs ?? agents,
     getProvider: () => "openai",
-    getModel: () => "gpt-6-sol",
+    getModel: () => "gpt-6.1-sol",
     getThinkingLevel: () => "ultra",
     getCacheKey: () => "parent-cache",
     getMaxPerModel: () => options.maxPerModel,
@@ -160,7 +160,7 @@ describe("SubAgentManager", () => {
 
   it("enforces the per-model cap against the resolved child model", async () => {
     // The "fake" agent declares model: fast (gpt-6-luna); an agent with no
-    // model policy inherits the parent model (gpt-6-sol).
+    // model policy inherits the parent model (gpt-6.1-sol).
     const shellAgent: AgentDefinition = {
       name: "sheller",
       description: "Shell-capable worker",
@@ -180,7 +180,7 @@ describe("SubAgentManager", () => {
 
     // A different resolved model is unaffected by the luna cap.
     const other = await instance.spawn("parent-model", "slow", "sheller");
-    expect(other.model).toBe("gpt-6-sol");
+    expect(other.model).toBe("gpt-6.1-sol");
   });
 
   it("names the available agents when asked for one that does not exist", async () => {
@@ -332,7 +332,7 @@ describe("SubAgentManager", () => {
       token_usage: { input: 2, output: 3 },
       agent_name: "fake",
       provider: "openai",
-      model: "gpt-6-sol",
+      model: "gpt-6.1-sol",
       child_session_id: "child-session",
       child_session_path: path.join(sessionRootDir, "project", "child.jsonl"),
       collected: false,
