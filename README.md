@@ -44,17 +44,31 @@ ComfyUI, and Houdini workflows.
 
 **This cycle (0.58.0) — Orca Motion: make videos from the home screen.**
 
-- **Motion button** in Mission Controls (clapperboard icon). It opens your past videos and
-  **+ New video**; a Motion session has video starter cards, its own agent and HyperFrames
-  0.8.82 bundled (no downloads). Videos live in an `Orca Motion` folder in your projects folder,
-  which the project list skips. Ported from upstream GG Framework, rebranded; licences (MIT,
-  Apache-2.0, SIL OFL, CC BY 4.0, CC0) in `packages/ggcoder/assets/motion/THIRD-PARTY.md`.
-- **Easy to undo** (`docs/motion-removal.md`): Settings → **Motion on/off** hides it live; a build
-  without `VITE_MOTION_ENABLED=true` leaves Motion out entirely (~70 MB smaller); every shared
-  line is marked `[motion]` and the port is four revertable commits.
-- Verified in dev with a real product-launch video, edited over several rounds.
+Describe a video, paste a link or drop in screenshots, and Motion plans it with you, builds it,
+renders an MP4, checks its own frames and takes edits in plain English. Full guide:
+**[docs/motion.md](docs/motion.md)**.
 
-**Previous cycle (0.57.6) — GPT-6.1 Sol and fixes from upstream GG Framework v0.73.2.**
+- **Motion button** in Mission Controls (clapperboard icon) opens your past videos and
+  **+ New video**, with starter cards (product launch, explainer, social ad, animated titles).
+- **Everything it needs ships inside the installer**: HyperFrames 0.8.82 (pinned, no downloads,
+  telemetry off), four private skills (plan and build, brand kit, source ingest, video QA),
+  11 render-verified looks, 50 pieces, 21 fonts, a music and sound library, and a beat-locked
+  score synth. It costs 30 MB: the installer is 105 MB against 0.57.6's 75 MB.
+- **Kept separate from your code.** Videos go to an `Orca Motion` folder in your projects folder
+  (skipped by Pod Dock), sessions to `~/.gg/motion-sessions`, and Motion's skills never appear in
+  Code or Chat. Windows reopen as Motion on relaunch.
+- **Easy to undo** ([docs/motion-removal.md](docs/motion-removal.md)): Settings →
+  **Motion on/off** hides it live; a build without `VITE_MOTION_ENABLED=true` leaves it out
+  entirely; every shared line is tagged `[motion]` for a clean `git revert`.
+- **Proven on a real job**: a 45-second OrcaFilm launch video from real screenshots and brand
+  art, revised over several rounds, in dev and again in the installed 0.58.0.
+- **Fixed along the way**: Motion sessions opening as Chat (no shell); the bundler shipping every
+  OS's esbuild/sharp binaries (254 MB installer → 105 MB, now follows npm's `os`/`cpu` rule);
+  HyperFrames' missing `tslib`.
+- Ported from upstream GG Framework and rebranded Orca Motion. Licences: Apache-2.0, MIT, SIL
+  OFL, CC BY 4.0, CC0 (`packages/ggcoder/assets/motion/THIRD-PARTY.md`).
+
+**Also in this release (from 0.57.6) — GPT-6.1 Sol and fixes from upstream GG Framework v0.73.2.**
 
 - **GPT-6.1 Sol replaces GPT-6 Sol** (Astra and Luna unchanged), starting at `low` effort per the
   Codex catalog. OpenAI serves it to ChatGPT logins only from Codex client 0.159.0, so OrcaCoder
