@@ -11,7 +11,16 @@
 // its own runner, so copied native binaries match the target.
 import { build } from "esbuild";
 import { createRequire } from "node:module";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +37,10 @@ const bundledSkillsOut = join(outDir, "skills");
 // `skills/` so its skills never enter coder or chat discovery.
 const motionBundleSource = join(repoRoot, "packages", "ggcoder", "assets", "motion");
 const motionBundleOut = join(outDir, "motion");
+// [motion] Motion (the bundle + the hyperframes package, ~70 MB) ships only in builds
+// made with VITE_MOTION_ENABLED=true — the same flag that shows the Home button.
+// A build without it is the Motion-free build: nothing of it is bundled.
+const motionEnabled = process.env.VITE_MOTION_ENABLED === "true";
 
 // Packages that must NOT be inlined: native addons, lazily-loaded optional
 // heavy deps, and child-process entry points that esbuild cannot discover.
@@ -51,9 +64,6 @@ const EXTERNAL = [
   "typescript",
   // source_path spawns opensrc's CLI by physical path; it is never imported.
   "opensrc",
-  // Motion mode runs the HyperFrames CLI through motion/bin/hyperframes.mjs,
-  // which resolves this package from the sidecar's node_modules at runtime.
-  "hyperframes",
   // Bash launches SRT's physical CLI as a child process for per-session OS
   // sandboxing; keep its platform binaries and CLI files on disk.
   "@anthropic-ai/sandbox-runtime",
@@ -64,6 +74,9 @@ const EXTERNAL = [
   // back to raw npx, paying a ~90 MB `npm exec` wrapper per MCP connection.
   "@kenkaiiii/kencode-search",
 ];
+// [motion] Motion runs the HyperFrames CLI through motion/bin/hyperframes.mjs, which
+// resolves this package from the sidecar's node_modules at runtime.
+if (motionEnabled) EXTERNAL.push("hyperframes");
 
 // require resolver anchored at the ggcoder package, where these deps live.
 const ggcoderRequire = createRequire(join(repoRoot, "packages", "ggcoder", "package.json"));
@@ -274,10 +287,19 @@ function stripSourceMaps() {
  * rather than shipping a package that cannot load.
  */
 function pruneBrowserOnnxPayloads() {
-  const KEEP = ["package.json", "types.d.ts", join("dist", "ort.node.min.js"), join("dist", "ort.node.min.mjs")];
+  const KEEP = [
+    "package.json",
+    "types.d.ts",
+    join("dist", "ort.node.min.js"),
+    join("dist", "ort.node.min.mjs"),
+  ];
   const roots = [];
   walk(nodeModulesOut, (p, entry) => {
-    if (entry.isDirectory() && entry.name === "onnxruntime-web" && existsSync(join(p, "package.json"))) {
+    if (
+      entry.isDirectory() &&
+      entry.name === "onnxruntime-web" &&
+      existsSync(join(p, "package.json"))
+    ) {
       roots.push(p);
     }
   });
@@ -306,20 +328,21 @@ async function main() {
   if (!existsSync(bundledSkillsSource)) {
     throw new Error(`bundled skills missing: ${bundledSkillsSource}`);
   }
-  if (!existsSync(join(motionBundleSource, "plugin.json"))) {
+  if (motionEnabled && !existsSync(join(motionBundleSource, "plugin.json"))) {
     throw new Error(`motion bundle missing: ${motionBundleSource}`);
   }
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   cpSync(bundledSkillsSource, bundledSkillsOut, { recursive: true });
-  cpSync(motionBundleSource, motionBundleOut, {
-    recursive: true,
-    filter: (source) => {
-      const parts = relative(motionBundleSource, source).split(sep);
-      // Scratch files and After Effects sources are never release assets.
-      return !(parts.includes("__pycache__") || /\.(?:aep|aepx|pyc)$/i.test(source));
-    },
-  });
+  if (motionEnabled)
+    cpSync(motionBundleSource, motionBundleOut, {
+      recursive: true,
+      filter: (source) => {
+        const parts = relative(motionBundleSource, source).split(sep);
+        // Scratch files and After Effects sources are never release assets.
+        return !(parts.includes("__pycache__") || /\.(?:aep|aepx|pyc)$/i.test(source));
+      },
+    });
 
   await build({
     entryPoints: [sidecarEntry],

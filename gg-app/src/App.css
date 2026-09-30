@@ -6576,3 +6576,20 @@ button.img-open:focus-visible {
   display: flex;
   margin-top: 10px;
 }
+
+/* [motion] Video starters above the composer in a new Orca Motion session: pills
+   tinted with the palette accent so they follow Scarlet / Forest / Arctic. */
+.motion-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px var(--rail, 16px);
+}
+.motion-starter {
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.motion-starter:hover {
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+}

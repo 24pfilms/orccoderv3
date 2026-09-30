@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CheckCircle2, Download, Settings } from "lucide-react";
+import { CheckCircle2, Clapperboard, Download, Settings } from "lucide-react";
+import { useMotionVisible } from "./motion-feature"; // [motion]
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeBackdrop } from "./HomeBackdrop";
 import { SettingsModal } from "./SettingsModal";
@@ -15,6 +16,8 @@ import { toast } from "./toast";
 interface Props {
   onProjects: () => void;
   onChat: () => void;
+  /** [motion] Opens the Orca Motion (video) workspace picker. */
+  onMotion: () => void;
   onLogin: () => void;
   /**
    * Bumped when something OUTSIDE this screen changed serve/auth state (the
@@ -31,9 +34,11 @@ interface Props {
 export function HomeScreen({
   onProjects,
   onChat,
+  onMotion,
   onLogin,
   refreshSignal = 0,
 }: Props): React.ReactElement {
+  const motionVisible = useMotionVisible(); // [motion]
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -218,6 +223,17 @@ export function HomeScreen({
               >
                 Chat Pod
               </button>
+              {motionVisible && ( // [motion]
+                <button
+                  className={`btn btn-ghost btn-lg home-btn scarlet-secondary${ready ? "" : " is-dimmed"}`}
+                  aria-disabled={!ready}
+                  title="Make videos with Orca Motion (beta)"
+                  onClick={() => handleWorkspace(onMotion)}
+                >
+                  <Clapperboard size={18} aria-hidden="true" />
+                  Motion
+                </button>
+              )}
               <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
                 Connect AI Providers
               </button>

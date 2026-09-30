@@ -19,6 +19,7 @@ import { SoundButton } from "./SoundButton";
 import { MemesButton } from "./MemesButton";
 import { EffectsButton } from "./effects/GgUiButton"; // [effects]
 import { CompactTitlebarButton } from "./WindowControls";
+import { MotionToggleButton } from "./MotionToggleButton"; // [motion]
 import {
   loadState as loadOrcaTheme,
   setAttentionEnabled,
@@ -175,6 +176,7 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
         {/* [effects] toggle for thinking orbs / working beams / metal buttons */}
         <EffectsButton />
         <CompactTitlebarButton />
+        <MotionToggleButton /> {/* [motion] */}
       </div>
       <div
         className="modal-row"

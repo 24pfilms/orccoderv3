@@ -105,6 +105,7 @@ import { NotesModal } from "./NotesModal";
 import { MemoryModal } from "./MemoryModal";
 import { ShimmerText } from "./ShimmerText";
 import { WakeScreen } from "./WakeScreen";
+import { MotionStarters } from "./MotionStarters";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
@@ -907,6 +908,18 @@ function App(): React.ReactElement {
     [setInput],
   );
 
+  /** [motion] Put a starter's text in the composer, caret at the end, ready to finish and send. */
+  function fillComposer(text: string): void {
+    setInput(text);
+    setCaret(text.length);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  }
+
   // A prompt sent while a band is open supersedes it — drop the dead band.
   const dismissOpenAsks = useCallback(() => {
     setItems(dropSupersededAsks);
@@ -1169,7 +1182,12 @@ function App(): React.ReactElement {
 
   // ActivityWatch records this native title, so keep it stable and project-specific.
   useEffect(() => {
-    const fallbackTitle = workspaceMode === "chat" ? "Orca Chat" : "OrcaCoder";
+    const fallbackTitle =
+      workspaceMode === "chat"
+        ? "Orca Chat"
+        : workspaceMode === "motion"
+          ? "Orca Motion"
+          : "OrcaCoder"; // [motion]
     const title =
       !needsProject && !showPicker ? formatActivityTitle(state?.cwd, fallbackTitle) : fallbackTitle;
     setWindowTitle(title);
@@ -2617,6 +2635,11 @@ function App(): React.ReactElement {
               setWorkspaceMode("chat");
               setEntryView("chats");
             }}
+            onMotion={() => {
+              // [motion]
+              setWorkspaceMode("motion");
+              setEntryView("motion");
+            }}
             onLogin={() => setEntryView("login")}
             refreshSignal={homeRefreshSignal}
           />
@@ -2624,6 +2647,12 @@ function App(): React.ReactElement {
           <LoginScreen onClose={() => setEntryView("home")} />
         ) : entryView === "chats" ? (
           <ChatPicker onChosen={onProjectChosen} onClose={() => setEntryView("home")} />
+        ) : entryView === "motion" ? ( // [motion]
+          <ChatPicker
+            mode="motion"
+            onChosen={onProjectChosen}
+            onClose={() => setEntryView("home")}
+          />
         ) : (
           <ProjectPicker
             onChosen={onProjectChosen}
@@ -2657,6 +2686,8 @@ function App(): React.ReactElement {
         <div className="orca-wallpaper" aria-hidden="true" />
         {workspaceMode === "chat" ? (
           <ChatPicker initialAgent={state?.chatAgent ?? "general"} {...pickerProps} />
+        ) : workspaceMode === "motion" ? (
+          <ChatPicker mode="motion" {...pickerProps} />
         ) : (
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
@@ -2714,7 +2745,13 @@ function App(): React.ReactElement {
         }
       >
         <BackButton
-          label={workspaceMode === "chat" ? "Back to chats" : "Back to this project's sessions"}
+          label={
+            workspaceMode === "chat"
+              ? "Back to chats"
+              : workspaceMode === "motion" // [motion]
+                ? "Back to motion sessions"
+                : "Back to this project's sessions"
+          }
           onClick={() => void openProjectPicker()}
         />
         <div className="rank-badge-wrap">
@@ -2731,25 +2768,27 @@ function App(): React.ReactElement {
             ))}
           </div>
         </div>
-        {workspaceMode === "chat" ? (
+        {workspaceMode !== "code" ? (
           <span className="picker-head-actions">
             <OrcaAppearance />
             {boardControl}
             <button
               className="btn btn-primary btn-sm"
               disabled={running}
-              title="Start a new chat"
+              title={workspaceMode === "motion" ? "Start a new video session" : "Start a new chat"}
               onClick={() => setConfirmNewSession(true)}
             >
               {"+ New"}
             </button>
-            <button
-              className="btn btn-sm btn-ghost"
-              title="View and curate chat memories and Jiwa"
-              onClick={() => setShowMemories(true)}
-            >
-              Brain
-            </button>
+            {workspaceMode === "chat" && ( // [motion] memories belong to chat only
+              <button
+                className="btn btn-sm btn-ghost"
+                title="View and curate chat memories and Jiwa"
+                onClick={() => setShowMemories(true)}
+              >
+                Brain
+              </button>
+            )}
             <RadioButton />
             <WindowLayoutButton />
           </span>
@@ -2861,7 +2900,10 @@ function App(): React.ReactElement {
               <>
                 {items.length === 0 &&
                   (status === "ready" ? (
-                    <WakeScreen chat={workspaceMode === "chat"} />
+                    <WakeScreen
+                      chat={workspaceMode === "chat"}
+                      motion={workspaceMode === "motion"}
+                    /> /* [motion] */
                   ) : (
                     <div className="line transcript-reveal" style={{ color: theme.textDim }}>
                       {`\u273b ${status}`}
@@ -2891,6 +2933,11 @@ function App(): React.ReactElement {
         </div>
 
         <div className="liveregion">
+          {/* [motion] Starting points sit just above the activity bar and go away
+              once the conversation has its first message. */}
+          {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
+            <MotionStarters onPick={fillComposer} />
+          )}
           {workspaceMode === "code" && autopilotReviewing && (
             <AutopilotReviewBar onCancel={requestCancel} />
           )}
@@ -3016,7 +3063,13 @@ function App(): React.ReactElement {
                 // submit the un-enhanced draft mid-animation.
                 readOnly={enhanceAnim !== null}
                 value={input}
-                placeholder={workspaceMode === "chat" ? "Ask anything\u2026" : displayPlaceholder}
+                placeholder={
+                  workspaceMode === "chat"
+                    ? "Ask anything\u2026"
+                    : workspaceMode === "motion" // [motion]
+                      ? "Describe a video, paste a link, or drop a PDF\u2026"
+                      : displayPlaceholder
+                }
                 onPaste={(e) => {
                   const files = Array.from(e.clipboardData.files);
                   if (files.length > 0) {
@@ -3127,7 +3180,14 @@ function App(): React.ReactElement {
             <FooterSkeleton />
           ) : (
             <>
-              {workspaceMode === "chat" ? (
+              {workspaceMode === "motion" ? ( // [motion]
+                <span
+                  className="footer-left footer-reveal"
+                  style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
+                >
+                  Motion Agent
+                </span>
+              ) : workspaceMode === "chat" ? (
                 <span
                   className="footer-left footer-reveal"
                   style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
@@ -3270,7 +3330,9 @@ function App(): React.ReactElement {
           message={
             workspaceMode === "chat"
               ? "This will create a new chat. The current conversation will be cleared. Are you sure?"
-              : "This will create a new session for this project. The current conversation will be cleared. Are you sure?"
+              : workspaceMode === "motion" // [motion]
+                ? "This will start a new video session. The current conversation will be cleared. Are you sure?"
+                : "This will create a new session for this project. The current conversation will be cleared. Are you sure?"
           }
           confirmLabel={workspaceMode === "chat" ? "New Chat" : "New Session"}
           busy={newSessionBusy}

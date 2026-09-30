@@ -63,6 +63,7 @@ struct Daemon {
 #[serde(rename_all = "lowercase")]
 enum WorkspaceMode {
     Chat,
+    Motion,
     #[default]
     #[serde(other)]
     Code,
@@ -6021,6 +6022,17 @@ mod tests {
         let default_json = serde_json::to_string(&legacy.windows[0]).unwrap();
         assert!(!default_json.contains("surface"));
         assert!(!default_json.contains("selectedBoardId"));
+    }
+
+    #[test]
+    fn workspace_restores_motion_mode() {
+        let motion: Workspace =
+            serde_json::from_str(r#"{ "windows": [{ "mode": "motion", "cwd": "/p/a" }] }"#)
+                .unwrap();
+        assert_eq!(motion.windows[0].mode, WorkspaceMode::Motion);
+        assert!(serde_json::to_string(&motion)
+            .unwrap()
+            .contains(r#""mode":"motion""#));
     }
 
     #[test]
