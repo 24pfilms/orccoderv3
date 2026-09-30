@@ -179,6 +179,21 @@ function packageRoot(name, fromRequire, fromDir) {
 }
 
 /**
+ * npm's `os` / `cpu` rule: a list allows the named values, or excludes the ones
+ * prefixed with "!". A package without the field runs everywhere.
+ */
+function allowsValue(list, value) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (list.includes(`!${value}`)) return false;
+  const allowed = list.filter((entry) => !entry.startsWith("!"));
+  return allowed.length === 0 || allowed.includes(value);
+}
+
+function matchesThisPlatform(pkg) {
+  return allowsValue(pkg.os, process.platform) && allowsValue(pkg.cpu, process.arch);
+}
+
+/**
  * Copy a package and its (optional) dependency tree into the flat output
  * node_modules, dereferencing pnpm symlinks. First version of a name wins
  * (npm-style hoist); the smoke test validates the result loads.
@@ -197,11 +212,14 @@ function copyPackage(name, fromRequire, fromDir, copied) {
   // shipped without the MCP SDK's dependency tree and crashed on spawn.
   const root = realpathSync(linkedRoot);
   copied.add(name);
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  // Platform-specific binaries (@esbuild/linux-x64, @img/sharp-darwin-arm64, …)
+  // can all be present on disk after a forced install; ship only this runner's.
+  if (!matchesThisPlatform(pkg)) return;
   const dest = join(nodeModulesOut, ...name.split("/"));
   mkdirSync(dirname(dest), { recursive: true });
   cpSync(root, dest, { recursive: true, dereference: true });
 
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const deps = {
     ...(pkg.dependencies || {}),
     ...(pkg.optionalDependencies || {}),
