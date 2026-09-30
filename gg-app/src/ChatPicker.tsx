@@ -104,7 +104,7 @@ export function ChatPicker({
   function choose(session?: RecentSession): void {
     if (busy || !projectsRoot) return;
     setBusy(true);
-    void selectWorkspace("chat", projectsRoot, session?.path, session?.chatAgent ?? initialAgent)
+    void selectWorkspace(mode, projectsRoot, session?.path, session?.chatAgent ?? initialAgent)
       .then(() => onChosen(projectsRoot))
       .catch(() => setBusy(false));
   }
@@ -113,7 +113,7 @@ export function ChatPicker({
     <div className="picker chat-picker">
       <div className="picker-head" data-tauri-drag-region>
         {onClose ? <BackButton label="Back" onClick={onClose} /> : null}
-        <span className="picker-title">Chats</span>
+        <span className="picker-title">{copy.title}</span>
         {!loading && !error && <Badge>{sessions.length}</Badge>}
         <span className="picker-head-actions">
           <button
@@ -121,7 +121,7 @@ export function ChatPicker({
             disabled={busy || loading || !projectsRoot}
             onClick={() => choose()}
           >
-            {"+ New chat"}
+            {copy.newLabel}
           </button>
           <RadioButton />
           <WindowLayoutButton />
@@ -137,9 +137,9 @@ export function ChatPicker({
         )}
         {!loading && !error && sessions.length === 0 && (
           <div className="picker-empty">
-            <span style={{ color: theme.textMuted }}>No previous chats yet.</span>
+            <span style={{ color: theme.textMuted }}>{copy.empty}</span>
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => choose()}>
-              {"+ New chat"}
+              {copy.newLabel}
             </button>
           </div>
         )}

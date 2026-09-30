@@ -2955,7 +2955,7 @@ function App(): React.ReactElement {
           {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
             build is idle — otherwise the idle "Ready for work" line stacks under
             Ken's spinner. When the build is also running, both bars show. */}
-          {(workspaceMode === "chat" || running || (!kenRunning && !autopilotReviewing)) && (
+          {(workspaceMode !== "code" || running || (!kenRunning && !autopilotReviewing)) && (
             <ActivityBar
               running={running}
               cancelling={cancelling}
@@ -2964,8 +2964,8 @@ function App(): React.ReactElement {
               isThinking={isThinking}
               thinkingStartTs={thinkingStartTs}
               thinkingAccumMs={thinkingAccumMs}
-              planTotal={workspaceMode === "chat" ? 0 : planTotal}
-              planDone={workspaceMode === "chat" ? 0 : Math.min(planDone.size, planTotal)}
+              planTotal={workspaceMode !== "code" ? 0 : planTotal}
+              planDone={workspaceMode !== "code" ? 0 : Math.min(planDone.size, planTotal)}
               onCancel={requestCancel}
               toolsHidden={toolsHidden}
               hasToolFeed={liveToolFeed.length > 0}
@@ -3173,7 +3173,7 @@ function App(): React.ReactElement {
         </div>
 
         <div
-          className={`footer${workspaceMode === "chat" ? " footer-chat" : ""}`}
+          className={`footer${workspaceMode !== "code" ? " footer-chat" : ""}`}
           style={{ color: theme.footerText }}
         >
           {!hydrated ? (
@@ -3265,7 +3265,11 @@ function App(): React.ReactElement {
                     disabled={running}
                     onReload={reloadModels}
                     title={
-                      workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
+                      workspaceMode === "chat"
+                        ? "Switch Orca's model"
+                        : workspaceMode === "motion" // [motion]
+                          ? "Switch Orca Motion's model"
+                          : "Switch OrcaCoder's model"
                     }
                   />
                 </span>
