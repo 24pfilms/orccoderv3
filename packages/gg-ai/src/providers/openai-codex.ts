@@ -321,7 +321,9 @@ async function* runStream(
   // How the server ended the reply. A complete stream always ends with a
   // terminal response event; without one the body closed mid-reply.
   let terminal:
-    { status: "completed" } | { status: "incomplete"; reason: string | undefined } | undefined;
+    | { status: "completed" }
+    | { status: "incomplete"; reason: string | undefined }
+    | undefined;
   // Reasoning and tool-call items in true stream arrival order. Encrypted
   // reasoning items (store:false + include reasoning.encrypted_content) are
   // recorded inline so each one keeps its position relative to the function_call
