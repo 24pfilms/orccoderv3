@@ -23,7 +23,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreHome?.();
-  await fs.rm(tmpHome, { recursive: true, force: true });
+  // maxRetries: Windows releases a dead child's inherited log handle slightly
+  // after the process itself is gone, which surfaces here as EBUSY.
+  await fs.rm(tmpHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 /**
