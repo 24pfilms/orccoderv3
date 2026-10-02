@@ -155,6 +155,7 @@ import {
   INDEPENDENT_REVIEW_SCORE_THRESHOLD,
   parseReviewerFindings,
   REVIEWER_TOOLS,
+  REVIEWER_TURN_TIMEOUT_MS,
   REVIEWER_WAIT_MS,
 } from "./ideal-review-subagent.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
@@ -206,6 +207,14 @@ function isTerminalSubAgentState(state: SubAgentState): boolean {
     state === "closed" ||
     state === "reaped"
   );
+}
+
+/** Per-prompt run controls. */
+export interface PromptRunOptions {
+  /** Offer the model no tools for this prompt. */
+  disableTools?: boolean;
+  /** Hold reasoning effort at the plan-mode ceiling for this prompt. */
+  capThinking?: boolean;
 }
 
 export interface AgentSessionOptions {
@@ -1263,6 +1272,8 @@ export class AgentSession {
 
   /**
    * Process user input. Handles slash commands or runs agent loop.
+   * `capThinking` holds reasoning effort at the plan-mode ceiling for this
+   * prompt — for turns that must answer quickly from what is already known.
    */
   async prompt(
     content: string,
@@ -1271,7 +1282,7 @@ export class AgentSession {
       kind: "prompt",
       visibility: "transcript",
     },
-    options: { disableTools?: boolean } = {},
+    options: PromptRunOptions = {},
   ): Promise<void> {
     await this.adoptDeferredCheckpointBeforePrompt();
     const slash = await this.resolveSlashInput(content);
@@ -1903,9 +1914,12 @@ export class AgentSession {
         triggerReasons: decision.reasons,
       });
       // Active model forced at spawn time — never routed to a fast/review model.
+      // The reviewer's own time limit ends it with a verdict on what it read;
+      // the wait below is only a backstop against a hung child.
       const snapshot = await this.subAgentManager.spawn(taskName, task, undefined, {
         model: this.model,
         tools: REVIEWER_TOOLS,
+        turnTimeoutMs: REVIEWER_TURN_TIMEOUT_MS,
       });
       agentId = snapshot.agent_id;
       const waited = await this.subAgentManager.wait([agentId], "all", REVIEWER_WAIT_MS);
@@ -1921,7 +1935,11 @@ export class AgentSession {
       }
       const findings = parseReviewerFindings(agent.output ?? "");
       if (!findings) {
-        log("WARN", "ideal", "Independent reviewer output unparseable; falling back", { agentId });
+        log("WARN", "ideal", "Independent reviewer output unparseable; falling back", {
+          agentId,
+          state: agent.state,
+          ...(agent.error ? { error: agent.error } : {}),
+        });
         return [];
       }
       if (findings.clean) {
@@ -2271,7 +2289,7 @@ export class AgentSession {
   }
 
   /** Auto-compact if needed, run agent loop with auth retry, and persist messages. */
-  private async runLoop(options: { disableTools?: boolean } = {}): Promise<void> {
+  private async runLoop(options: PromptRunOptions = {}): Promise<void> {
     // Languages are re-detected at each task boundary so a project scaffolded
     // during the previous turn gets its packs; the prompt is rebuilt only when
     // the set grows, keeping the cached prefix stable otherwise.
@@ -2397,10 +2415,12 @@ export class AgentSession {
         // Plan mode caps effort at medium (Codex `plan_mode_reasoning_effort`
         // preset): read-only exploration doesn't need xhigh/max reasoning, and
         // deep-reasoning models left at the ceiling burn enormous thinking
-        // budgets re-deriving context they cannot act on.
-        thinking: this.planModeRef.current
-          ? clampThinkingForPlanMode(this.thinkingLevel)
-          : this.thinkingLevel,
+        // budgets re-deriving context they cannot act on. A capped prompt
+        // (a sub-agent's timed answer) gets the same ceiling for the same reason.
+        thinking:
+          this.planModeRef.current || options.capThinking
+            ? clampThinkingForPlanMode(this.thinkingLevel)
+            : this.thinkingLevel,
         apiKey,
         // Per-turn credential resolution. A run can span many minutes; if any
         // process sharing auth.json refreshes this grant meanwhile, the token
