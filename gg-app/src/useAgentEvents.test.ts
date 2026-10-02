@@ -134,6 +134,17 @@ function setup(
 }
 
 describe("useAgentEvents", () => {
+  it("shows Unverified instead of completion and does not finish an approved plan", () => {
+    const { hook, deps, getDoneStatus } = setup();
+    act(() => hook.result.current.handleEvent(ev("run_start", {})));
+    deps.planTotalRef.current = 2;
+    deps.planDoneRef.current = new Set([1, 2]);
+    act(() => hook.result.current.handleEvent(ev("run_end", { unverified: true })));
+    expect(getDoneStatus()).toMatch(/^Unverified /);
+    expect(deps.planTotalRef.current).toBe(2);
+    expect(deps.planDoneRef.current).toEqual(new Set([1, 2]));
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it("uses Orca/ocean copy when a run finishes without tools", () => {
@@ -559,6 +570,109 @@ describe("useAgentEvents", () => {
     ]);
   });
 
+  it("discards every repeated draft but shows the review notice once", () => {
+    // One review injects up to four times (the read-coverage retries and their
+    // escalation). Each injection must kill the draft it interrupts, but the
+    // notice is the same sentence — stacking copies says nothing new.
+    const { hook, getItems } = setup();
+
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "ideal" }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Draft two" }));
+      hook.result.current.handleEvent(ev("hook", { kind: "ideal" }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Draft three" }));
+      hook.result.current.handleEvent(ev("hook", { kind: "ideal" }));
+    });
+    expect(getItems()).toEqual([expect.objectContaining({ kind: "hook", hook: "ideal" })]);
+
+    act(() => {
+      hook.result.current.handleEvent(ev("text_delta", { text: "Reviewed final" }));
+      hook.result.current.endStreamingText();
+    });
+    expect(getItems()).toEqual([
+      expect.objectContaining({ kind: "hook", hook: "ideal" }),
+      expect.objectContaining({ kind: "assistant", text: "Reviewed final" }),
+    ]);
+  });
+
+  it("distinguishes a post-edit recheck while deduplicating repeated recheck notices", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "verification" }));
+      hook.result.current.handleEvent(
+        ev("hook", { kind: "verification", verificationReason: "recheck" }),
+      );
+      hook.result.current.handleEvent(
+        ev("hook", { kind: "verification", verificationReason: "recheck" }),
+      );
+    });
+    expect(getItems()).toHaveLength(2);
+    expect(getItems()[1]).toMatchObject({ hook: "verification", verificationReason: "recheck" });
+  });
+
+  it("keeps check-review notices distinct and shows the completed outcome after the hook", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "verification" }));
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: true }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Unreviewed draft" }));
+      hook.result.current.handleEvent(
+        ev("hook", { kind: "verification", verificationReason: "check_review" }),
+      );
+      hook.result.current.handleEvent(
+        ev("hook", { kind: "verification", verificationReason: "check_review" }),
+      );
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: false }));
+      hook.result.current.handleEvent(
+        ev("text_delta", {
+          text: "Two fixes complete. Tests pass. Commit and push remain paused.",
+        }),
+      );
+      hook.result.current.endStreamingText();
+    });
+    expect(getItems()).toEqual([
+      expect.objectContaining({ kind: "hook", hook: "verification" }),
+      expect.objectContaining({
+        kind: "hook",
+        hook: "verification",
+        verificationReason: "check_review",
+      }),
+      expect.objectContaining({
+        kind: "assistant",
+        text: "Two fixes complete. Tests pass. Commit and push remain paused.",
+      }),
+    ]);
+  });
+
+  it("retains an evidence limitation on an approved plan marker", () => {
+    const { hook, getItems } = setup();
+    act(() =>
+      hook.result.current.handleEvent(
+        ev("autopilot_plan_accepted", { reason: "Corpus unavailable." }),
+      ),
+    );
+    expect(getItems()).toContainEqual(
+      expect.objectContaining({
+        kind: "autopilot",
+        phase: "plan_approved",
+        reason: "Corpus unavailable.",
+      }),
+    );
+  });
+
+  it("still shows a second notice when a DIFFERENT hook follows", () => {
+    const { hook, getItems } = setup();
+
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "verification" }));
+      hook.result.current.handleEvent(ev("hook", { kind: "ideal" }));
+    });
+    expect(getItems()).toEqual([
+      expect.objectContaining({ kind: "hook", hook: "verification" }),
+      expect.objectContaining({ kind: "hook", hook: "ideal" }),
+    ]);
+  });
+
   it("never paints the draft while the Ideal review is armed", () => {
     const { hook, getItems } = setup();
 
@@ -584,6 +698,54 @@ describe("useAgentEvents", () => {
       expect.objectContaining({ kind: "hook", hook: "ideal" }),
       expect.objectContaining({ kind: "assistant", text: "Reviewed final" }),
     ]);
+  });
+
+  it("keeps holding the draft when one of two armed hooks disarms", () => {
+    const { hook, getItems } = setup();
+
+    // Both pre-final hooks armed in the same run: verification is owed AND the
+    // ideal review would fire. The sidecar arms each once, on its own edge.
+    act(() => {
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: true }));
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "ideal", armed: true }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Unverified draft" }));
+    });
+    expect(getItems()).toEqual([]);
+
+    // Verification fires and disarms. Ideal is still armed and will NOT be
+    // re-armed (edge-triggered), so releasing here would paint a draft the
+    // review is about to delete.
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "verification" }));
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: false }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Verified draft" }));
+    });
+    expect(getItems()).toEqual([expect.objectContaining({ kind: "hook", hook: "verification" })]);
+
+    // Only the last disarm releases.
+    act(() => {
+      hook.result.current.handleEvent(ev("hook", { kind: "ideal" }));
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "ideal", armed: false }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Reviewed final" }));
+      hook.result.current.endStreamingText();
+    });
+    expect(getItems()).toEqual([
+      expect.objectContaining({ kind: "hook", hook: "verification" }),
+      expect.objectContaining({ kind: "hook", hook: "ideal" }),
+      expect.objectContaining({ kind: "assistant", text: "Reviewed final" }),
+    ]);
+  });
+
+  it("never paints the draft while the verification gate is armed", () => {
+    const { hook, getItems } = setup();
+
+    act(() => {
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: true }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "Unverified draft" }));
+      hook.result.current.handleEvent(ev("hook", { kind: "verification" }));
+      hook.result.current.handleEvent(ev("hook_armed", { kind: "verification", armed: false }));
+    });
+    expect(getItems()).toEqual([expect.objectContaining({ kind: "hook", hook: "verification" })]);
   });
 
   it("releases text held under arming when the turn calls a tool instead of stopping", () => {
