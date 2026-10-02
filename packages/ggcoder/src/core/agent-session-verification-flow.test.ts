@@ -61,22 +61,6 @@ afterEach(async () => {
 });
 
 /** Records the client-visible event stream in emission order. */
-/** Poll until a background process exits; returns its exit code. */
-async function waitForExit(
-  manager: ProcessManager,
-  id: string,
-  timeoutMs = 45_000,
-): Promise<number> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const proc = manager.list().find((entry) => entry.id === id);
-    if (!proc) throw new Error(`Background process ${id} disappeared before it exited.`);
-    if (proc.exitCode !== null) return proc.exitCode;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Background process ${id} did not exit within ${timeoutMs}ms.`);
-}
-
 async function makeSession(
   transient = true,
   sessionId?: string,
@@ -312,9 +296,7 @@ describe("verification gate flow", () => {
         `ID: ${started.id}\n`,
       );
       expect(internal.getVerificationProblem()).toContain("Unverified");
-      expect(await waitForExit(internal.processManager, started.id, 5000)).toEqual(
-        expect.any(Number),
-      );
+      expect(await internal.processManager.waitForExitOrWake(started.id, 5000)).toBe("exited");
       await simulateToolCall(internal, "task_output", { id: started.id });
       return started.id;
     };
@@ -351,9 +333,11 @@ describe("verification gate flow", () => {
       `ID: ${started.id}\n`,
     );
     expect(internal.getVerificationProblem()).toContain("Unverified");
-    expect(await waitForExit(internal.processManager, started.id, 5000)).toEqual(
-      expect.any(Number),
-    );
+    // The npm chain (npm.cmd → node → npm → script) cold-starts far slower on a
+    // loaded Windows CI runner than the 5s cap used for direct `node --test`
+    // runs — waitForExitOrWake still returns the instant the process exits, this only
+    // raises the hang ceiling so a slow spawn is not misread as a hang.
+    expect(await internal.processManager.waitForExitOrWake(started.id, 30_000)).toBe("exited");
     await simulateToolCall(internal, "task_output", { id: started.id });
     expect(internal.getVerificationProblem()).toBeNull();
   });
