@@ -221,7 +221,7 @@ export async function createTools(
     createSourcePathTool(cwd),
     createWebFetchTool(opts?.getNetworkPolicy),
     createTaskOutputTool(processManager),
-    createTaskSendTool(processManager),
+    createTaskSendTool(processManager, cwd),
     createTaskStopTool(processManager),
     createTasksTool(cwd),
     createScreenshotTool(cwd),
