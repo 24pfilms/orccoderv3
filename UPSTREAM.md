@@ -74,3 +74,8 @@ Skipped or adapted, with reasons:
 - **`9510f2a7`**: V3 has no `.app > *` stacking rule (the root cause) and no `--z-menu`
   token, so the fix is a no-op here. Needs a visual check in the running app.
 - **`.changeset/` file** from `946c4597`: upstream release copy, dropped.
+
+### Batch A decisions (Taylor, 2026-10-02)
+
+- **Package malware check stays on**: package names (only) are checked against api.osv.dev before an install; if the service can't be reached the install proceeds.
+- **Loop checker and independent reviewer stay on** (from upstream 7a1a27f5): extra model calls on large runs, accepted.
