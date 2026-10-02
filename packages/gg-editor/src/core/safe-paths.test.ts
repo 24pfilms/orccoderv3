@@ -50,12 +50,10 @@ describe("safeOutputPath", () => {
     expect(() => safeOutputPath(cwd, "")).toThrow(/empty/);
   });
 
-  it("treats Windows-style drive letters consistently with node:path", () => {
-    // On POSIX runners this becomes a relative-looking path; the assertion
-    // just guarantees we don't throw on the segment shape — node:path picks
-    // the platform behaviour and we trust it.
-    const out = safeOutputPath(cwd, "C:/Users/me/out.mp4");
-    expect(out.endsWith("out.mp4")).toBe(true);
+  it("treats Windows-style drive letters as absolute paths", () => {
+    // A drive-qualified path outside the allowlist must not become cwd-relative
+    // on non-Windows runners or bypass containment on Windows.
+    expect(() => safeOutputPath(cwd, "C:/Users/me/out.mp4")).toThrow(/outside allowed roots/);
   });
 });
 

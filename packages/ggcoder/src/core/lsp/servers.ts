@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -99,10 +100,12 @@ export function findExecutable(name: string, projectRoot: string): string | null
  * resolution can be patched by dev runners and global fallback paths).
  */
 function findInNodeModulesUp(relPath: string, start: string): string | null {
-  let dir = start;
+  let dir = path.resolve(start);
+  const tempRoot = path.resolve(tmpdir());
   for (;;) {
     const candidate = path.join(dir, "node_modules", relPath);
     if (fs.existsSync(candidate)) return candidate;
+    if (dir === tempRoot) return null;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;

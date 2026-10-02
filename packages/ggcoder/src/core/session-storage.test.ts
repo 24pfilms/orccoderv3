@@ -10,7 +10,9 @@ import { SessionManager, type CustomEntry, type MessageEntry } from "./session-m
 import {
   archiveColdSession,
   archiveSessionPath,
+  hydrateSessionEntry,
   MAX_PERSISTED_TOOL_TEXT_CHARS,
+  normalizeSessionEntryForStorage,
   openSessionReadStream,
   plainSessionPath,
   resolveSessionPath,
@@ -340,5 +342,51 @@ describe("logical retention", () => {
     expect(existsSync(active.path)).toBe(true);
     expect(existsSync(explicit.path)).toBe(true);
     manager.unregisterActivePath(active.path);
+  });
+});
+
+describe("media markers survive repeated normalization", () => {
+  // A marker is not image data. Normalizing an already-normalized entry used to
+  // run `Buffer.from("gg-session-asset:v1:…", "base64")`, which drops `-` and
+  // `:` (not base64 characters) and yields 61 bytes of noise. That noise was
+  // stored as a fresh asset and the block re-pointed at it, so the session
+  // rehydrated garbage tagged `image/png` and every Anthropic request failed
+  // with "Could not process image" on every resume.
+  it("does not re-store a marker as if it were image data", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "gg-media-marker-"));
+    try {
+      const sessionPath = path.join(dir, "session.jsonl");
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      );
+      const entry = {
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "image", mediaType: "image/png", data: png.toString("base64") }],
+        },
+      };
+
+      const once = await normalizeSessionEntryForStorage(entry, sessionPath);
+      const firstData = (once as typeof entry).message.content[0].data;
+      expect(firstData.startsWith("gg-session-asset:v1:")).toBe(true);
+
+      // The second pass is the one that used to corrupt it.
+      const twice = await normalizeSessionEntryForStorage(once, sessionPath);
+      const secondData = (twice as typeof entry).message.content[0].data;
+      expect(secondData).toBe(firstData);
+
+      // Only the real image was ever stored — no second, garbage asset.
+      const assets = await readdir(sessionAssetDir(sessionPath));
+      expect(assets).toHaveLength(1);
+
+      // And it still rehydrates to the original bytes.
+      const back = await hydrateSessionEntry(twice, sessionPath);
+      const restored = (back as typeof entry).message.content[0].data;
+      expect(Buffer.from(restored, "base64").equals(png)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -24,6 +24,19 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+export function formatActivityTitle(cwd: string | undefined, fallback: string): string {
+  const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
+  if (!directory) return fallback;
+  const project = Array.from(directory, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127 ? " " : character;
+  })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return project ? `${project.slice(0, 200)} · OrcaCoder` : fallback;
+}
+
 export function formatWorkspaceTitle(
   cwd: string | undefined,
   gitBranch: string | null | undefined,

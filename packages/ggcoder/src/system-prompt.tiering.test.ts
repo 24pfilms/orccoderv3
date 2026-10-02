@@ -149,7 +149,8 @@ describe("tool tiering in the system prompt", () => {
     // guardrail additions (git safety, anti-fake-green, reproduce-first,
     // circuit-breaker, question-vs-fix, no-variants, test guidance). Raised
     // again for the alignment guardrails (facts-vs-decisions, batched
-    // questions) — see the size-budget test in system-prompt.test.ts.
-    expect(prompt.length).toBeLessThan(12_200);
+    // questions) — see the size-budget test in system-prompt.test.ts. Raised
+    // again for "Showing images" (open created images with read).
+    expect(prompt.length).toBeLessThan(12_600);
   });
 });

@@ -63,7 +63,7 @@ async function createSession() {
   const { AgentSession } = await import("./agent-session.js");
   const session = new AgentSession({
     provider: "openai",
-    model: "gpt-5.6-sol",
+    model: "gpt-6.1-sol",
     // Repo cwd so the bundled agent definitions register spawn_agent — the
     // Sol/Ultra orchestration block only renders when that tool exists, and it
     // is the model-dependent prompt content this test is about.
@@ -118,7 +118,7 @@ describe("AgentSession model switch", () => {
       const messages = session.getMessages();
       const last = messages[messages.length - 1]!;
       expect(last.role).toBe("user");
-      expect(String(last.content)).toContain("gpt-5.6-sol");
+      expect(String(last.content)).toContain("gpt-6.1-sol");
       expect(String(last.content)).toContain("gpt-5.5-codex");
       // Cross-provider switches name the provider on both sides.
       await session.switchModel("anthropic", "claude-test");
@@ -136,7 +136,7 @@ describe("AgentSession model switch", () => {
       const markers = session.getAppMarkers().filter((m) => m.kind === "model_switch");
       expect(markers).toHaveLength(1);
       expect(markers[0]!.data).toMatchObject({
-        from: "gpt-5.6-sol",
+        from: "gpt-6.1-sol",
         to: "gpt-5.5-codex",
         provider: "openai",
         fromProvider: "openai",
@@ -151,7 +151,7 @@ describe("AgentSession model switch", () => {
     try {
       const before = [...session.getMessages()];
 
-      await session.switchModel("openai", "gpt-5.6-sol");
+      await session.switchModel("openai", "gpt-6.1-sol");
 
       expect(session.getMessages()).toHaveLength(before.length);
       expect(session.getAppMarkers().filter((m) => m.kind === "model_switch")).toHaveLength(0);

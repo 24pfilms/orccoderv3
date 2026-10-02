@@ -1,5 +1,5 @@
 /**
- * ACP mode: expose GG Coder as an Agent Client Protocol agent over stdio.
+ * ACP mode: expose OrcaCoder as an Agent Client Protocol agent over stdio.
  *
  * This is the integration surface for ACP clients (Zed, pew2, any editor that
  * speaks the protocol). It is deliberately a sibling of `rpc-mode.ts` — same
@@ -53,6 +53,7 @@ import {
 } from "../utils/plan-steps.js";
 import { formatUserError } from "../utils/error-handler.js";
 import { closeLogger } from "../core/logger.js";
+import { acpToolImages } from "./acp-images.js";
 
 /** The ACP major version this mode implements. Bumped only for breaking changes. */
 export const ACP_PROTOCOL_VERSION = 1;
@@ -406,7 +407,7 @@ function thinkingOptionsFor(modelId: string): ConfigSelectOption[] {
  * The selectors a client renders for a session, with their live values.
  *
  * Model and thinking come from ggcoder's own registry rather than anything
- * pew2- or Zed-specific, which is what lets a phone show GG Coder's real model
+ * pew2- or Zed-specific, which is what lets a phone show OrcaCoder's real model
  * list without either side hard-coding the other's.
  */
 function configOptionsFor(session: AcpAgentSession): ConfigOption[] {
@@ -633,6 +634,7 @@ export function historyUpdates(messages: readonly Message[]): Record<string, unk
             type: "content",
             content: { type: "text", text: messageText(entry.content) },
           },
+          ...acpToolImages(entry.content),
         ],
       });
     }
@@ -987,13 +989,16 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
         });
       }),
 
-      bus.on("tool_call_end", ({ toolCallId, result, isError }) => {
+      bus.on("tool_call_end", ({ toolCallId, result, isError, details }) => {
         notifyUpdate({
           sessionUpdate: "tool_call_update",
           toolCallId,
           status: isError ? "failed" : "completed",
-          content: diffContent(toolCallId, isError) ?? [
-            { type: "content", content: { type: "text", text: result } },
+          content: [
+            ...(diffContent(toolCallId, isError) ?? [
+              { type: "content", content: { type: "text", text: result } },
+            ]),
+            ...acpToolImages(undefined, details),
           ],
         });
       }),
@@ -1061,7 +1066,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   /**
    * Plan mode. Supplying these callbacks is what registers the
    * enter_plan/exit_plan tools at all — without them the mode exists but the
-   * model cannot move between states. GG Coder runs without approvals, so a
+   * model cannot move between states. OrcaCoder runs without approvals, so a
    * submitted plan is auto-approved, the [DONE:n] contract is baked in so
    * progress markers work as on the desktop, and the client is told about every
    * mode change.
@@ -1122,7 +1127,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
         sessionCapabilities: { list: {}, resume: {}, close: {}, delete: {} },
       },
       authMethods: [],
-      agentInfo: { name: "ggcoder", title: "GG Coder", version: options.version },
+      agentInfo: { name: "ggcoder", title: "OrcaCoder", version: options.version },
     };
   }
 
@@ -1162,7 +1167,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   /**
    * Stored sessions, newest first.
    *
-   * This is the answer to "see everything that was on GG Coder": the phone asks
+   * This is the answer to "see everything that was on OrcaCoder": the phone asks
    * the agent, and the agent reads the same `~/.gg/sessions` files the desktop
    * browses — no separate index to fall out of step.
    *

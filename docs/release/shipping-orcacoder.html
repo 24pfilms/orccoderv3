@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Standalone copy: open it in a browser straight from disk.
+     The published web page is the same content without this wrapper, because
+     the publishing step supplies its own. Edit both, or edit here and remove
+     the wrapper when republishing. -->
+<title>Shipping OrcaCoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+
+<style>
+  /* Light palette is the base. Neutrals carry a slight blue bias so they sit
+     with the product's own cool charcoal ramp rather than reading as flat grey. */
+  :root {
+    --ground: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f6;
+    --border: #dbe1ea;
+    --border-strong: #c3ccda;
+    --ink: #101620;
+    --ink-2: #3d4756;
+    --ink-3: #6c7787;
+    --human: #1a5fc4;
+    --human-soft: #e7effb;
+    --auto: #12734f;
+    --auto-soft: #e3f4ec;
+    --check: #8a5c0c;
+    --check-soft: #fbf1dd;
+    --claude: #5a6675;
+    --claude-soft: #eceff4;
+    --stop: #b23434;
+    --rail: #d4dbe5;
+    --shadow: 0 1px 2px rgb(16 22 32 / 6%), 0 8px 24px rgb(16 22 32 / 6%);
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --display: "Archivo", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  /* Dark: the product's own tokens, so the page and the app agree. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f1115;
+      --surface: #161922;
+      --surface-2: #1d212b;
+      --border: #272b36;
+      --border-strong: #353a47;
+      --ink: #f4f6f8;
+      --ink-2: #c3c9d4;
+      --ink-3: #9aa3b2;
+      --human: #4d9dff;
+      --human-soft: #14243c;
+      --auto: #36c489;
+      --auto-soft: #10281f;
+      --check: #e3a23f;
+      --check-soft: #2a2214;
+      --claude: #8b95a5;
+      --claude-soft: #1c2029;
+      --stop: #f2716e;
+      --rail: #2c313d;
+      --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 30%);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0f1115;
+    --surface: #161922;
+    --surface-2: #1d212b;
+    --border: #272b36;
+    --border-strong: #353a47;
+    --ink: #f4f6f8;
+    --ink-2: #c3c9d4;
+    --ink-3: #9aa3b2;
+    --human: #4d9dff;
+    --human-soft: #14243c;
+    --auto: #36c489;
+    --auto-soft: #10281f;
+    --check: #e3a23f;
+    --check-soft: #2a2214;
+    --claude: #8b95a5;
+    --claude-soft: #1c2029;
+    --stop: #f2716e;
+    --rail: #2c313d;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 30%);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header { margin-bottom: 56px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(38px, 6vw, 60px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 60ch;
+    margin: 0;
+  }
+
+  .keynote {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-top: 32px;
+    padding: 18px 20px;
+    background: var(--human-soft);
+    border-left: 3px solid var(--human);
+    border-radius: 0 10px 10px 0;
+    max-width: 62ch;
+  }
+  .keynote p { margin: 0; font-size: 16.5px; color: var(--ink); }
+  .keynote strong { font-weight: 600; }
+
+  /* ── Sections ───────────────────────────────────────────── */
+  section { margin-top: 64px; }
+
+  h2 {
+    font-family: var(--display);
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+
+  .section-note {
+    color: var(--ink-3);
+    margin: 0 0 28px;
+    max-width: 62ch;
+  }
+
+  h3 {
+    font-family: var(--display);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin: 0 0 12px;
+  }
+
+  /* ── Legend ─────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 11px 5px 9px;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .chip::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: currentColor;
+    flex: 0 0 auto;
+  }
+  .chip--claude { color: var(--claude); background: var(--claude-soft); }
+  .chip--auto   { color: var(--auto);   background: var(--auto-soft); }
+  .chip--you    { color: var(--human);  background: var(--human-soft); }
+  .chip--check  { color: var(--check);  background: var(--check-soft); }
+
+  .legend .chip { font-size: 12px; text-transform: none; letter-spacing: 0.01em; }
+
+  /* ── The rail ───────────────────────────────────────────── */
+  .phase {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 36px 0 16px 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .phase:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  .step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    align-items: start;
+  }
+
+  /* The line runs through the number column. Its colour is information: it
+     turns blue at step 5 and stays blue, because from there on nothing
+     advances without a person. */
+  .step::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 0;
+    bottom: -14px;
+    width: 2px;
+    background: var(--rail);
+  }
+  .step--human::before { background: var(--human); opacity: 0.42; }
+  .step:last-of-type::before { bottom: auto; height: 26px; }
+
+  .marker {
+    position: relative;
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--rail);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .step--human .marker { border-color: var(--human); color: var(--human); }
+  .step--auto  .marker { border-color: var(--auto);  color: var(--auto); }
+  .step--check .marker { border-color: var(--check); color: var(--check); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 0 0 14px 0;
+    box-shadow: var(--shadow);
+  }
+  .step--check .card {
+    border-color: var(--check);
+    background: var(--check-soft);
+  }
+
+  .card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .card h3 { margin: 0; font-size: 18px; }
+  .card p { margin: 0; color: var(--ink-2); }
+  .card p + p { margin-top: 10px; }
+
+  .where {
+    display: block;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-strong);
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-3);
+    overflow-x: auto;
+  }
+  .where b { color: var(--ink-2); font-weight: 500; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 5px;
+    white-space: nowrap;
+  }
+
+  /* ── Blockers ───────────────────────────────────────────── */
+  .blocker {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--stop);
+    border-radius: 4px 4px 12px 12px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .blocker h3 { color: var(--stop); }
+  .blocker p { margin: 0 0 10px; color: var(--ink-2); }
+  .blocker p:last-child { margin-bottom: 0; }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  .table-scroll { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  th {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  td { color: var(--ink-2); font-size: 15px; }
+  td:first-child { color: var(--ink); }
+  tr:last-child td { border-bottom: 0; }
+
+  /* ── Commands ───────────────────────────────────────────── */
+  .cmds { display: flex; flex-direction: column; gap: 2px; }
+  .cmd {
+    display: grid;
+    grid-template-columns: minmax(190px, 1fr) 2fr;
+    gap: 18px;
+    align-items: baseline;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .cmd:first-child { border-radius: 12px 12px 0 0; }
+  .cmd:last-child { border-radius: 0 0 12px 12px; }
+  .cmd + .cmd { border-top: 0; }
+  .cmd span { color: var(--ink); font-size: 15px; }
+  .cmd samp {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-2);
+    overflow-x: auto;
+    white-space: pre;
+    display: block;
+  }
+
+  /* ── Glossary ───────────────────────────────────────────── */
+  .terms { display: grid; gap: 2px; }
+  .term {
+    display: grid;
+    grid-template-columns: minmax(150px, 200px) 1fr;
+    gap: 20px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .term:first-child { border-radius: 12px 12px 0 0; }
+  .term:last-child { border-radius: 0 0 12px 12px; }
+  .term + .term { border-top: 0; }
+  .term dt { font-weight: 600; color: var(--ink); }
+  .term dd { margin: 0; color: var(--ink-2); font-size: 15px; }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+  footer p { margin: 0 0 6px; }
+
+  a { color: var(--human); }
+  a:focus-visible, .cmd:focus-visible {
+    outline: 2px solid var(--human);
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 40px 16px 64px; }
+    .step { grid-template-columns: 44px 1fr; }
+    .step::before { left: 15px; }
+    .marker { width: 32px; height: 32px; font-size: 12.5px; }
+    .phase { margin-left: 44px; }
+    .cmd, .term { grid-template-columns: 1fr; gap: 6px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">OrcaCoder V3 · Release guide · 26 August 2026</p>
+    <h1>Shipping OrcaCoder</h1>
+    <p class="standfirst">
+      Twelve steps take a change in the code and turn it into an update running on
+      someone's machine. This is what each one does, and who has to start it.
+    </p>
+    <div class="keynote">
+      <p>
+        <strong>Eight of the twelve steps need a person.</strong> None of them starts
+        because the step before it finished. Once the line on the left turns blue,
+        the process waits for you.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <h2>The twelve steps</h2>
+    <p class="section-note">
+      Read top to bottom. The colour of each step tells you who acts.
+    </p>
+
+    <div class="legend">
+      <span class="chip chip--claude">Claude does it</span>
+      <span class="chip chip--auto">Happens on its own</span>
+      <span class="chip chip--you">You start it by hand</span>
+      <span class="chip chip--check">Stop and look</span>
+    </div>
+
+    <p class="phase">Part one · Getting the code in</p>
+
+    <div class="step step--claude">
+      <div class="marker">1</div>
+      <div class="card">
+        <div class="card-head"><h3>Change the code</h3><span class="chip chip--claude">Claude</span></div>
+        <p>Write it, run the tests, commit it. Nothing gets pushed that has not been run.</p>
+      </div>
+    </div>
+
+    <div class="step step--claude">
+      <div class="marker">2</div>
+      <div class="card">
+        <div class="card-head"><h3>Push it to a branch</h3><span class="chip chip--claude">Claude</span></div>
+        <p>It goes to a branch on OrcaCoder V3, never straight to the main line. GitHub refuses that anyway.</p>
+        <span class="where"><b>Runs:</b> git push origin HEAD:test/updater-pipeline</span>
+      </div>
+    </div>
+
+    <div class="step step--claude">
+      <div class="marker">3</div>
+      <div class="card">
+        <div class="card-head"><h3>Open a pull request</h3><span class="chip chip--claude">Claude</span></div>
+        <p>A pull request asks to add the work to <code>orca-main</code>, the main line. Asking is all it does. Nothing is added yet.</p>
+      </div>
+    </div>
+
+    <div class="step step--auto">
+      <div class="marker">4</div>
+      <div class="card">
+        <div class="card-head"><h3>The checks run</h3><span class="chip chip--auto">Automatic</span></div>
+        <p>Nobody starts this. Opening the pull request starts it. Types are checked, tests run, and the whole app is built on Windows and on macOS.</p>
+        <p>The Windows app build takes about twelve minutes when the cache is warm, and considerably longer when it is not.</p>
+        <span class="where"><b>Watch it:</b> the Actions tab, workflow named <b>CI</b></span>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">5</div>
+      <div class="card">
+        <div class="card-head"><h3>You merge it</h3><span class="chip chip--you">You</span></div>
+        <p>Only when every check is green. A red check means it does not go in. This is where the work joins the main line, and where the process starts waiting for you.</p>
+      </div>
+    </div>
+
+    <p class="phase">Part two · Proving it works</p>
+
+    <div class="step step--human">
+      <div class="marker">6</div>
+      <div class="card">
+        <div class="card-head"><h3>You rehearse the update</h3><span class="chip chip--you">You</span></div>
+        <p>This builds an installer, signs it with a throwaway key, and puts together a test release that no real person can reach. It answers the question that matters most: does updating an existing copy break anything?</p>
+        <p>A fresh install working proves very little. Most update problems only appear when installing over a version that is already there.</p>
+        <span class="where"><b>Start:</b> Actions → <b>Desktop isolated update test</b> → Run workflow</span>
+      </div>
+    </div>
+
+    <p class="phase">Part three · Building and signing</p>
+
+    <div class="step step--human">
+      <div class="marker">7</div>
+      <div class="card">
+        <div class="card-head"><h3>You build the candidate</h3><span class="chip chip--you">You</span></div>
+        <p>This is the real installer. You type in the exact commit and the exact version, such as <code>0.54.0</code>. Typing them by hand is the safeguard: it is hard to release the wrong thing by accident.</p>
+        <span class="where"><b>Start:</b> Actions → <b>Desktop candidate</b> → Run workflow</span>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">8</div>
+      <div class="card">
+        <div class="card-head"><h3>You sign it</h3><span class="chip chip--you">You</span></div>
+        <p>Signing is what stops Windows warning the person who installs it. An unsigned installer still works, but it shows a blue warning box that has to be clicked past.</p>
+        <p>You give it the ID of the run from step 7, so it signs that exact build and no other.</p>
+        <span class="where"><b>Start:</b> Actions → <b>Desktop protected signing</b> → Run workflow</span>
+      </div>
+    </div>
+
+    <p class="phase">Part four · Checking and releasing</p>
+
+    <div class="step step--human">
+      <div class="marker">9</div>
+      <div class="card">
+        <div class="card-head"><h3>You stage a draft</h3><span class="chip chip--you">You</span></div>
+        <p>A draft release is assembled but hidden. Nobody can download it. This exists so there is something finished to look at before it goes out.</p>
+        <span class="where"><b>Start:</b> Actions → <b>Desktop publication</b> → operation: <b>stage-draft</b></span>
+      </div>
+    </div>
+
+    <div class="step step--check">
+      <div class="marker">10</div>
+      <div class="card">
+        <div class="card-head"><h3>You look at the draft</h3><span class="chip chip--check">Stop and look</span></div>
+        <p>The last point where stopping costs nothing. Is it the right version number? Are the notes right? Is the file the one you meant to build?</p>
+        <p>Publication is deliberately split into two separate runs so this gap exists. It is not a formality — it is the only place a wrong build gets caught before other people have it.</p>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">11</div>
+      <div class="card">
+        <div class="card-head"><h3>You publish it</h3><span class="chip chip--you">You</span></div>
+        <p>This is the moment it is out. Everything before this can be thrown away quietly.</p>
+        <span class="where"><b>Start:</b> Actions → <b>Desktop publication</b> → operation: <b>publish-reviewed-draft</b></span>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">12</div>
+      <div class="card">
+        <div class="card-head"><h3>You put it on the machine</h3><span class="chip chip--you">You</span></div>
+        <p>Copy the installer across and run it. The app does not check for updates and will not update itself. That is switched off on purpose until there is a place to host the files and a key to prove a download is genuine.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Two things will stop you right now</h2>
+    <p class="section-note">
+      Both are known. Neither is a mystery. The first one blocks every pull request
+      until somebody changes a setting.
+    </p>
+
+    <div class="blocker">
+      <h3>No pull request can merge yet</h3>
+      <p>
+        The main line is protected, and the protection asks for six checks before
+        anything may merge. Only four of them exist. The two missing ones are for
+        Ubuntu, and a required check that never starts waits forever.
+      </p>
+      <p>
+        The fix is to change the setting so it asks for the four checks that
+        actually run. That needs someone with admin rights on the repository. The
+        alternative is to add Ubuntu to the checks, which is only worth doing if
+        anyone is genuinely going to run OrcaCoder on Linux.
+      </p>
+    </div>
+
+    <div class="blocker">
+      <h3>A Mac build cannot be given to anyone yet</h3>
+      <p>
+        macOS is built on every pull request and kept for seven days, so you can
+        download it and try it. It is not signed, which is fine for testing on a
+        Mac you control and not fine for anyone else.
+      </p>
+      <p>
+        Handing a Mac build to a person needs an Apple Developer account. Without
+        one, current macOS can report the app as damaged and refuse to open it,
+        which is worse than the Windows warning. Testing it properly also needs a
+        real Mac, though renting one by the hour is enough — there is no need to
+        buy one.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Testing a Mac build without owning a Mac</h2>
+    <p class="section-note">
+      This one catches people, because the obvious order does not work.
+    </p>
+
+    <div class="blocker">
+      <h3>A Mac app cannot be built on Windows</h3>
+      <p>
+        It needs Apple's own tools, and those only run on Apple computers. There is
+        no way around it, and nothing to copy across. The building has to happen on
+        a Mac before any testing can start.
+      </p>
+      <p>
+        You do not have to buy one. You rent two things briefly: a Mac that builds,
+        and a Mac you can look at.
+      </p>
+    </div>
+
+    <p class="phase">The loop</p>
+
+    <div class="step step--auto">
+      <div class="marker">1</div>
+      <div class="card">
+        <div class="card-head"><h3>GitHub builds it</h3><span class="chip chip--auto">Automatic</span></div>
+        <p>GitHub rents Apple computers by the minute and keeps Apple's tools installed on them. Every pull request builds the Mac version on one, and keeps the result for seven days.</p>
+        <p>You do nothing. It happens because the pull request opened.</p>
+        <span class="where"><b>Find it:</b> Actions → the CI run → Artifacts → <b>orcacoder-macos-unsigned</b></span>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">2</div>
+      <div class="card">
+        <div class="card-head"><h3>You rent a Mac for an hour</h3><span class="chip chip--you">You</span></div>
+        <p>A cloud Mac is a real Apple computer in a data centre that you connect to like a remote screen. Rent it when you need it, hand it back after, and pay for the time you used.</p>
+        <p>Services such as MacinCloud or Scaleway suit this. Avoid Amazon's Mac service for short checks — it charges a minimum of twenty-four hours per machine.</p>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">3</div>
+      <div class="card">
+        <div class="card-head"><h3>Download it on that Mac</h3><span class="chip chip--you">You</span></div>
+        <p>The rented Mac has its own web browser. Sign in to GitHub there and download the build straight onto it.</p>
+        <p>Do not download it on your PC and send it over. That is a longer trip for the same file, and passing a Mac app between machines can damage it.</p>
+      </div>
+    </div>
+
+    <div class="step step--check">
+      <div class="marker">4</div>
+      <div class="card">
+        <div class="card-head"><h3>Right-click, then Open</h3><span class="chip chip--check">Expect this</span></div>
+        <p>The build is not signed, so macOS refuses a plain double-click. Right-click the app and choose <b>Open</b> instead. That offers a way through; a double-click does not.</p>
+        <p>This is expected, and it is not a fault in the app. It only becomes a real problem when handing the app to somebody else, which is what signing solves.</p>
+      </div>
+    </div>
+
+    <div class="step step--human">
+      <div class="marker">5</div>
+      <div class="card">
+        <div class="card-head"><h3>Test it, then give the Mac back</h3><span class="chip chip--you">You</span></div>
+        <p>GitHub's build proves the code compiles. It cannot tell you whether the window looks right or the app behaves. That is the reason to rent a screen you can sit in front of.</p>
+        <p>Stop the rental when you are finished.</p>
+      </div>
+    </div>
+
+    <p class="section-note" style="margin-top: 28px">
+      Before anyone else can open a Mac build, it has to be signed and sent to Apple
+      to be checked. That needs an Apple Developer account, which costs a yearly fee.
+      Until then, Mac builds are for testing only.
+    </p>
+  </section>
+
+  <section>
+    <h2>Who decides what</h2>
+    <p class="section-note">
+      The split is simple. Claude does the work and reports what is true. You decide
+      what goes out.
+    </p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Decision</th><th>Who</th></tr></thead>
+        <tbody>
+          <tr><td>Whether to release at all</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Which version number, and why</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Whether the artwork changes</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Which exact commit ships</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Whether the staged draft looks right</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Publishing to real people</td><td><span class="chip chip--you">You</span></td></tr>
+          <tr><td>Running the tests, and saying what failed</td><td><span class="chip chip--claude">Claude</span></td></tr>
+          <tr><td>Keeping the four version files in step</td><td><span class="chip chip--claude">Claude</span></td></tr>
+          <tr><td>Rebuilding the installer artwork</td><td><span class="chip chip--claude">Claude</span></td></tr>
+          <tr><td>Building in the right order</td><td><span class="chip chip--claude">Claude</span></td></tr>
+          <tr><td>Checking the output exists and is new</td><td><span class="chip chip--claude">Claude</span></td></tr>
+          <tr><td>Writing down what shipped</td><td><span class="chip chip--claude">Claude</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>When something goes wrong</h2>
+    <p class="section-note">Four failures that have actually happened here, and what they mean.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>What you see</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>A check is red</td>
+            <td>Something broke. Open the check, read the failing step. Do not merge around it.</td>
+          </tr>
+          <tr>
+            <td>A check sits on "Expected" and never starts</td>
+            <td>The protection is asking for a check that does not exist. See the first blocker above.</td>
+          </tr>
+          <tr>
+            <td>The build says it succeeded but no file appeared</td>
+            <td>It did not run. Check the time on the file, not the success message. This has happened here.</td>
+          </tr>
+          <tr>
+            <td>Your change is missing from the installer</td>
+            <td>The sidecar was not rebundled. That step is not automatic, and skipping it still reports success.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The commands</h2>
+    <p class="section-note">Run from the top of the project unless the command says otherwise.</p>
+    <div class="cmds">
+      <div class="cmd"><span>See what you would push</span><samp>git log --oneline origin/orca-main..HEAD</samp></div>
+      <div class="cmd"><span>Push your branch</span><samp>git push origin HEAD:test/updater-pipeline</samp></div>
+      <div class="cmd"><span>Open a pull request</span><samp>gh pr create --base orca-main</samp></div>
+      <div class="cmd"><span>Run the tests</span><samp>cd gg-app &amp;&amp; pnpm test</samp></div>
+      <div class="cmd"><span>Set the version everywhere</span><samp>cd gg-app &amp;&amp; node scripts/bump-version.mjs 0.54.0</samp></div>
+      <div class="cmd"><span>Rebuild installer artwork</span><samp>cd gg-app &amp;&amp; pnpm installer:art</samp></div>
+      <div class="cmd"><span>Compile the sidecar source</span><samp>cd packages/ggcoder &amp;&amp; pnpm build</samp></div>
+      <div class="cmd"><span>Bundle the sidecar in</span><samp>cd gg-app &amp;&amp; pnpm prebundle</samp></div>
+      <div class="cmd"><span>Build the installer</span><samp>cd gg-app &amp;&amp; VITE_BOARD_MODE_ENABLED=true pnpm tauri build</samp></div>
+      <div class="cmd"><span>Test the packaged app</span><samp>cd gg-app &amp;&amp; pnpm smoke:packaged</samp></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Words you will see</h2>
+    <p class="section-note">
+      Plain meanings for the terms that come up in the Actions tab and in this guide.
+    </p>
+    <dl class="terms">
+      <div class="term"><dt>Repository</dt><dd>A project's code on GitHub, with its full history. OrcaCoder V3 has one; the board was taken from a different one.</dd></div>
+      <div class="term"><dt>Branch</dt><dd>A separate line of work. You change a branch freely without touching the main line.</dd></div>
+      <div class="term"><dt>Main line</dt><dd>Here it is called <code>orca-main</code>. The version of the code that counts. It is protected, so nothing goes in without passing the checks.</dd></div>
+      <div class="term"><dt>Pull request</dt><dd>A request to add a branch's work to the main line. It runs the checks and shows exactly what would change.</dd></div>
+      <div class="term"><dt>Checks</dt><dd>Automatic tests and builds that run on a pull request. Green means safe to merge. Red means stop.</dd></div>
+      <div class="term"><dt>Commit</dt><dd>One saved change, with a note saying what it was and why. Every release names an exact commit.</dd></div>
+      <div class="term"><dt>Sidecar</dt><dd>The background program that does the real work behind the app window. It is built separately, then bundled in.</dd></div>
+      <div class="term"><dt>Signing</dt><dd>Marking the installer with a private key so Windows can confirm who made it, and stop warning the person installing it.</dd></div>
+      <div class="term"><dt>Notarizing</dt><dd>Apple's version of the same idea. The build is sent to Apple, checked, and given a ticket. Needed before a Mac build can be handed to anyone.</dd></div>
+      <div class="term"><dt>Draft release</dt><dd>A finished release that is still hidden. It exists so somebody can look at it before it goes out.</dd></div>
+    </dl>
+  </section>
+
+  <footer>
+    <p>The written version, with more detail, is at <code>docs/release/github-and-updates.md</code>.</p>
+    <p>Accurate as of 26 August 2026, application version 0.53.0.</p>
+  </footer>
+
+</div>
+</body>
+</html>

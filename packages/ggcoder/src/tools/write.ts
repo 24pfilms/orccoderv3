@@ -4,9 +4,11 @@ import { z } from "zod";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { resolvePath, rejectSymlink } from "./path-utils.js";
 import { localOperations, type ToolOperations } from "./operations.js";
-import { assertFresh, recordWrite, type ReadTracker } from "./read-tracker.js";
+import { assertFresh, assertFullySeen, recordWrite, type ReadTracker } from "./read-tracker.js";
 import { isPlanModeActive } from "../core/runtime-mode.js";
 import { resolveWriteGuard, type WriteGuardSettings } from "../core/workspace-guard.js";
+import { REDACTION_MARKER } from "@kenkaiiii/gg-ai";
+import { redactionLossError } from "./redaction-guard.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
@@ -72,16 +74,21 @@ export function createWriteTool(
         await fs.mkdir(plansDir, { recursive: true });
       }
 
-      // Block overwriting existing files that haven't been read, or that
-      // changed since the last read.
-      if (readFiles) {
-        const exists = await ops.stat(resolved).then(
-          () => true,
-          () => false,
-        );
-        if (exists) {
-          await assertFresh(readFiles, resolved, ops);
-        }
+      // Block overwriting existing files that haven't been read, that changed
+      // since the last read, or that were only partly read.
+      const exists = await ops.stat(resolved).then(
+        () => true,
+        () => false,
+      );
+      if (readFiles && exists) {
+        await assertFresh(readFiles, resolved, ops);
+        assertFullySeen(readFiles, resolved);
+      }
+      // Never replace real secrets with the placeholder the model was shown.
+      if (exists && content.includes(REDACTION_MARKER)) {
+        const original = await ops.readFile(resolved).catch(() => undefined);
+        const lossError = redactionLossError(original, content, path.basename(resolved));
+        if (lossError) return `Error: ${lossError}`;
       }
       // Snapshot the pre-mutation on-disk state for /rewind before writing.
       await onPreFileMutation?.(resolved);

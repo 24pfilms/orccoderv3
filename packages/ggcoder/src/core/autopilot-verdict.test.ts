@@ -6,6 +6,34 @@ describe("parseAutopilotVerdict", () => {
     expect(parseAutopilotVerdict("ALL_CLEAR")).toEqual({ kind: "all_clear" });
   });
 
+  it("preserves a structured corpus limitation separately from the verdict", () => {
+    expect(
+      parseAutopilotVerdict('{"verdict":"ALL_CLEAR","evidenceLimitation":"corpus_unverified"}'),
+    ).toEqual({ kind: "all_clear", evidenceLimitation: "corpus_unverified" });
+  });
+
+  it("accepts a fenced structured limitation", () => {
+    expect(
+      parseAutopilotVerdict(
+        '```json\n{"verdict":"ALL_CLEAR","evidenceLimitation":"corpus_unverified"}\n```',
+      ),
+    ).toEqual({ kind: "all_clear", evidenceLimitation: "corpus_unverified" });
+  });
+
+  it.each([
+    '{"verdict":"ALL_CLEAR","evidenceLimitation":"verification_failed"}',
+    '{"verdict":"ALL_CLEAR","evidenceLimitation":"corpus_unverified","checks":"failed"}',
+    '{"verdict":"ALL_CLEAR","warning":"verification remains unproven"}',
+    '{"verdict":"PROMPT","evidenceLimitation":"corpus_unverified"}',
+    '{"verdict":"ALL_CLEAR",\nALL_CLEAR',
+    "[\nALL_CLEAR\n]",
+    '```json\n{"verdict":"ALL_CLEAR","checks":"failed"}\nALL_CLEAR',
+    '[{"verdict":"ALL_CLEAR","evidenceLimitation":"corpus_unverified"}]',
+    JSON.stringify({ verdict: "ALL_CLEAR", evidenceLimitation: "x".repeat(2048) }),
+  ])("fails closed on unsupported structured verdict %s", (reply) => {
+    expect(parseAutopilotVerdict(reply).kind).toBe("human");
+  });
+
   it("parses fuzzy ALL CLEAR (space + lowercase)", () => {
     expect(parseAutopilotVerdict("all clear")).toEqual({ kind: "all_clear" });
     expect(parseAutopilotVerdict("All Clear\nlooks good")).toEqual({ kind: "all_clear" });
@@ -141,7 +169,7 @@ describe("parseAutopilotVerdict", () => {
       parseAutopilotVerdict("Waiting on input.\nprompt the user for their API key first.").kind,
     ).toBe("human");
     expect(
-      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for GG Coder here.").kind,
+      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for OrcaCoder here.").kind,
     ).toBe("human");
   });
 
@@ -162,7 +190,7 @@ describe("parseAutopilotVerdict", () => {
     // reason after the keyword and drop the prose — HUMAN stops either way.
     const reply =
       "The screenshot shows a clean squared inward spiral that matches the " +
-      "reference. Tests green. GG Coder asked whether to dress it up with art — " +
+      "reference. Tests green. OrcaCoder asked whether to dress it up with art — " +
       "that's a taste/product call the user should own.\nHUMAN\nStructural spiral " +
       "is done; dressing it up with art is a taste call only you can make.";
     const v = parseAutopilotVerdict(reply);

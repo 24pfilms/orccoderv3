@@ -13,6 +13,30 @@ const fence = (lineCount: number): string =>
     "\n",
   );
 
+describe("chat images", () => {
+  it("shows a hover preview and removes it when the pointer leaves", () => {
+    render(<Markdown>{"![Ocean reference](https://example.com/orca.png)"}</Markdown>);
+    const image = screen.getByAltText("Ocean reference");
+
+    fireEvent.mouseEnter(image);
+    expect(document.querySelector(".image-hover-preview")).toBeTruthy();
+
+    fireEvent.mouseLeave(image);
+    expect(document.querySelector(".image-hover-preview")).toBeNull();
+  });
+
+  it("shows the same preview for keyboard focus", () => {
+    render(<Markdown>{"![Build output](https://example.com/output.png)"}</Markdown>);
+    const image = screen.getByAltText("Build output");
+
+    fireEvent.focus(image);
+    expect(document.querySelector(".image-hover-preview")).toBeTruthy();
+
+    fireEvent.blur(image);
+    expect(document.querySelector(".image-hover-preview")).toBeNull();
+  });
+});
+
 describe("oversized output folding", () => {
   it("renders a short block in full, with no expand control", () => {
     render(<Markdown>{fence(CODE_COLLAPSE_LINE_THRESHOLD)}</Markdown>);

@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
 import { clampToBytes, CONTEXT_LIMITS, type ContextLimits } from "./core/context-limits.js";
 import { TOOL_PROMPT_HINTS, buildToolSteering, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
 import type { LanguageId } from "./core/language-detector.js";
-import { stripBom } from "./utils/text.js";
+import { cleanInstructionText } from "./utils/text.js";
+import { log } from "./core/logger.js";
 import { resolveShell } from "./core/shell.js";
 import { renderStylePacksSection } from "./core/style-packs/index.js";
 import { detectVerifyCommands, renderVerifySection } from "./core/verify-commands.js";
@@ -28,11 +30,11 @@ const UNCACHED_MARKER = "<!-- uncached -->";
 /**
  * The agent's product identity. Anthropic models run as "Claude Code" (matching
  * the Claude Code identity Anthropic's OAuth tokens require in the system
- * prompt); every other provider runs as GG Coder. Keeping this dynamic avoids a
+ * prompt); every other provider runs as OrcaCoder. Keeping this dynamic avoids a
  * contradictory double identity when streaming through Anthropic.
  */
 function productName(provider: Provider | undefined): string {
-  return provider === "anthropic" ? "Claude Code" : "GG Coder by Ken Kai";
+  return provider === "anthropic" ? "Claude Code" : "OrcaCoder";
 }
 
 function renderIdentitySection(provider: Provider | undefined): string {
@@ -75,6 +77,18 @@ function renderWorkSection(): string {
     `- For a requested bug fix, reproduce it first (run the failing test or a minimal repro command), then fix, then re-run the reproduction to confirm.\n` +
     `- If the same fix fails three times, stop retrying: re-diagnose the root cause or propose a different approach.\n` +
     `- Skip checks after simple edits. At coherent checkpoints or after risky/non-obvious changes, run one targeted check; fix failures. Never claim unrun checks passed.`
+  );
+}
+
+// An image the read tool returns is forwarded to ACP clients (modes/acp-images.ts)
+// and shown in the desktop tool preview; images a script only saves to disk are not.
+function renderShowingImagesSection(): string {
+  return (
+    `## Showing images\n\n` +
+    `When you create or save an image the user should see — a screenshot taken by a script, a chart,\n` +
+    `a render, an exported frame — open it with the read tool once the file exists, so it is shown to\n` +
+    `the user. Images from the screenshot and generate_image tools are already shown; don't open those\n` +
+    `again. Show at most 3 images per reply: the ones that matter.`
   );
 }
 
@@ -278,7 +292,8 @@ function renderToolsSection(
  *
  * Walks from cwd up to the filesystem root picking at most ONE instruction
  * file per directory (CONTEXT_FILES priority order, first match wins), skips
- * empty files, strips BOMs, and renders root-first (broad → narrow) so the
+ * empty files, strips BOMs and invisible characters (a cloned repo controls
+ * these files), and renders root-first (broad → narrow) so the
  * nearest file lands last — where LLM recency bias weights it most. A 32 KiB
  * combined budget is filled nearest-first (the nearest instructions are the
  * most binding); files dropped by the cap are reported in a one-line note.
@@ -289,7 +304,8 @@ export async function collectProjectContext(
 ): Promise<string[]> {
   // Nearest-first collection order (cwd → root).
   const collected: Array<{ relPath: string; content: string; bytes: number }> = [];
-  let dir = cwd;
+  let dir = path.resolve(cwd);
+  const tempRoot = path.resolve(tmpdir());
   const visited = new Set<string>();
 
   while (!visited.has(dir)) {
@@ -302,7 +318,19 @@ export async function collectProjectContext(
       } catch {
         continue; // File doesn't exist — try the next candidate name.
       }
-      const trimmed = stripBom(content).trim();
+      const cleaned = cleanInstructionText(content);
+      if (cleaned.stripped > 0) {
+        log(
+          "WARN",
+          "system-prompt",
+          "Stripped invisible characters from a project instruction file",
+          {
+            file: filePath,
+            stripped: cleaned.stripped,
+          },
+        );
+      }
+      const trimmed = cleaned.text.trim();
       const relPath = path.relative(cwd, filePath) || name;
       // Empty/whitespace-only files still claim the directory slot — an empty
       // AGENTS.override.md deliberately silences the directory's instructions.
@@ -311,6 +339,9 @@ export async function collectProjectContext(
       }
       break; // One file per directory — first match wins.
     }
+    // Temporary projects are isolated fixtures/workspaces; do not inherit
+    // unrelated user-home instructions above the OS temp root.
+    if (dir === tempRoot) break;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -434,6 +465,8 @@ export const SUBAGENT_RETURN_CONTRACT =
  *   section never advertises something the allow-list strips.
  * @param opts.context — `"none"` skips project instruction files, for recon
  *   agents where conventions are dead weight.
+ * @param opts.role — `"primary"` omits the sub-agent return contract, for a
+ *   user-facing specialist agent (Motion) that talks to the user directly.
  */
 export async function buildSubAgentSystemPrompt(
   agentBody: string,
@@ -443,6 +476,7 @@ export async function buildSubAgentSystemPrompt(
     /** Tools available via `tool_search` but not carrying a schema this turn. */
     deferredToolNames?: readonly string[];
     context?: "project" | "none";
+    role?: "subagent" | "primary";
     environment?: SystemPromptEnvironment;
     /** Byte budgets for skill catalog / project instructions / total ceiling. */
     contextLimits?: ContextLimits;
@@ -466,8 +500,8 @@ export async function buildSubAgentSystemPrompt(
     if (projectContextSection) sections.push(projectContextSection);
   }
 
+  if ((opts.role ?? "subagent") === "subagent") sections.push(SUBAGENT_RETURN_CONTRACT);
   sections.push(
-    SUBAGENT_RETURN_CONTRACT,
     // Environment + date stay last so the cached prefix matches the parent's
     // layout: everything above is stable, the date suffix is the uncached tail.
     renderEnvironmentSection(opts.cwd, opts.environment),
@@ -484,7 +518,7 @@ export async function buildSubAgentSystemPrompt(
  *   Pass `tools.map(t => t.name)` from the session so the prompt reflects
  *   exactly what the model can call. Defaults to the full built-in set.
  * @param provider — the active LLM provider. Drives the product identity
- *   (`anthropic` → "Claude Code", everything else → "GG Coder").
+ *   (`anthropic` → "Claude Code", everything else → "OrcaCoder").
  * @param environment — extra Environment-section facts (additional workspace
  *   roots, network allowlist). This sits in the cached prefix, so changing it
  *   costs exactly one cache-miss turn.
@@ -510,6 +544,7 @@ export async function buildSystemPrompt(
     renderIdentitySection(provider),
     renderTalkSection(),
     renderWorkSection(),
+    renderShowingImagesSection(),
   ];
 
   if (planMode) sections.push(renderPlanModeSection());

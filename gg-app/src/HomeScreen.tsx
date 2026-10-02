@@ -1,27 +1,23 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Download, MessageCircle, Send, Settings } from "lucide-react";
+import { CheckCircle2, Clapperboard, Download, Settings } from "lucide-react";
+import { useMotionVisible } from "./motion-feature"; // [motion]
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeBackdrop } from "./HomeBackdrop";
 import { SettingsModal } from "./SettingsModal";
 import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
 import { SoundButton } from "./SoundButton";
-import {
-  waitForReady,
-  getSettings,
-  authStatus,
-  getServeStatus,
-  startServe,
-  stopServe,
-  setRemoteActive,
-} from "./agent";
+import { UpdatePage } from "./UpdatePage";
+import { waitForReady, getSettings, authStatus, getServeStatus, setRemoteActive } from "./agent";
 import { useAppUpdate } from "./update";
 import { toast } from "./toast";
 
 interface Props {
   onProjects: () => void;
   onChat: () => void;
+  /** [motion] Opens the Orca Motion (video) workspace picker. */
+  onMotion: () => void;
   onLogin: () => void;
   /**
    * Bumped when something OUTSIDE this screen changed serve/auth state (the
@@ -38,18 +34,18 @@ interface Props {
 export function HomeScreen({
   onProjects,
   onChat,
+  onMotion,
   onLogin,
   refreshSignal = 0,
 }: Props): React.ReactElement {
+  const motionVisible = useMotionVisible(); // [motion]
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showTelegram, setShowTelegram] = useState(false);
   const [showMcp, setShowMcp] = useState(false);
-  const [serving, setServing] = useState(false);
-  const [telegramConfigured, setTelegramConfigured] = useState(false);
-  const [serveBusy, setServeBusy] = useState(false);
   const appUpdate = useAppUpdate();
+  const [updatePageOpen, setUpdatePageOpen] = useState(false);
 
   async function refresh(): Promise<void> {
     // Settings + auth are read NATIVELY (Rust) — do them first, WITHOUT waiting on
@@ -66,8 +62,9 @@ export function HomeScreen({
     void waitForReady()
       .then(() => getServeStatus())
       .then((serve) => {
-        setServing(serve.running);
-        setTelegramConfigured(serve.configured);
+        // Serving is neither started nor shown here any more — the Remote Pod
+        // button became Chat Pod and the status chip is gone. The tray still
+        // owns the toggle, so keep its label in step with the real state.
         void setRemoteActive(serve.running);
       })
       .catch(() => {});
@@ -87,39 +84,17 @@ export function HomeScreen({
     if (refreshSignal > 0) void refresh().catch(() => {});
   }, [refreshSignal]);
 
-  const ready = folderSet && providerCount > 0;
+  useEffect(() => {
+    if (
+      ["available", "installing", "relaunching", "updated", "install-error"].includes(
+        appUpdate.phase,
+      )
+    ) {
+      setUpdatePageOpen(true);
+    }
+  }, [appUpdate.phase]);
 
-  async function handleServe(): Promise<void> {
-    if (serveBusy) return;
-    if (providerCount === 0) {
-      toast("Connect an AI provider first.", "warning");
-      return;
-    }
-    if (!telegramConfigured) {
-      toast("Set up Telegram first.", "warning");
-      setShowTelegram(true);
-      return;
-    }
-    setServeBusy(true);
-    try {
-      if (serving) {
-        await stopServe();
-        setServing(false);
-        // Keep the macOS tray's Remote label in step with this button.
-        void setRemoteActive(false);
-        toast("Stopped serving.", "success");
-      } else {
-        await startServe();
-        setServing(true);
-        void setRemoteActive(true);
-        toast("Serving on Telegram — message your bot.", "success");
-      }
-    } catch (e) {
-      toast(`Serve failed: ${e instanceof Error ? e.message : String(e)}`, "error");
-    } finally {
-      setServeBusy(false);
-    }
-  }
+  const ready = folderSet && providerCount > 0;
 
   function handleWorkspace(open: () => void): void {
     if (ready) {
@@ -135,94 +110,155 @@ export function HomeScreen({
     }
   }
 
-  return (
-    <div className="home" data-tauri-drag-region>
-      <HomeBackdrop />
-      {appUpdate.phase === "available" || appUpdate.phase === "installing" ? (
-        <button
-          className={`home-update${appUpdate.phase === "installing" ? " home-update-progress" : ""}`}
-          disabled={appUpdate.phase === "installing"}
-          title={`Update to ${appUpdate.version} — installs and restarts the app`}
-          onClick={() => void appUpdate.install()}
-        >
-          {appUpdate.phase === "installing" && (
-            <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
-          )}
+  const updateControl =
+    appUpdate.phase === "updated" ||
+    (appUpdate.configured &&
+      [
+        "idle",
+        "checking",
+        "check-error",
+        "available",
+        "installing",
+        "relaunching",
+        "install-error",
+      ].includes(appUpdate.phase)) ? (
+      <button
+        className={`home-update${appUpdate.phase === "installing" ? " home-update-progress" : ""}`}
+        disabled={
+          appUpdate.phase === "checking" ||
+          appUpdate.phase === "installing" ||
+          appUpdate.phase === "relaunching"
+        }
+        aria-live="polite"
+        aria-label={
+          appUpdate.phase === "updated"
+            ? "Dismiss update confirmation"
+            : appUpdate.phase === "install-error"
+              ? "Retry update installation"
+              : appUpdate.phase === "check-error"
+                ? "Retry update check"
+                : undefined
+        }
+        title={
+          appUpdate.error ??
+          (appUpdate.phase === "updated"
+            ? "Dismiss"
+            : appUpdate.phase === "idle" || appUpdate.phase === "checking"
+              ? "Check for OrcaCoder updates"
+              : `Install OrcaCoder ${appUpdate.version ?? "update"}`)
+        }
+        onClick={() => {
+          if (
+            appUpdate.phase === "available" ||
+            appUpdate.phase === "install-error" ||
+            appUpdate.phase === "updated"
+          ) {
+            setUpdatePageOpen(true);
+            return;
+          }
+          if (appUpdate.phase === "idle" || appUpdate.phase === "check-error") {
+            return void appUpdate.check();
+          }
+        }}
+      >
+        {appUpdate.phase === "installing" && (
+          <span className="home-update-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
+        )}
+        {appUpdate.phase === "updated" ? (
+          <CheckCircle2 size={14} strokeWidth={2.25} aria-hidden="true" />
+        ) : (
           <Download size={14} strokeWidth={2.25} aria-hidden="true" />
-          <span className="home-update-swap">
-            <span className={appUpdate.phase === "installing" ? "home-update-hidden" : undefined}>
-              {`Update to ${appUpdate.version}`}
-            </span>
-            <span className={appUpdate.phase === "installing" ? undefined : "home-update-hidden"}>
-              {"Installing\u2026"}
-              <span className="home-update-pct">{`${appUpdate.progress ?? 0}%`}</span>
-            </span>
-          </span>
-        </button>
-      ) : null}
+        )}
+        <span>
+          {appUpdate.phase === "updated"
+            ? "OrcaCoder just updated!"
+            : appUpdate.phase === "check-error"
+              ? "Try update check again"
+              : appUpdate.phase === "idle"
+                ? "Check for updates"
+                : appUpdate.phase === "checking"
+                  ? "Checking…"
+                  : appUpdate.phase === "install-error"
+                    ? "Retry install"
+                    : appUpdate.phase === "relaunching"
+                      ? "Restarting…"
+                      : appUpdate.phase === "installing"
+                        ? `Installing… ${appUpdate.progress ?? 0}%`
+                        : "Install update"}
+        </span>
+      </button>
+    ) : null;
 
-      <div className="scarlet-deck">
-        <AsciiLogo folderSet={folderSet} providerCount={providerCount} serving={serving} />
-        <aside className="home-actions scarlet-controls" aria-label="Mission controls">
-          <div className="scarlet-panel-head">
-            <div>Mission Controls</div>
-            <span aria-hidden="true" />
-          </div>
+  return (
+    <div className={`home${updatePageOpen ? " home-update-page-open" : ""}`} data-tauri-drag-region>
+      <HomeBackdrop />
+      {updatePageOpen ? (
+        <UpdatePage update={appUpdate} onClose={() => setUpdatePageOpen(false)} />
+      ) : (
+        <div className="scarlet-deck">
+          <AsciiLogo folderSet={folderSet} providerCount={providerCount} action={updateControl} />
+          <aside className="home-actions scarlet-controls" aria-label="Mission controls">
+            <div className="scarlet-panel-head">
+              <div>Mission Controls</div>
+              <span aria-hidden="true" />
+            </div>
 
-          <div className="scarlet-control-buttons">
-            <button
-              className={`btn btn-primary btn-lg home-btn scarlet-primary${ready ? "" : " is-dimmed"}`}
-              aria-disabled={!ready}
-              onClick={() => handleWorkspace(onProjects)}
-            >
-              Enter Pod Dock
-            </button>
-            <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
-              Connect AI Providers
-            </button>
-            <button
-              className="btn btn-ghost btn-lg home-btn scarlet-secondary"
-              title="Manage MCP servers"
-              onClick={() => setShowMcp(true)}
-            >
-              MCP Channels
-            </button>
-            <button
-              className={`btn btn-ghost btn-lg home-btn scarlet-secondary${serving ? " home-serve-active" : ""}`}
-              disabled={serveBusy}
-              onClick={() => void handleServe()}
-            >
-              {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote Pod" : "Remote Pod"}
-            </button>
-          </div>
+            <div className="scarlet-control-buttons">
+              <button
+                className={`btn btn-primary btn-lg home-btn scarlet-primary${ready ? "" : " is-dimmed"}`}
+                aria-disabled={!ready}
+                onClick={() => handleWorkspace(onProjects)}
+              >
+                Enter Pod Dock
+              </button>
+              {/* Chat sits directly under the dock because they are the two ways
+                  in: one to work on a project, one to just talk. It replaced the
+                  Remote Pod button, and the icon that used to carry it \u2014 an
+                  unlabelled icon in the utility bar was a poor home for one of
+                  the two main entrances. */}
+              <button
+                className="btn btn-ghost btn-lg home-btn scarlet-secondary"
+                title="Open Orca Chat"
+                onClick={() => handleWorkspace(onChat)}
+              >
+                Chat Pod
+              </button>
+              {motionVisible && ( // [motion]
+                <button
+                  className={`btn btn-ghost btn-lg home-btn scarlet-secondary${ready ? "" : " is-dimmed"}`}
+                  aria-disabled={!ready}
+                  title="Make videos with Orca Motion (beta)"
+                  onClick={() => handleWorkspace(onMotion)}
+                >
+                  <Clapperboard size={18} aria-hidden="true" />
+                  Motion
+                </button>
+              )}
+              <button className="btn btn-ghost btn-lg home-btn scarlet-secondary" onClick={onLogin}>
+                Connect AI Providers
+              </button>
+              <button
+                className="btn btn-ghost btn-lg home-btn scarlet-secondary"
+                title="Manage MCP servers"
+                onClick={() => setShowMcp(true)}
+              >
+                MCP Channels
+              </button>
+            </div>
 
-          <div className="scarlet-iconbar" aria-label="Landing utilities">
-            <SoundButton />
-            <button
-              className={`btn btn-ghost btn-icon home-settings${ready ? "" : " is-dimmed"}`}
-              aria-disabled={!ready}
-              title="Open Orca Chat"
-              onClick={() => handleWorkspace(onChat)}
-            >
-              <MessageCircle size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            <button
-              className="btn btn-ghost btn-icon home-settings"
-              title="Settings"
-              onClick={() => setShowSettings(true)}
-            >
-              <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            <button
-              className="btn btn-ghost btn-icon home-settings"
-              title="Telegram setup"
-              onClick={() => setShowTelegram(true)}
-            >
-              <Send size={20} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-          </div>
-        </aside>
-      </div>
+            <div className="scarlet-iconbar" aria-label="Landing utilities">
+              <SoundButton />
+              <button
+                className="btn btn-ghost btn-icon home-settings"
+                title="Settings"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       <div className="scarlet-footer" aria-label="Made by SquareCircleLabs.com">
         Made with{" "}
@@ -249,10 +285,14 @@ export function HomeScreen({
           }}
         />
       )}
+      {/* Nothing opens this any more: its only trigger was the Remote Pod
+          button, which Chat Pod replaced. Left mounted, and re-reading status on
+          save, so restoring an entry point is a one-line change rather than a
+          rebuild. */}
       {showTelegram && (
         <TelegramSettingsModal
           onClose={() => setShowTelegram(false)}
-          onSaved={() => setTelegramConfigured(true)}
+          onSaved={() => void refresh().catch(() => {})}
         />
       )}
       {showMcp && <McpModal onClose={() => setShowMcp(false)} />}

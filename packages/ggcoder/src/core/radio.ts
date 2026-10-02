@@ -9,7 +9,8 @@ import { log } from "./logger.js";
 /**
  * Internet radio — stream a free station while you work. Ported from gg-boss's
  * radio so the gg-app windows offer the same curated, royalty-free, no-API-key
- * streams (SomaFM started in 2000, Radio Paradise in 2006).
+ * streams (SomaFM has been running since 2000). The list is deliberately short
+ * and hand-picked — ambient and deep-focus stations for working to.
  *
  * Playback uses module-level singletons (`currentChild` / `currentStationId`),
  * so in the shared gg-app daemon — where every window's session lives in ONE
@@ -40,12 +41,6 @@ export interface RadioStation {
 
 export const RADIO_STATIONS: readonly RadioStation[] = [
   {
-    id: "somafm-groove-salad",
-    name: "SomaFM · Groove Salad",
-    description: "Chilled downtempo, ambient grooves",
-    url: "http://ice1.somafm.com/groovesalad-128-mp3",
-  },
-  {
     id: "somafm-drone-zone",
     name: "SomaFM · Drone Zone",
     description: "Atmospheric textures with minimal beats",
@@ -64,22 +59,10 @@ export const RADIO_STATIONS: readonly RadioStation[] = [
     url: "https://ice1.somafm.com/darkzone-128-mp3",
   },
   {
-    id: "somafm-drone-zone-2",
-    name: "SomaFM · Drone Zone 2",
-    description: "Eclectic alternative mix of atmospheric textures",
-    url: "https://ice1.somafm.com/dz2-128-mp3",
-  },
-  {
     id: "somafm-deep-space-one",
     name: "SomaFM · Deep Space One",
     description: "Deep ambient electronic and space music",
     url: "https://ice1.somafm.com/deepspaceone-128-mp3",
-  },
-  {
-    id: "somafm-doomed",
-    name: "SomaFM · Doomed",
-    description: "Dark industrial ambient for tortured souls",
-    url: "https://ice1.somafm.com/doomed-128-mp3",
   },
   {
     id: "somafm-synphaera",
@@ -112,46 +95,10 @@ export const RADIO_STATIONS: readonly RadioStation[] = [
     url: "https://radio.stereoscenic.com/asp-h",
   },
   {
-    id: "radcap-dark-ambient",
-    name: "Radio Caprice · Dark Ambient",
-    description: "Industrial, dark and ritual ambient (AAC+)",
-    url: "http://79.120.39.202:8000/darkambient",
-  },
-  {
     id: "nightride-chillsynth",
     name: "Nightride FM · Chillsynth",
     description: "Rain-on-neon downtempo synthwave",
     url: "https://stream.nightride.fm/chillsynth.mp3",
-  },
-  {
-    id: "nightride-datawave",
-    name: "Nightride FM · Datawave",
-    description: "Cyberpunk synthwave and retro electronics",
-    url: "https://stream.nightride.fm/datawave.mp3",
-  },
-  {
-    id: "nightride-darksynth",
-    name: "Nightride FM · Darksynth",
-    description: "Heavier, darker synthwave",
-    url: "https://stream.nightride.fm/darksynth.mp3",
-  },
-  {
-    id: "nightwave-plaza",
-    name: "Nightwave Plaza",
-    description: "24/7 vaporwave and future funk",
-    url: "https://radio.plaza.one/mp3",
-  },
-  {
-    id: "radio-paradise",
-    name: "Radio Paradise",
-    description: "Eclectic mix — rock, electronica, jazz",
-    url: "http://stream.radioparadise.com/mp3-128",
-  },
-  {
-    id: "george-fm",
-    name: "George FM",
-    description: "NZ dance + electronic",
-    url: "https://mediaworks.streamguys1.com/george_net_icy",
   },
 ];
 
@@ -469,7 +416,7 @@ export function playRadio(stationId: string): PlayResult {
         nativeFfmpeg ??
         spawn(bin, playerArgs, {
           // Stay in the sidecar's process group so Rust teardown and the parent
-          // watchdog cannot leave audio playing after GG Coder closes.
+          // watchdog cannot leave audio playing after OrcaCoder closes.
           detached: false,
           stdio: "ignore",
         });

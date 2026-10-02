@@ -4,8 +4,8 @@
  * Ken (chat mentor + autopilot reviewer) historically always adopted GG
  * Coder's model. Now each project can pin Ken to his OWN model:
  *
- *   - No override set → Ken follows GG Coder's model (including live switches).
- *   - Override set    → Ken uses it; GG Coder model switches no longer touch him.
+ *   - No override set → Ken follows OrcaCoder's model (including live switches).
+ *   - Override set    → Ken uses it; OrcaCoder model switches no longer touch him.
  *
  * The sidecar persists the override per project (gg-app.json `kenModels`) and
  * wires the live sessions; this module owns validation + resolution so both
@@ -22,7 +22,7 @@ export interface KenModelPref {
 /**
  * Validate a persisted (or requested) override before applying it. A stale
  * entry — model gone from the registry, or its provider no longer connected —
- * silently resolves to null so Ken falls back to following GG Coder instead
+ * silently resolves to null so Ken falls back to following OrcaCoder instead
  * of erroring on every turn.
  */
 export function validateKenModelPref(
@@ -36,11 +36,11 @@ export function validateKenModelPref(
 }
 
 /** What the footer needs to render `Ken <model>`: the model Ken will actually
- *  use next turn, plus whether that's a pin or just following GG Coder. */
+ *  use next turn, plus whether that's a pin or just following OrcaCoder. */
 export interface EffectiveKenModel {
   kenProvider: Provider;
   kenModel: string;
-  /** True when a user-set override is active (not following GG Coder). */
+  /** True when a user-set override is active (not following OrcaCoder). */
   kenModelOverride: boolean;
 }
 

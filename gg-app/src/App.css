@@ -6,6 +6,13 @@
   --border: #272b36;
   --border-strong: #353a47;
 
+  /* Scrollbars — translucent white rather than a fixed grey, so one value reads
+     correctly on every surface in the app (transcript, glass cards, popovers,
+     the board's dark canvas) instead of only the one it was picked against. */
+  --scroll-thumb: rgb(255 255 255 / 13%);
+  --scroll-thumb-hover: rgb(255 255 255 / 26%);
+  --scroll-thumb-active: rgb(255 255 255 / 36%);
+
   /* Text — neutral-cool, APCA-gated. */
   --text: #f4f6f8;
   --text-secondary: #c3c9d4;
@@ -14,6 +21,10 @@
 
   /* Accents — true sibling set; dot/icon/border/verb colors (NOT body text). */
   --primary: #4d9dff;
+  /* Ink on a filled primary surface (matches .btn-primary color) + a brighter
+     primary for hover, used by the ask_user question band. */
+  --on-primary: #f4f8ff;
+  --primary-hi: #6fb1ff;
   --success: #36c489;
   --warning: #e3a23f;
   --error: #f2716e;
@@ -24,7 +35,7 @@
      commandColor #818cf8 on the #374151 message fill). Shared by the user
      bubble and the chat input. */
   --user-text: #818cf8;
-  --user-bg: #313a49;
+  --user-bg: rgba(49, 58, 73, 0.35);
 
   /* Ken Kai (mentor agent) — soft cyan/green. Single source of truth with
      theme.ken in theme.ts; both MUST match or the inline-styled @Ken input
@@ -51,6 +62,57 @@
   /* Fonts — same-family Geist Sans + Geist Mono. */
   --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ── Scrollbars (global) ──────────────────────────────────────────────────
+   ONE treatment for every scroll container in the app. This was previously
+   opt-in — seven near-identical copies of `8px + var(--border)`, each scoped to
+   one component — which meant any container nobody remembered got Windows'
+   native scrollbar instead: a wide grey trough with stepper arrows at both
+   ends. The model-picker menu was exactly that case.
+
+   A slim pill that floats clear of the content: the thumb is inset by a
+   transparent border rather than sized down, so the visible bar is 4px while
+   the grab target stays a comfortable 10px. Track and corner are transparent so
+   the bar reads as part of the surface it scrolls, not a channel cut into it.
+   Steppers removed — nothing else in this UI has them.
+
+   Deliberately unscoped. New scroll containers should inherit this, not
+   re-declare it; override only where a component genuinely needs something
+   else (Scarlet's branded red bar, or the inputs that hide theirs entirely). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  /* `background-clip: padding-box` is what makes the border read as padding —
+     without it the border paints over the thumb and the inset disappears. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill, 999px);
+  /* A short thumb on a long list is a smudge; hold a grabbable minimum. */
+  min-height: 32px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--scroll-thumb-active);
+  background-clip: padding-box;
+}
+/* The stepper arrows — the single biggest tell of an unstyled native bar. */
+::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* ── Button system (shared) ───────────────────────────────────────────────
@@ -301,6 +363,18 @@ body,
 
 body {
   overflow: hidden;
+  /* Base colour lives here, not on .app. `.app` isolates a stacking context, so an
+     opaque background there paints over the .orca-wallpaper layer inside it. */
+  background: var(--bg);
+  /* Base typography lives here, not on .app, so content portaled to <body>
+     (Modal, the background-tasks and schedules popovers, Markdown's preview)
+     inherits the app font instead of the browser's serif default. */
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.011em;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
@@ -311,22 +385,18 @@ body {
      CSS `zoom` < 1 the shell came up short and the footer floated up. % chains
      through #root/body/html (all 100%) and scales correctly with zoom. */
   height: 100%;
-  font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.55;
-  letter-spacing: -0.011em;
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
 }
 
 .app-restoring {
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .app-restoring-status {
   display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
+  justify-content: center;
   gap: 9px;
   color: var(--text-muted);
   font-family: var(--mono);
@@ -844,14 +914,20 @@ body {
   flex-wrap: wrap;
   justify-content: center;
 }
-.login-conn-dot {
+/* Authorized badge: a filled green circle with a white check. Replaced the
+   8px dot, which read as too subtle to tell an authorized provider apart. */
+.login-conn-check {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 8px;
-  height: 8px;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--success);
+  color: #fff;
   box-shadow: 0 0 0 3px rgba(54, 196, 137, 0.18);
 }
 /* Narrow windows (480-640px): tighter padding, slightly smaller logo. */
@@ -1036,6 +1112,47 @@ body {
 /* macOS: left padding clears the traffic lights so the title sits right of them. */
 .platform-macos .chat-head-strip {
   padding: 0 14px 0 82px;
+}
+/* Compact title bar (Windows, see compact-titlebar.ts): the native title bar is
+   gone, so the header strips are the title bar and reserve the right edge for
+   the in-app window controls — the mirror of the macOS traffic-light gutter. */
+.compact-titlebar .chat-head-strip,
+.compact-titlebar .titlebar {
+  padding-right: 132px;
+}
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Above every in-app layer (max 400), like the native title bar it replaces. */
+  z-index: 500;
+  display: flex;
+  height: 38px;
+}
+.window-control {
+  width: 42px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+.window-control:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+.window-control-close:hover {
+  /* The Windows close-button red. */
+  background: #e81123;
+  color: #fff;
+}
+.window-control:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }
 /* The visible window title shows project context: cwd, current branch, then the
    uncommitted-file count and GitHub issue/PR chips. It grows into available
@@ -1241,16 +1358,6 @@ body {
      regardless of where it's rendered. */
   text-align: left;
 }
-/* Any scroll container inside a modal gets a thin, non-overlapping scrollbar so
-   the thumb never sits on top of the row content. */
-.modal ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.modal ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 .modal-head {
   display: flex;
   align-items: center;
@@ -1326,7 +1433,8 @@ body {
   font-size: 12px;
   line-height: 1.55;
   margin-top: 8px;
-  word-break: break-all;
+  /* Wrap long unbroken paths, but never split ordinary words ("c / leared"). */
+  overflow-wrap: anywhere;
 }
 /* A hint sitting directly above an input needs breathing room below it,
    otherwise the field is flush against the description text. */
@@ -1377,14 +1485,152 @@ body {
    usage meter as its volume control. */
 .radio-modal {
   width: min(480px, 90vw);
+  /* Never taller than the window. A long station list used to push the modal's
+     head up under Tauri's top window edge and clip it (the whole dialog is
+     centered, so overflow spills off the top). Cap the dialog to the viewport
+     and lay it out as a column so the station list shrinks to fit while the
+     head, Play, and Volume controls stay visible. */
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
 }
-.radio-station-select {
-  appearance: auto;
+
+/* ── Station list ─────────────────────────────────────────────────────────
+   Borrows the Board manager's card language so the two modals read as the same
+   family: rows on a translucent ground, selection marked by an accent EDGE
+   rather than an outline, so a list of ten stations still reads as rows and not
+   as a stack of input fields. */
+.radio-stations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(46vh, 360px);
+  /* In the radio modal's flex column, shrink to fit a short window (min-height:0
+     lets a flex item go below its content height) instead of overflowing and
+     clipping the modal's head off the top. Still capped at 360px on tall ones. */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Breathing room on all sides so the first row's focus ring (this list is
+     auto-focused when the modal opens) and the last row are never clipped by
+     the scroll edge. `scrollbar-gutter: stable` reserves the scrollbar lane so
+     the thumb sits clear of the station names instead of over them. */
+  padding: 6px;
+  margin: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+.radio-station {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
   cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
 }
-.radio-station-description {
-  min-height: 19px;
-  word-break: normal;
+.radio-station:hover:not(:disabled),
+.radio-station:focus-visible {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+.radio-station:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.radio-station[data-selected] {
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg));
+}
+.radio-station[data-selected]::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--primary);
+  content: "";
+}
+.radio-station-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.radio-station-text strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.radio-station-text span {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.radio-station[data-playing] .radio-station-text strong {
+  color: var(--primary);
+}
+.radio-stations-empty {
+  padding: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Three bars that rise and fall — a level meter, not a spinner: it says "sound
+   is happening" rather than "please wait". Held still under reduced motion so
+   the row is never a source of movement for someone who asked for none. */
+.radio-bars {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.radio-bars i {
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--primary);
+  transform-origin: bottom;
+  animation: radio-bar 900ms ease-in-out infinite;
+}
+.radio-bars i:nth-child(2) {
+  animation-delay: 160ms;
+}
+.radio-bars i:nth-child(3) {
+  animation-delay: 320ms;
+}
+@keyframes radio-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .radio-bars i {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+}
+
+.radio-now {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .radio-player-row {
   display: flex;
@@ -1559,8 +1805,6 @@ body {
      stack (the `.modal-title` class only sizes/weights, it never sets family,
      and this window has no `.modal` ancestor to inherit from). */
   font-family: var(--sans);
-  /* Match the in-app modal's scrollbar treatment (those rules are scoped to
-     `.modal`, which this window doesn't use). */
 }
 /* One-shot confetti overlay — covers the whole modal, never intercepts clicks,
    sits above the content while the burst plays then clears itself. */
@@ -1571,14 +1815,6 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 5;
-}
-.whatsnew-window ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.whatsnew-window ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 /* Scroll container takes the remaining height and engages once the notes outgrow
    it — short release lists sit at their natural height, long ones scroll. */
@@ -1687,13 +1923,6 @@ body {
   scrollbar-gutter: stable;
   padding-right: 4px;
   margin: 2px 0 14px;
-}
-.tasks-list::-webkit-scrollbar {
-  width: 8px;
-}
-.tasks-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 .tasks-item {
   display: flex;
@@ -1857,13 +2086,6 @@ body {
   scrollbar-gutter: stable;
   padding-right: 4px;
   margin: 2px 0 14px;
-}
-.mcp-list::-webkit-scrollbar {
-  width: 8px;
-}
-.mcp-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 .mcp-item {
   display: flex;
@@ -2135,6 +2357,8 @@ body {
 .winlayout-item {
   display: flex;
   align-items: center;
+  display: flex;
+  align-items: center;
   gap: 9px;
   padding: 6px 9px;
   border: none;
@@ -2191,6 +2415,18 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Reads as a card sitting ON the palette wallpaper: translucent glass so the gradient
+     shows through, inset so colour breathes around all four sides, and rounded to match
+     the app's other surfaces. */
+  margin: 10px 12px 6px;
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 16px;
+  box-shadow:
+    0 18px 44px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
   /* Clips the overlay's 1px bleed below (see `.ken-power-overlay`) so it never
      spills onto the chat-head border or the tool panel/footer beyond this
      frame. */
@@ -2300,13 +2536,6 @@ body {
    position. Plain rows render fine even in long sessions, so it's not worth the
    jank — leave it off. */
 
-.transcript::-webkit-scrollbar {
-  width: 8px;
-}
-.transcript::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 
 .line {
   min-height: 1.55em;
@@ -2423,18 +2652,21 @@ body {
   width: fit-content;
   max-width: min(620px, 78%);
   /* Push the bubble to the right edge (user on right, assistant on left). */
-  background: var(--user-bg);
-  color: var(--user-text);
+  background: transparent;
+  /* White rather than --user-text: the token still drives the composer and the queued
+     states, so it is left alone and only the bubble is overridden. */
+  color: #fff;
   border-radius: var(--radius-card);
   padding: 6px 12px;
   margin: 8px 0 8px auto;
   font-size: 15px;
   white-space: pre-wrap;
   word-break: break-word;
-  /* Reserved, invisible border. The queued state only recolors it, so leaving
-     the queue never changes the bubble's box by 2px — which otherwise nudges
-     the text and every bubble below it at the moment the message is sent. */
-  border: 1px solid transparent;
+  /* Outline only, no fill: the palette wallpaper reads straight through the bubble
+     instead of a slab of grey sitting on it. The border was already reserved here so the
+     queued state could recolor it without shifting the box by 2px — it is simply visible
+     now rather than transparent. */
+  border: 1px solid rgb(255 255 255 / 42%);
 }
 /* `@Ken` prompt bubble: tinted in Ken's color (matching his replies + the input
    highlight) so the transcript shows this message went to the mentor, not GG
@@ -2443,7 +2675,7 @@ body {
   color: var(--ken);
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
 }
-/* "Sent to GG Coder" bubble (from a Ken prompt-block button): same faint Ken
+/* "Sent to OrcaCoder" bubble (from a Ken prompt-block button): same faint Ken
    tint as a @Ken bubble, with the shimmer label carrying Ken's color. */
 .user-msg.user-ken-sent {
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
@@ -2671,6 +2903,64 @@ body {
 .markdown a:hover {
   text-decoration-color: var(--primary);
 }
+.markdown .markdown-image {
+  display: block;
+  max-width: min(100%, 720px);
+  max-height: 520px;
+  margin: 0.65em 0;
+  border-radius: var(--radius-card);
+  cursor: zoom-in;
+  object-fit: contain;
+  outline: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  outline-offset: -1px;
+  transition:
+    filter var(--t-fast),
+    outline-color var(--t-fast);
+}
+.markdown .markdown-image:hover {
+  filter: brightness(1.06);
+  outline-color: color-mix(in srgb, var(--primary) 55%, var(--border-strong));
+}
+.markdown .markdown-image:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.image-hover-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  padding: 28px;
+  place-items: center;
+  pointer-events: none;
+}
+.image-hover-preview > img {
+  width: min(var(--image-preview-width), calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  object-fit: contain;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.72);
+  animation: image-hover-reveal 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes image-hover-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .image-hover-preview > img {
+    animation: none;
+  }
+}
 .markdown blockquote {
   margin: 0.5em 0;
   padding: 0.1em 0 0.1em 0.9em;
@@ -2776,7 +3066,7 @@ body {
   background: var(--surface-2);
 }
 /* Ken Kai (mentor agent): the whole reply is tinted in Ken's color — that tint
-   IS the only signal it's Ken, not GG Coder. No border line, no badge. Color the
+   IS the only signal it's Ken, not OrcaCoder. No border line, no badge. Color the
    markdown text and its inline elements (headings, list markers, bold, links),
    but leave the runnable-prompt block to its own styling below. */
 .ken-msg .assistant-text,
@@ -2788,7 +3078,7 @@ body {
   color: var(--ken);
   text-decoration-color: color-mix(in srgb, var(--ken) 50%, transparent);
 }
-/* Ken's activity bar reuses the GG Coder ActivityBar's running statusrow as-is
+/* Ken's activity bar reuses the OrcaCoder ActivityBar's running statusrow as-is
    (same top border, padding, spinner, layout, meta readout) so it's the same
    control aligned to what we have, just tinted to Ken. Only the spinner glow is
    re-tinted from brand-blue to Ken's color. */
@@ -3066,7 +3356,7 @@ body {
      between the top border and the chat input below (the input's own top gap
      otherwise makes the line look high). */
   padding: 11px 18px 7px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgb(255 255 255 / 7%);
   font-size: 13px;
   line-height: 1.5;
   /* Fixed-width figures so the ticking timer / token count don't reflow the
@@ -3145,9 +3435,14 @@ body {
   gap: 8px;
   margin: 10px 14px;
   padding: 10px 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 14px;
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
   position: relative;
   transition: border-color var(--t-fast);
 }
@@ -3160,6 +3455,35 @@ body {
 .app.window-focused .inputwrap {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+/* ── Unfocused windows freeze their looping decoration. ──
+   Every looping animation below forces a repaint each frame, and every repaint
+   is a round trip through the WebView's shared GPU process: allocate a surface,
+   rasterize, flush, wait. One window doing that is fine; several idle windows
+   doing it all day starves that process — the same GPU compositor contention
+   that shows up as black/frozen frames with multiple windows open. Only the
+   window the user is looking at animates. Paused (not `none`) so focus resumes
+   mid-cycle without a jump. One-shot reveals are deliberately NOT listed:
+   paused at 0% with `both` they would hold new content invisible in a
+   background window. */
+.app:not(.window-focused)::before,
+.app:not(.window-focused) .ascii-logo,
+.app:not(.window-focused) .queued-pill,
+.app:not(.window-focused) .queued-dot,
+.app:not(.window-focused) .shimmer-text,
+.app:not(.window-focused) .command-shimmer,
+.app:not(.window-focused) .blink,
+.app:not(.window-focused) .wake-cursor,
+.app:not(.window-focused) .skeleton,
+.app:not(.window-focused) .enh-diss-skeleton .skeleton::after,
+.app:not(.window-focused) .enhance-pill.enhancing,
+.app:not(.window-focused) .update-banner::after,
+.app:not(.window-focused) .update-banner-dot,
+.app:not(.window-focused) .rank-name,
+.app:not(.window-focused) .title-usage-fill::before,
+.app:not(.window-focused) .title-usage-particle {
+  animation-play-state: paused;
 }
 .inputwrap.dragover {
   border-color: var(--primary);
@@ -3307,13 +3631,6 @@ body {
   overflow-wrap: break-word;
   word-break: normal;
   color: var(--user-text);
-}
-.enh-diss::-webkit-scrollbar {
-  width: 8px;
-}
-.enh-diss::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
 }
 /* Smooth dissolve: the whole old draft fades + drifts up while its height (set
    inline by JS) collapses to one line. One CSS tween, no character deletion — it
@@ -3607,6 +3924,11 @@ body {
   border-radius: var(--radius-button);
   border: 1px solid var(--border);
   object-fit: cover;
+  cursor: zoom-in;
+}
+.user-img:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
 }
 
 /* @-referenced file chips inside a sent user message bubble. */
@@ -3648,28 +3970,40 @@ body {
   overflow: hidden;
   background: var(--surface-1);
 }
-.img-card-clickable {
-  cursor: pointer;
-}
-.img-card-clickable:hover,
-.img-card-clickable:focus-visible {
-  border-color: var(--border-strong);
-}
 .img-thumb {
   display: block;
   max-width: 100%;
   max-height: 280px;
   object-fit: contain;
+  cursor: zoom-in;
 }
-.img-cap {
+.img-thumb:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -3px;
+}
+figcaption.img-cap {
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+button.img-open {
+  display: block;
+  width: 100%;
   padding: 5px 9px;
+  overflow: hidden;
+  color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  white-space: nowrap;
-  overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+button.img-open:hover,
+button.img-open:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 /* ── Image generation placeholder (shimmering square while tool runs) ── */
@@ -3846,13 +4180,6 @@ body {
   padding: 0;
   margin: 0;
 }
-.input::-webkit-scrollbar {
-  width: 8px;
-}
-.input::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 
 .input::placeholder {
   color: var(--text-dim);
@@ -3875,10 +4202,9 @@ body {
   text-decoration: none;
 }
 
-/* App-update banner — its own row below the footer so it reads as a distinct,
-   noticeable announcement. Same green gradient as the home-screen update pill
-   (#36c489 → #2dd4bf) with dark text; a light sweep draws the eye. The whole
-   row is the click target that downloads, installs, and restarts. */
+/* App-update footer — a persistent crimson row beneath every app view. The
+   whole row opens the dedicated update page; installation never starts from
+   this compact surface. */
 .update-banner {
   position: relative;
   flex: 0 0 auto;
@@ -3889,8 +4215,8 @@ body {
   width: 100%;
   padding: 8px 18px;
   border: none;
-  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
-  color: #04130d;
+  background: linear-gradient(135deg, #b91c1c 0%, #ef4444 58%, #ff6b5f 100%);
+  color: #fff;
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
@@ -3928,6 +4254,10 @@ body {
 .update-banner:hover:not(.update-banner-busy) {
   filter: brightness(1.08);
 }
+.update-banner:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
+}
 .update-banner-busy {
   cursor: default;
   filter: saturate(0.7) brightness(0.92);
@@ -3937,9 +4267,6 @@ body {
    The fill is absolutely positioned (out of flow); only the centered
    percentage occupies the same line box the label text did. */
 .update-banner-progress {
-  /* The busy filter desaturates to grey — right for a static "busy" row, but
-     it muddied the greens here. Progress keeps the vibrant gradient as the
-     track and sweeps a lighter mint from the same family across it. */
   filter: none;
 }
 .update-banner-fill {
@@ -3947,9 +4274,8 @@ body {
   top: 0;
   bottom: 0;
   left: 0;
-  background: linear-gradient(135deg, #8ff5c6 0%, #a7f3e9 100%);
-  /* Hairline dark leading edge so the fill boundary reads crisply. */
-  box-shadow: 1px 0 0 rgba(4, 19, 13, 0.15);
+  background: linear-gradient(135deg, #ff8d82 0%, #ffb1a9 100%);
+  box-shadow: 1px 0 0 rgba(64, 8, 8, 0.24);
   transition: width 180ms linear;
   pointer-events: none;
 }
@@ -3961,13 +4287,13 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #04130d;
-  box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.55);
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
   animation: update-pulse 1.8s ease-out infinite;
 }
 @keyframes update-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.5);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
   }
   70% {
     box-shadow: 0 0 0 7px transparent;
@@ -3976,44 +4302,42 @@ body {
     box-shadow: 0 0 0 0 transparent;
   }
 }
-/* Home-screen update pill — small green-gradient chip floating above the ASCII
-   logo, shown only when an update is pending. Deliberately smaller than the
-   primary action buttons so it reads as a notification, not a main CTA. */
+@media (prefers-reduced-motion: reduce) {
+  .update-banner::after,
+  .update-banner-dot {
+    animation: none;
+  }
+}
+/* Compact blue action for install, progress, retry, and update confirmation. */
 .home-update {
-  position: relative; /* anchor + clip the progress fill below */
+  position: relative;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   align-self: center;
-  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
-  color: #04130d;
-  border: none;
-  border-radius: 999px;
+  min-height: 30px;
+  background: var(--gloss-primary);
+  color: #f4f8ff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-pill);
   font-family: var(--sans);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
   padding: 5px 12px;
   cursor: pointer;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
-  transition:
-    filter var(--t-fast),
-    transform var(--t-fast);
+  box-shadow: var(--gloss-shadow-primary);
+  transition: filter var(--t-fast);
 }
 .home-update:hover:not(:disabled) {
   filter: brightness(1.08);
-  transform: translateY(-1px);
 }
 .home-update:disabled {
   opacity: 0.7;
   cursor: default;
 }
-/* Installing state: the pill keeps its vibrant gradient as the track (no
-   :disabled dimming). Progress is a slim strip along the pill's bottom edge —
-   a full-height fill swept over the "Installing…" label and looked muddy at
-   this size. The percentage reserves a steady 3ch so the label doesn't jitter
-   as it climbs. */
+/* Installing keeps the action visible while the slim bottom strip reports progress. */
 .home-update-progress {
   opacity: 1;
   cursor: default;
@@ -4023,33 +4347,9 @@ body {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, #8ff5c6 0%, #a7f3e9 100%);
+  background: rgba(255, 255, 255, 0.78);
   transition: width 180ms linear;
   pointer-events: none;
-}
-/* Label swap without resizing: both labels occupy the same grid cell (the
-   inactive one is visibility:hidden), so the pill is always sized to the
-   wider of "Update to x.y.z" and "Installing… 100%". */
-.home-update-swap {
-  display: grid;
-}
-.home-update-swap > * {
-  grid-area: 1 / 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.home-update-hidden {
-  visibility: hidden;
-}
-.home-update-pct {
-  display: inline-block;
-  /* 4ch, not 3ch: "100%" is three digits PLUS the % glyph — 3ch fit "99%" but
-     the span outgrew it at 100%, stretching the pill right at the finish. */
-  min-width: 4ch;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 /* Shown in the update pill's place when already up to date — the current
    version plus a "What's new" button, so the spot never collapses/jumps. */
@@ -4505,6 +4805,10 @@ body {
   max-width: min(640px, 90vw);
   max-height: 50vh;
   overflow-y: auto;
+  /* Setting only `overflow-y` makes the X axis compute to `auto`, not `visible`
+     — so a name a few pixels too wide raised a full-width horizontal bar under
+     the list. Nothing here scrolls sideways; long names ellipsize instead. */
+  overflow-x: hidden;
   /* No rubber-band bounce, and no scroll chaining to the transcript behind. */
   overscroll-behavior: none;
   padding: 8px;
@@ -5713,7 +6017,29 @@ body {
   .footer-right {
     flex: 0 1 auto;
     gap: 10px;
+    /* NEVER clip this cluster. It is ~21px tall and anchors popovers that open
+       UPWARD out of it — the model menu, the schedules menu. `overflow: hidden`
+       clips both axes, so those menus opened, measured correctly, and had every
+       pixel discarded: the picker looked dead in any window under 900px while
+       working perfectly in a wide one. Nothing about it looked like a CSS clip,
+       because clipping happens before compositing — no z-index can escape it.
+       Shrink the labels instead (below), which is all this rule ever wanted. */
+    min-width: 0;
+  }
+  /* Absorb the shrink where it is safe: the model name is the only label here
+     long enough to force the cluster wide. Truncating the trigger's text cannot
+     hide a popover — the menu is a SIBLING of this button inside .model-picker,
+     not a child of it. */
+  .model-button,
+  .model-select-text {
+    min-width: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .model-picker,
+  .model-anchor {
+    min-width: 0;
   }
   .footer-left {
     flex: 1 1 0;
@@ -5950,7 +6276,8 @@ body {
 .app {
   position: relative;
   isolation: isolate;
-  background: var(--bg);
+  /* Transparent on purpose — see the note on `body`. */
+  background: transparent;
 }
 .home-appearance {
   position: absolute;
@@ -6015,4 +6342,254 @@ body {
     animation: none;
     transition: none;
   }
+}
+
+/* Shortcut hint inside a window-layout menu item. */
+.winlayout-item .winlayout-hint {
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* ── ask_user question band ──
+   The agent's question, inside the reply it belongs to. Deliberately built from
+   the app's existing vocabulary rather than a look of its own: every option is a
+   .btn ghost pill, the recommendation is a .badge, and color stays a data
+   signal (only the chosen/primary action is tinted). The band itself is a plain
+   surface block with a neutral keyline — it must not glow blue at the reader. */
+.ask-band {
+  /* Shrink-wrapped, not full-bleed: a two-word confirm and a three-row choice
+     should not occupy the same width. `fit-content` sizes to the longest
+     question or option, and `max-width: 100%` stops a long one overflowing the
+     transcript column. */
+  width: fit-content;
+  max-width: 100%;
+  margin: 10px 0 6px;
+  padding: 12px 14px;
+  /* A step above the transcript, plus a hairline: at --surface-1 the band was
+     the same value as the canvas behind it and simply dissolved into it. */
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+/* Resolved or dead: no surface at all, just a quiet line in the transcript. */
+.ask-band.is-done,
+.ask-band.is-closed {
+  /* Once answered the card is gone entirely — what remains is just a message
+     in the transcript, so it must not keep the band's surface or hairline.
+     It must also drop `fit-content`: the answer bubble aligns to its parent's
+     right edge, and a shrink-wrapped parent left it stranded mid-column
+     instead of on the transcript's edge like every other user message. */
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+}
+/* Answered: the reply IS a message the user sent, so it renders as a user
+   bubble on the right like every other one — not as a left-aligned status
+   line. Shimmer matches the "ideal?" hook treatment. */
+.ask-answered {
+  display: flex;
+  justify-content: flex-end;
+}
+.ask-answered-bubble {
+  --shimmer-base: var(--text-muted);
+  --shimmer-bright: var(--text);
+  display: inline-block;
+  margin: 0;
+}
+.ask-closed {
+  font-size: 12.5px;
+  /* Dim measured 3.37:1 on the bare transcript canvas this line sits on, under
+     the 4.5:1 floor. Muted clears it and still reads as the quietest row. */
+  color: var(--text-muted);
+}
+.ask-subq-q {
+  margin: 0 0 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text);
+}
+.ask-detail {
+  margin: -3px 0 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* Secondary, not muted: this sits on a raised surface, and muted grey on grey
+     was genuinely hard to read. */
+  color: var(--text-secondary);
+}
+.ask-subq-num {
+  margin-right: 7px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  /* Dim measured 2.84:1 on the band's surface. These numbers are permanent now
+     that answered questions stay on screen, so they have to clear 4.5:1. */
+  color: var(--text-muted);
+}
+/* Several questions in one band: numbered, each resolving on its own. */
+/* Separator between questions. --border (7% alpha white) vanishes against the
+   band's raised surface, so this needs its own stronger value to actually read
+   as a division. */
+.ask-subq + .ask-subq {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-strong);
+}
+
+/* One shape for every question. Options stack full-width instead of flowing as
+   inline chips: a two-word yes/no laid out as chips read as a different
+   component from a hinted choice laid out as rows, and a chip row also could not
+   survive a 480px window once a label grew. Stacking always is the cheaper
+   answer than a rule deciding which questions get which layout. */
+.ask-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  /* Inside a fit-content band the rows still align to each other, so the band
+     sizes to the LONGEST row rather than each row sizing independently. */
+  min-width: 100%;
+}
+/* AFFORDANCE, and it belongs to EVERY option. `.btn-ghost` fills with
+   --surface-2, which is exactly the band's own background: an option had no
+   edge, no fill of its own and no hover, so the choices read as static text with
+   numbers in front of them. Each one gets its own raised surface plus a
+   hairline, so it reads as a control before it is touched — the border doubles
+   as the division between rows, which a bare divider line could not do (a
+   divider separates list items; an edge says "press me").
+
+   This was once scoped to stacked rows alone, which is why a short yes/no
+   confirm — the one shape that rendered as chips — looked like a different
+   component from every other question the app asks. */
+.ask-options .btn {
+  justify-content: flex-start;
+  align-items: flex-start;
+  text-align: left;
+  /* `.btn` is nowrap for chips; a long label here must wrap inside the
+     transcript column rather than push the whole band past its right edge. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  max-width: 100%;
+  border-radius: var(--radius-button);
+  padding: 9px 12px;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast);
+}
+.ask-options .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-3));
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
+}
+/* Pressed: the option dips back toward its resting fill so the click is
+   confirmed even when the answer re-renders the band immediately. */
+.ask-options .btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface-3));
+}
+.ask-options .btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* Selected. In a band of several questions this fill IS the answered state: the
+   question stays on screen with its pick filled, so it can be changed while the
+   others are still being decided. The fill and its ink have to be re-stated (not
+   inherited from `.btn-primary`) because the rule above is the more specific
+   selector and would otherwise leave near-black label text on the dark row. */
+.ask-options .btn.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: transparent;
+}
+.ask-options .btn.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hi);
+  border-color: transparent;
+}
+/* The index and the badge sit on the label's FIRST line, not centred against a
+   two-line block, so they align with the text they belong to. */
+.ask-options .ask-num {
+  margin-top: 1px;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+/* The badge is a separate idea from the label, so it is pushed to the far edge
+   rather than trailing it with the button's own 8px gap. */
+.ask-options .badge {
+  margin-top: 1px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* `margin-left: auto` only guarantees air while the row is short. Once the hint
+   line runs long the badge is pushed back until just the button's own 8px gap
+   is left, and the two read as one run of text — so reserve the rest here. */
+.ask-options .ask-row-main {
+  padding-inline-end: 14px;
+}
+.ask-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* The plain label (no hint) has no flex container of its own: without
+   `min-width: 0` a long one keeps its intrinsic width and overflows the row. */
+.ask-options .btn > span:not(.ask-num):not(.badge) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ask-row-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  /* On the pill's own gradient, --text-dim measured ~2.2:1 — under the 4.5:1
+     floor for text this size. Muted clears it. */
+  color: var(--text-muted);
+}
+/* Selected: the fill is a light periwinkle, so the row's muted grey hint drops
+   to ~1.6:1 on it. Both the hint and the accelerator index switch to the fill's
+   own near-black ink, softened rather than lightened. */
+.btn-primary .ask-row-hint {
+  color: color-mix(in srgb, var(--on-primary) 78%, var(--primary));
+}
+/* Accelerator index. Dim and unboxed — a hint, never competing with the label. */
+.ask-num {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.btn-primary .ask-num {
+  color: color-mix(in srgb, var(--on-primary) 70%, var(--primary));
+}
+/* The band's only footer: a multi-select's confirm. Everything else that used
+   to live down here (a free-text link, a send button, an answered counter) is
+   gone — the options are the whole interface. */
+.ask-foot {
+  display: flex;
+  margin-top: 10px;
+}
+
+/* [motion] Video starters above the composer in a new Orca Motion session: pills
+   tinted with the palette accent so they follow Scarlet / Forest / Arctic. */
+.motion-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px var(--rail, 16px);
+}
+.motion-starter {
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.motion-starter:hover {
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
 }

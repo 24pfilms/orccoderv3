@@ -7,7 +7,7 @@ import type { Item } from "./App";
  * Autopilot Ken (auto-reviewer) event handling, extracted from App.tsx and
  * modeled on useKenMentor.
  *
- * When autopilot is on, Ken silently reviews each finished GG Coder turn and the
+ * When autopilot is on, Ken silently reviews each finished OrcaCoder turn and the
  * sidecar drives a review→prompt→review loop. Ken never streams a chat bubble
  * here; instead the loop emits a small `autopilot_*` event family that this hook
  * turns into compact Ken-tinted transcript markers, plus an `autopilotReviewing`
@@ -61,7 +61,7 @@ export function useAutopilot(opts: {
           setAutopilotReviewing(true);
           return true;
         case "autopilot_prompted":
-          // A review round decided GG Coder needs another pass. The spinner ends
+          // A review round decided OrcaCoder needs another pass. The spinner ends
           // here; the injected build run takes over as the live activity.
           setAutopilotReviewing(false);
           pushMarker("prompted", {
@@ -76,6 +76,7 @@ export function useAutopilot(opts: {
           // wording is the SAME line a resumed session shows.
           pushMarker("done", {
             copySeed: typeof d.copySeed === "string" ? d.copySeed : undefined,
+            reason: typeof d.reason === "string" ? d.reason : undefined,
           });
           return true;
         case "autopilot_ignored":

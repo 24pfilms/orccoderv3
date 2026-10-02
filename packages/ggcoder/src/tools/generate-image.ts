@@ -1,5 +1,6 @@
+import os from "node:os";
 import path from "node:path";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { z } from "zod";
 import type { AgentTool, StructuredToolResult, ToolContext } from "@kenkaiiii/gg-agent";
 import { resolvePath } from "./path-utils.js";
@@ -65,7 +66,7 @@ const GenerateImageParams = z.object({
     .optional()
     .describe(
       "Where to save the generated image (relative to cwd or absolute). " +
-        "Defaults to .gg/generated/<timestamp>.png",
+        "Defaults to ~/Pictures/OrcaCoder/<project>/<timestamp>.png",
     ),
   output_format: z
     .enum(["png", "jpeg", "webp"])
@@ -79,10 +80,150 @@ const GenerateImageParams = z.object({
 
 type GenerateImageArgs = z.infer<typeof GenerateImageParams>;
 
-function defaultOutPath(cwd: string, format: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+/**
+ * Drop a self-contained .gitignore beside generated images.
+ *
+ * These land in the OPEN PROJECT's `.gg/generated/`, which in a git repo is an
+ * untracked folder holding multi-megabyte PNGs — one `git add -A` away from
+ * being committed. The ignore is scoped to this folder rather than to `.gg`,
+ * because `.gg/mcp.json` is repo-controlled and meant to be committed.
+ *
+ * Best-effort and never throws: failing to write it must not lose an image the
+ * user just waited a minute for.
+ */
+async function ensureGeneratedIgnored(dir: string): Promise<void> {
+  if (path.basename(dir) !== "generated") return;
+  const marker = path.join(dir, ".gitignore");
+  try {
+    await access(marker);
+    return;
+  } catch {
+    // No marker yet — write one below.
+  }
+  try {
+    await writeFile(
+      marker,
+      `# Generated images: large binaries, not source. Ignored so they cannot be
+# swept into a commit. Delete this file if you want to track them.
+*
+!.gitignore
+`,
+    );
+  } catch {
+    // Read-only directory, or another turn wrote it first. The image still saves.
+  }
+}
+
+/**
+ * Folder name for the project a generation belongs to.
+ *
+ * The last path segment of the working directory, reduced to characters every
+ * filesystem accepts. A drive root such as `L:\` has no last segment, and a
+ * generation started there previously landed in the root of the drive — those
+ * go to "Unfiled" rather than somewhere surprising.
+ */
+function projectFolderName(cwd: string): string {
+  const base = path.basename(path.resolve(cwd));
+  const safe = base.replace(/[<>:"/\|?*]/g, "-").replace(/[. ]+$/, "").trim();
+  return safe.length > 0 ? safe.slice(0, 60) : "Unfiled";
+}
+
+/**
+ * Where a generated image is saved when no path is given.
+ *
+ * Pictures, not the project. These are things to look at, and they used to land
+ * in the project's `.gg/generated/` — a hidden folder, invisible in Explorer by
+ * default, inside a git repo. That treated them as machine scratch rather than as
+ * the user's own work, and put multi-megabyte binaries one `git add -A` away from
+ * a commit.
+ *
+ * `~/Pictures/OrcaCoder/<project>/` is visible, is where the operating system
+ * already keeps pictures (so Explorer, Photos and search all find it), collides
+ * with nothing, and cannot be committed. The per-project subfolder keeps the
+ * grouping that living inside the project used to provide.
+ *
+ * An explicit `path` argument still wins — this is only the default.
+ */
+/**
+ * A readable filename built from the prompt.
+ *
+ * The default used to be an ISO timestamp. That is fine for a hidden scratch
+ * folder and poor for a Pictures folder you actually browse: a screen of
+ * 2026-08-26T17-03-58-572Z.png tells you nothing about which image is which.
+ * The date is already on the file, and Explorer sorts by it.
+ *
+ * Falls back to a timestamp when a prompt yields no usable characters — a
+ * prompt in a non-Latin script, or only punctuation.
+ */
+function promptSlug(prompt: string): string {
+  const slug = prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 8)
+    .join("-")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return slug.length > 0 ? slug : new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+/**
+ * Where a generated image is saved when no path is given.
+ *
+ * Pictures, not the project. These are things to look at, and they used to land
+ * in the project's `.gg/generated/` — a hidden folder, invisible in Explorer by
+ * default, inside a git repo. That treated them as machine scratch rather than
+ * as the user's own work, and put multi-megabyte binaries one `git add -A` away
+ * from a commit.
+ *
+ * `~/Pictures/OrcaCoder/<project>/` is visible, is where the operating system
+ * already keeps pictures (so Explorer, Photos and search all find it), collides
+ * with nothing, and cannot be committed. The per-project subfolder keeps the
+ * grouping that living inside the project used to provide.
+ *
+ * An explicit `out_path` argument still wins — this is only the default.
+ *
+ * GG_GENERATED_IMAGES_ROOT overrides the root. Tests must set it: they run with
+ * a temp directory as cwd, and a default derived from the HOME directory rather
+ * than from cwd escapes that sandbox and writes real files into the user's
+ * Pictures folder.
+ */
+function generatedImagesRoot(): string {
+  const override = process.env.GG_GENERATED_IMAGES_ROOT;
+  if (override && override.trim().length > 0) return override;
+  return path.join(os.homedir(), "Pictures", "OrcaCoder");
+}
+
+function defaultOutPath(cwd: string, format: string, prompt: string): string {
   const ext = format === "png" ? "png" : format === "jpeg" ? "jpg" : "webp";
-  return path.join(cwd, ".gg", "generated", `${stamp}.${ext}`);
+  return path.join(
+    generatedImagesRoot(),
+    projectFolderName(cwd),
+    `${promptSlug(prompt)}.${ext}`,
+  );
+}
+
+/**
+ * First free name at `target`, adding -2, -3, ... before the extension.
+ *
+ * Descriptive names collide in a way timestamps never did: ask twice for a
+ * puppy and the second image would silently replace the first.
+ */
+async function uniquePath(target: string): Promise<string> {
+  const dir = path.dirname(target);
+  const ext = path.extname(target);
+  const base = path.basename(target, ext);
+  for (let n = 1; n < 1000; n++) {
+    const candidate = n === 1 ? target : path.join(dir, `${base}-${n}${ext}`);
+    try {
+      await access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  return path.join(dir, `${base}-${Date.now()}${ext}`);
 }
 
 /** Format → media type for StructuredToolResult. */
@@ -130,7 +271,7 @@ export function createGenerateImageTool(
       const mediaType = mediaTypeFor(outputFormat);
       const outPath = args.out_path
         ? resolvePath(cwd, args.out_path)
-        : defaultOutPath(cwd, outputFormat);
+        : defaultOutPath(cwd, outputFormat, args.prompt);
 
       try {
         // Build the image_generation tool definition with the requested params.
@@ -204,8 +345,12 @@ export function createGenerateImageTool(
 
         for (let i = 0; i < imageBuffers.length; i++) {
           const buf = imageBuffers[i]!;
-          const savePath = imageBuffers.length === 1 ? outPath : insertIndex(outPath, i);
-          await mkdir(path.dirname(savePath), { recursive: true });
+          const wanted = imageBuffers.length === 1 ? outPath : insertIndex(outPath, i);
+          await mkdir(path.dirname(wanted), { recursive: true });
+          await ensureGeneratedIgnored(path.dirname(wanted));
+          // Only claim a free name when the caller did not name the file. An
+          // explicit out_path is an instruction, including to overwrite.
+          const savePath = args.out_path ? wanted : await uniquePath(wanted);
           await writeFile(savePath, buf);
           savedPaths.push(savePath);
         }
@@ -218,12 +363,15 @@ export function createGenerateImageTool(
         // Shrink for the model (provider image limits) and a smaller copy for
         // the inline terminal/webview preview.
         const { buffer: shrunk, mediaType: detectedType } = await shrinkToFit(primary, mediaType);
-        const previewBuffer = await downscaleForPreview(shrunk);
+        const preview = await downscaleForPreview(shrunk, detectedType);
 
         const imagePreviews = [
           {
-            base64: previewBuffer.toString("base64"),
-            mediaType: detectedType,
+            base64: preview.buffer.toString("base64"),
+            // The preview's OWN type, not the source's — downscaleForPreview
+            // re-encodes an opaque image to JPEG, and declaring it as the
+            // original PNG would describe bytes that are no longer there.
+            mediaType: preview.mediaType,
             path: primaryPath,
           },
         ];
@@ -233,10 +381,13 @@ export function createGenerateImageTool(
           const extraBuf = imageBuffers[i]!;
           const extraPath = savedPaths[i]!;
           const extraShrunk = await shrinkToFit(extraBuf, mediaType);
-          const extraPreview = await downscaleForPreview(extraShrunk.buffer);
+          const extraPreview = await downscaleForPreview(
+            extraShrunk.buffer,
+            extraShrunk.mediaType,
+          );
           imagePreviews.push({
-            base64: extraPreview.toString("base64"),
-            mediaType: extraShrunk.mediaType,
+            base64: extraPreview.buffer.toString("base64"),
+            mediaType: extraPreview.mediaType,
             path: extraPath,
           });
         }

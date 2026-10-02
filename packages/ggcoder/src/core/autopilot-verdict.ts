@@ -1,12 +1,12 @@
 /**
  * Autopilot Ken's verdict contract.
  *
- * In autopilot mode Ken never talks to the user — he auto-reviews GG Coder's
+ * In autopilot mode Ken never talks to the user — he auto-reviews OrcaCoder's
  * work and replies with exactly one of four machine-parseable verdicts. The
  * first non-empty line carries the keyword; anything after is the payload.
  *
  *   PROMPT
- *   <runnable GG Coder prompt body, 1-3 lines>
+ *   <runnable OrcaCoder prompt body, 1-3 lines>
  *
  *   ALL_CLEAR
  *
@@ -35,7 +35,7 @@
 
 export type AutopilotVerdict =
   | { kind: "prompt"; body: string }
-  | { kind: "all_clear" }
+  | { kind: "all_clear"; evidenceLimitation?: "corpus_unverified" }
   | { kind: "ignore" }
   | { kind: "human"; reason: string };
 
@@ -43,7 +43,9 @@ export type AutopilotVerdict =
  *  is unrecognized — keeps a garbage/huge reply from bloating the transcript. */
 const RAW_REASON_CAP = 500;
 
-const DEFAULT_HUMAN_REASON = "Ken flagged this for a human but gave no reason.";
+export const CORPUS_UNVERIFIED_REASON = "Not cross-checked against real-world implementations.";
+
+const DEFAULT_HUMAN_REASON = "Orca flagged this for a human but gave no reason.";
 
 /** Strip a leading/trailing ``` fence (optionally ```prompt) Ken may have wrapped
  *  the prompt body in out of chat habit. */
@@ -103,6 +105,31 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
     return { kind: "human", reason: DEFAULT_HUMAN_REASON };
   }
 
+  // Only this explicit evidence limitation can accompany a structured approval.
+  // No free-text warning or failed-check exception can become an all-clear.
+  const structured = stripPromptFence(raw);
+  if (structured.startsWith("{") || structured.startsWith("[") || /^```json(?:\s|$)/i.test(raw)) {
+    try {
+      if (structured.length > 1024) throw new Error("oversized verdict");
+      const value: unknown = JSON.parse(structured);
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.keys(value).length === 2 &&
+        "verdict" in value &&
+        value.verdict === "ALL_CLEAR" &&
+        "evidenceLimitation" in value &&
+        value.evidenceLimitation === "corpus_unverified"
+      ) {
+        return { kind: "all_clear", evidenceLimitation: "corpus_unverified" };
+      }
+    } catch {
+      // Malformed structured output must not fall through to keyword recovery.
+    }
+    return { kind: "human", reason: "Orca's structured verdict was invalid; review it manually." };
+  }
+
   const lines = raw.split("\n");
   // First non-empty line holds the keyword.
   let keywordLineIdx = 0;
@@ -146,7 +173,7 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
       body = stripPromptFence(inline);
     }
     if (!body) {
-      return { kind: "human", reason: "Ken said to continue but gave no prompt." };
+      return { kind: "human", reason: "Orca said to continue but gave no prompt." };
     }
     return { kind: "prompt", body };
   }
@@ -188,7 +215,7 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
   // HUMAN bubble): recover a line that STARTS with the uppercase keyword and
   // re-parse from there, so both `PROMPT <inline body>` and `PROMPT\n<body>`
   // shapes work. Uppercase + line-start (never mid-line, never lowercase)
-  // keeps prose like "prompt the user" or "a prompt for GG Coder" from ever
+  // keeps prose like "prompt the user" or "a prompt for OrcaCoder" from ever
   // matching. Takes the LAST such line, and runs AFTER the HUMAN recovery so
   // a reply carrying both stops instead of acting.
   const BURIED_PROMPT_RE = /^PROMPT(?=$|[\s:.,])/;

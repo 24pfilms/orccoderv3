@@ -17,7 +17,7 @@ const CLEAR_HOME = "\x1b[2J\x1b[H";
 
 function bannerLines(version: string, subtitle: string): string[] {
   return renderLogoBlock([
-    chalk.hex(PRIMARY).bold("GG Coder") +
+    chalk.hex(PRIMARY).bold("OrcaCoder") +
       chalk.hex(TEXT_DIM)(` v${version}`) +
       chalk.hex(TEXT_DIM)(" · By ") +
       chalk.hex(TEXT).bold("Ken Kai"),
@@ -281,7 +281,7 @@ export function renderScopeSelector(version: string, cwd: string): Promise<MCPSc
     version,
     subtitle: "Choose a scope",
     items: [
-      { label: "Global (all GG Coder sessions)", value: "global", description: "~/.gg/mcp.json" },
+      { label: "Global (all OrcaCoder sessions)", value: "global", description: "~/.gg/mcp.json" },
       { label: `This project (${cwd})`, value: "project", description: "./.gg/mcp.json" },
     ],
   });

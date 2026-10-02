@@ -7,7 +7,7 @@ interface PackageJson {
 }
 
 describe("gg-boss Ink dependency", () => {
-  it("pins Ink to match GG Coder", () => {
+  it("pins Ink to match OrcaCoder", () => {
     // Compare against ggcoder's actual spec instead of a hardcoded version:
     // both packages must resolve the SAME ink build (now the published
     // @kenkaiiii/ink fork via an npm alias) or their TUIs render differently.

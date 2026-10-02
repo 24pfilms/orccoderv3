@@ -1,0 +1,138 @@
+// @vitest-environment jsdom
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { BoardCanvas } from "./BoardCanvas";
+import type { BoardDocument } from "./repository";
+
+const document: BoardDocument = {
+  board: { boardId: "board", name: "Board", description: null, revision: 0, updatedAt: "0", deletedAt: null },
+  backgroundColor: "#fff",
+  dotDensity: 16,
+  toolbarPosition: "bottom",
+  panX: 0,
+  panY: 0,
+  zoom: 1,
+  items: [{
+    itemId: "note", boardId: "board", itemType: "sticky_note", x: 10, y: 20,
+    width: 200, height: 100, zIndex: 1, rotation: 0, payload: {}, revision: 0,
+    createdAt: "0", updatedAt: "0", deletedAt: null,
+  }],
+};
+
+function canvasProps() {
+  return {
+    document,
+    editable: true,
+    externalRevision: 0,
+    onViewportChange: vi.fn(),
+    onCreateItem: vi.fn().mockResolvedValue("created"),
+    onApplyMutations: vi.fn().mockResolvedValue(document),
+    onPreviewItems: vi.fn(),
+    onClearPreview: vi.fn(),
+    onItemPayloadChange: vi.fn(),
+    onImportAsset: vi.fn().mockResolvedValue(true),
+    onExport: vi.fn(),
+  };
+}
+
+describe("BoardCanvas", () => {
+  it("selects an item and persists cursor-centered wheel zoom after settling", () => {
+    vi.useFakeTimers();
+    const props = canvasProps();
+    render(<BoardCanvas {...props} />);
+    const item = screen.getByRole("group", { name: "sticky note item" });
+    fireEvent.pointerDown(item, { pointerId: 1 });
+    expect(item.getAttribute("data-selected")).toBe("true");
+    fireEvent.wheel(screen.getByLabelText("Board canvas"), { deltaY: -100, clientX: 0, clientY: 0 });
+    act(() => vi.advanceTimersByTime(180));
+    expect(props.onViewportChange).toHaveBeenCalledWith(0, 0, expect.any(Number));
+    vi.useRealTimers();
+  });
+
+  it("arms a toolbar tool without creating until the canvas is clicked", async () => {
+    const props = canvasProps();
+    render(<BoardCanvas {...props} document={{ ...document, items: [] }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sticky note" }));
+    expect(props.onCreateItem).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByLabelText("Board canvas"), { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    });
+    expect(props.onCreateItem).toHaveBeenCalledWith("sticky_note", { x: 100, y: 100 }, undefined);
+  });
+
+  it("forwards dropped image files to the board", async () => {
+    const onDropImageFiles = vi.fn().mockResolvedValue(undefined);
+    const props = canvasProps();
+    render(
+      <BoardCanvas
+        {...props}
+        document={{ ...document, items: [], panX: 40, panY: 20, zoom: 2 }}
+        onDropImageFiles={onDropImageFiles}
+      />,
+    );
+    const canvas = screen.getByLabelText("Board canvas");
+    const file = new File(["x"], "photo.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.drop(canvas, {
+        clientX: 240,
+        clientY: 120,
+        dataTransfer: { files: [file], types: ["Files"] },
+      });
+    });
+    expect(onDropImageFiles).toHaveBeenCalledOnce();
+    const [files, at] = onDropImageFiles.mock.calls[0];
+    expect(files[0].name).toBe("photo.png");
+    // The point is produced by screenToWorld, which is unit-tested separately; here we
+    // only need it to be a real world coordinate rather than undefined.
+    expect(Number.isFinite(at.x) && Number.isFinite(at.y)).toBe(true);
+  });
+
+  it("ignores a drop with no files", async () => {
+    const onDropImageFiles = vi.fn().mockResolvedValue(undefined);
+    const props = canvasProps();
+    render(<BoardCanvas {...props} document={{ ...document, items: [] }} onDropImageFiles={onDropImageFiles} />);
+    await act(async () => {
+      fireEvent.drop(screen.getByLabelText("Board canvas"), {
+        dataTransfer: { files: [], types: [] },
+      });
+    });
+    expect(onDropImageFiles).not.toHaveBeenCalled();
+  });
+
+  it("carries the last colour onto the next shape of that type", async () => {
+    const props = canvasProps();
+    const shape = {
+      itemId: "shape-1", boardId: "board", itemType: "shape" as const, x: 0, y: 0,
+      width: 100, height: 100, zIndex: 0, rotation: 0,
+      payload: { shape: "rectangle" }, revision: 0,
+      createdAt: "0", updatedAt: "0", deletedAt: null,
+    };
+    render(<BoardCanvas {...props} document={{ ...document, items: [shape] }} />);
+
+    // Select it, recolour it, then place a new shape.
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByLabelText("rectangle shape").closest("[data-board-item]")!, {
+        button: 0,
+        pointerId: 1,
+      });
+    });
+    fireEvent.change(screen.getByLabelText("Selection color"), { target: { value: "#ff0000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Shapes" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rectangle" }));
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByLabelText("Board canvas"), {
+        button: 0,
+        pointerId: 2,
+        clientX: 200,
+        clientY: 200,
+      });
+    });
+
+    expect(props.onCreateItem).toHaveBeenCalledWith(
+      "shape",
+      { x: 200, y: 200 },
+      "rectangle",
+      { fill: "#ff0000" },
+    );
+  });
+});

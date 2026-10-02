@@ -68,7 +68,7 @@ export interface ErrorItem {
   headline: string;
   /** Detailed message body (clean, no JSON). */
   message: string;
-  /** Action line — "Retry, this is an OpenAI issue" / "Report this GG Coder bug …". */
+  /** Action line — "Retry, this is an OpenAI issue" / "Report this OrcaCoder bug …". */
   guidance: string;
   id: string;
 }
@@ -90,6 +90,11 @@ export const UPDATE_NOTICE_TEXT = "KEN HAS PUSHED A NEW GG CODER UPDATE";
 
 /** Copy shown when the automatic pre-final ideal-review hook engages. */
 export const IDEAL_HOOK_NOTICE_TEXT = "Hook engaged — running an ideal review before finalizing.";
+
+/** Copy shown when the verification gate holds the final answer back because
+ *  code changed and nothing has been run since. */
+export const VERIFICATION_HOOK_NOTICE_TEXT =
+  "Hook engaged — running the project's verification before finalizing.";
 
 /** Copy shown when the loop-breaker hook fires because the agent looks stuck. */
 export const LOOP_BREAK_NOTICE_TEXT =

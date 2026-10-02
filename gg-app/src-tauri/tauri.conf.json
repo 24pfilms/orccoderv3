@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OrcaCoder",
-  "version": "0.53.0",
+  "version": "0.58.0",
   "identifier": "com.orcacoder.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -13,7 +13,7 @@
     "windows": [],
     "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://board-asset.localhost board-asset:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://board-asset.localhost board-asset:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"
     }
   },
   "bundle": {
@@ -36,6 +36,7 @@
         "headerImage": "../installer/out/nsis-header.bmp",
         "sidebarImage": "../installer/out/nsis-sidebar.bmp",
         "installerIcon": "icons/icon.ico",
+        "installerHooks": "../installer/windows-hooks.nsh",
         "installMode": "currentUser"
       }
     },

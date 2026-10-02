@@ -50,6 +50,10 @@ export interface SavedSettings {
   subagentMaxPerModel?: number;
   /** Days to keep session transcripts before startup pruning. 0 disables. */
   sessionRetentionDays: number;
+  /** Last radio station id, resumed on the next daemon start. Unset = none. */
+  radioStation?: string;
+  /** Last radio volume (0-100), applied before the stream spawns. */
+  radioVolume?: number;
   /** Speed optimization profile.
    *  - "baseline": current defaults (5-min cache TTL, no pre-warm)
    *  - "optimized": 1-h cache TTL, cache pre-warming on first prompt
@@ -114,6 +118,20 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     if (raw.thinkingEnabled === true) result.thinkingEnabled = true;
     if (isValidThinkingLevel(raw.thinkingLevel)) result.thinkingLevel = raw.thinkingLevel;
     if (typeof raw.theme === "string" && isValidThemeSetting(raw.theme)) result.theme = raw.theme;
+    // Not validated against the station list here: config.ts has no business
+    // importing the radio module, and playRadio already rejects an unknown id.
+    // A station removed from the list simply fails to resume.
+    if (typeof raw.radioStation === "string" && raw.radioStation) {
+      result.radioStation = raw.radioStation;
+    }
+    if (
+      typeof raw.radioVolume === "number" &&
+      Number.isFinite(raw.radioVolume) &&
+      raw.radioVolume >= 0 &&
+      raw.radioVolume <= 100
+    ) {
+      result.radioVolume = Math.round(raw.radioVolume);
+    }
     if (raw.idealReviewEnabled === false) result.idealReviewEnabled = false;
     if (raw.lspDiagnostics === false) result.lspDiagnostics = false;
     if (raw.allowOutsideWorkspaceWrites === true) result.allowOutsideWorkspaceWrites = true;

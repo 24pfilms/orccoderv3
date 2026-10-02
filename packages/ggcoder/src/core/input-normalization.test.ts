@@ -51,7 +51,7 @@ describe("BOM-tolerant instruction parsing", () => {
         `${BOM}---\nname: deploy\ndescription: Ship it\n---\n\nDeploy the app.`,
       );
 
-      const commands = await loadCustomCommands(cwd);
+      const commands = await loadCustomCommands(cwd, path.join(cwd, "home"));
 
       expect(commands).toHaveLength(1);
       expect(commands[0].name).toBe("deploy");

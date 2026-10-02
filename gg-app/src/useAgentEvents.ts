@@ -45,10 +45,16 @@ export interface ImagePreview {
 }
 
 // Hook kind → notice copy + tone color, mirroring the TUI's app-items.ts.
-export type HookKind = "ideal" | "loop_break" | "regrounding";
+export type HookKind = "ideal" | "verification" | "loop_break" | "regrounding";
+/** Hooks that fire in place of a final answer, so their draft must be held. */
+export type PreFinalHookKind = Extract<HookKind, "ideal" | "verification">;
 export const HOOK_PRESENTATION: Record<HookKind, { text: string; color: string }> = {
   ideal: {
     text: "Hook engaged. Running an ideal review before finalizing.",
+    color: theme.secondary,
+  },
+  verification: {
+    text: "Hook engaged. Running the project's verification before finalizing.",
     color: theme.secondary,
   },
   loop_break: {
@@ -207,6 +213,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   // that ack arrives, and clearing the flag is one-way, so this gates the clear
   // to messages we know really entered the queue.
   const ackedQueueTextsRef = useRef<Map<string, number>>(new Map());
+  const queueSnapshotRef = useRef<QueuedMessage[]>([]);
   const subagentGroupIdRef = useRef<number | null>(null);
   const subagentGroupByAgentRef = useRef<Map<string, number>>(new Map());
   // subagent_state snapshots arrive per tool/turn event PER AGENT — with
@@ -238,13 +245,18 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   // canonical live-file count on session_reset; this content supplies the fallback
   // count when connected to an older sidecar.
   const planReviewContentRef = useRef<string | null>(null);
-  // Ideal review is armed: a stop right now would inject the review, so the text
-  // the model is streaming is a candidate final answer the review will replace.
-  // Hold it in `heldTextRef` instead of painting it — the sidecar tells us this
-  // BEFORE the first token, so the user never reads a draft that then vanishes.
-  // Released (rendered) the moment the turn proves it was not a draft: tool
-  // calls, a non-ideal hook, or the run ending with no review.
-  const idealArmedRef = useRef(false);
+  // Which pre-final hooks are armed: a stop right now would inject one of them,
+  // so the text the model is streaming is a candidate final answer that hook
+  // will replace. Hold it in `heldTextRef` instead of painting it — the sidecar
+  // tells us this BEFORE the first token, so the user never reads a draft that
+  // then vanishes. Released (rendered) the moment the turn proves it was not a
+  // draft: tool calls, a mid-loop hook, or the run ending with no injection.
+  //
+  // A Set, not a bool: the sidecar arms ideal review and the verification gate
+  // independently and emits each edge only once, so a shared flag would let one
+  // hook's disarm release a draft the other is still holding — with no re-arm
+  // ever coming, the draft paints and is then deleted.
+  const armedHooksRef = useRef<Set<PreFinalHookKind>>(new Set());
   const heldTextRef = useRef<string>("");
 
   // Streaming deltas arrive faster than React can usefully render each one.
@@ -274,7 +286,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     (text: string) => {
       // Armed: this text is a review draft until proven otherwise. Accumulate it
       // off-screen; releaseHeldText paints it if the turn turns out to be real.
-      if (idealArmedRef.current) {
+      if (armedHooksRef.current.size > 0) {
         heldTextRef.current += text;
         return;
       }
@@ -355,8 +367,17 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   }, [setItems]);
 
   const pushItem = useCallback(
-    (item: Item) => {
-      setItems((prev) => [...prev, item]);
+    (item: Item, opts?: { skipIfSameAsLast?: boolean }) => {
+      setItems((prev) => {
+        if (opts?.skipIfSameAsLast) {
+          const last = prev[prev.length - 1];
+          if (last && last.kind === item.kind && last.kind === "hook" && item.kind === "hook") {
+            if (last.hook === item.hook && last.verificationReason === item.verificationReason)
+              return prev;
+          }
+        }
+        return [...prev, item];
+      });
     },
     [setItems],
   );
@@ -562,8 +583,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           tokensRef.current = 0;
           assistantTextRef.current = "";
           // Arming is per-run state on the sidecar; start every run streaming
-          // live and let hook_armed hold text back once the gate is crossed.
-          idealArmedRef.current = false;
+          // live and let hook_armed hold text back once a gate is crossed.
+          armedHooksRef.current.clear();
           heldTextRef.current = "";
           thinkingStartRef.current = null;
           thinkingAccumRef.current = 0;
@@ -882,7 +903,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // Cancels and errors end a run without agent_done; never strand held
           // text, and clear arming so the next run starts streaming live.
           releaseHeldText();
-          idealArmedRef.current = false;
+          armedHooksRef.current.clear();
           // Flush first so final sub-agent statuses are in place before the
           // aborted-marking pass below reads them.
           flushSubagentSnapshots();
@@ -926,7 +947,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
             setStatus("cancelled");
           } else {
             const elapsedMs = runStartRef.current ? Date.now() - runStartRef.current : 0;
-            const verb = pickDoneVerb(toolsUsedRef.current);
+            const verb = d.unverified === true ? "Unverified" : pickDoneVerb(toolsUsedRef.current);
             const parts = [`${verb} ${formatElapsed(elapsedMs)}`];
             if (tokensRef.current > 0) {
               parts.push(`\u2193 ${formatTokenCount(tokensRef.current)} tokens`);
@@ -938,13 +959,13 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               Array.from({ length: planTotalRef.current }, (_, i) => i + 1).every((step) =>
                 planDoneRef.current.has(step),
               );
-            if (completedPlan) {
+            if (completedPlan && d.unverified !== true) {
               planTotalRef.current = 0;
               planDoneRef.current = new Set();
               setPlanTotal(0);
               setPlanDone(new Set());
             }
-            playSound("done");
+            if (d.unverified !== true) playSound("done");
             // A run may have created/removed `.gg/commands/*.md` (e.g.
             // /setup-commit writing commit.md). Refresh so the top-right
             // commit button flips /setup-commit → /commit without a restart.
@@ -959,7 +980,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setState((s) => (s ? { ...s, ...(d as Partial<AgentState>) } : s));
           break;
         // Ken's effective model changed — either his pin was set/cleared or he
-        // followed a GG Coder switch. Payload keys (kenProvider/kenModel/
+        // followed a OrcaCoder switch. Payload keys (kenProvider/kenModel/
         // kenModelOverride) match AgentState, so a spread is enough.
         case "ken_model_change":
           setState((s) => (s ? { ...s, ...(d as Partial<AgentState>) } : s));
@@ -1034,11 +1055,16 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           planReviewContentRef.current = null;
           setPlanReview(null);
           endStreamingText();
-          pushItem({ kind: "autopilot", id: nextId(), phase: "plan_approved" });
+          pushItem({
+            kind: "autopilot",
+            id: nextId(),
+            phase: "plan_approved",
+            reason: typeof d.reason === "string" ? d.reason : undefined,
+          });
           break;
         case "autopilot_prompted":
           // Autopilot-only plan revision path: Ken rejected/refined the plan and
-          // the sidecar injected a revision prompt into GG Coder. Close the
+          // the sidecar injected a revision prompt into OrcaCoder. Close the
           // stale human review modal so autopilot visibly continues. In
           // non-autopilot mode this frame never exists, so the normal modal +
           // manual Accept/Feedback/Reject flow stays unchanged.
@@ -1067,6 +1093,14 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // row can offer an individual cancel.
           const list = Array.isArray(d.messages) ? (d.messages as QueuedMessage[]) : [];
           setQueuedMessages(list);
+          const previousQueue = queueSnapshotRef.current;
+          const cancelled = previousQueue.find((m) => m.id === d.cancelledId);
+          const cancelledIndex = cancelled
+            ? previousQueue
+                .filter((m) => m.text === cancelled.text)
+                .findIndex((m) => m.id === cancelled.id)
+            : -1;
+          queueSnapshotRef.current = list;
           // This event also fires when the agent CONSUMES queued steering at a
           // turn boundary (the sidecar re-broadcasts `queue_drained` here), so
           // drop the pending affordance from bubbles that have left the queue.
@@ -1091,6 +1125,15 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           }
 
           setItems((prev) => {
+            // Remove only a server-confirmed cancellation, before counting drains.
+            // Match its ordinal in the previous queue so duplicate text is safe.
+            if (cancelled && cancelledIndex >= 0) {
+              let index = 0;
+              prev = prev.filter((it) => {
+                if (it.kind !== "user" || !it.queued || it.text !== cancelled.text) return true;
+                return index++ !== cancelledIndex;
+              });
+            }
             // How many queued bubbles exist per text, so the number the agent has
             // taken is (bubbles - still pending).
             const bubbleCount = new Map<string, number>();
@@ -1121,29 +1164,60 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           schedulePromotionEnd();
           break;
         }
+        case "diagnostics": {
+          const text = typeof d.text === "string" ? d.text : "";
+          if (!text) break;
+          // Feedback must not use the hook path: that discards the current
+          // answer (including plan markers). Leave any armed final draft held.
+          endStreamingText();
+          pushItem({ kind: "info", id: nextId(), text }, { skipIfSameAsLast: true });
+          break;
+        }
         case "hook_armed": {
-          // Only the ideal review holds text back; other hooks are mid-loop.
-          if (String(d.kind ?? "ideal") !== "ideal") break;
-          const armed = d.armed !== false;
-          idealArmedRef.current = armed;
-          // Disarming without the review firing (autopilot takes verification
-          // over mid-run) must not strand text collected while armed.
-          if (!armed) releaseHeldText();
+          // Pre-final hooks hold text back; other hooks are mid-loop.
+          const armedKind = String(d.kind ?? "ideal");
+          if (armedKind !== "ideal" && armedKind !== "verification") break;
+          if (d.armed !== false) {
+            armedHooksRef.current.add(armedKind);
+            break;
+          }
+          armedHooksRef.current.delete(armedKind);
+          // Disarming without the hook firing (autopilot takes verification over
+          // mid-run) must not strand text collected while armed — but only once
+          // no other pre-final hook still wants it held.
+          if (armedHooksRef.current.size === 0) releaseHeldText();
           break;
         }
         case "hook": {
           const kind = String(d.kind ?? "ideal") as HookKind;
           if (kind in HOOK_PRESENTATION) {
-            if (kind === "ideal") {
+            if (kind === "ideal" || kind === "verification") {
               // Draft dies here — held (never painted) in the normal armed path,
-              // or removed from the transcript when arming came too late.
+              // or removed from the transcript when arming came too late. Both
+              // pre-final hooks replace that draft with a later, better answer.
               discardStreamingDraft();
             } else {
               // Mid-loop hooks interrupt real work: keep what was said.
               releaseHeldText();
               endStreamingText();
             }
-            pushItem({ kind: "hook", id: nextId(), hook: kind });
+            // One review can inject several times (the read-coverage retries
+            // and their escalation), and each injection announces itself so the
+            // draft it supersedes is discarded. The DISCARD must happen every
+            // time; the notice is the same sentence, so stacking identical
+            // copies just tells the user the same thing four times.
+            pushItem(
+              {
+                kind: "hook",
+                id: nextId(),
+                hook: kind,
+                ...(kind === "verification" &&
+                (d.verificationReason === "recheck" || d.verificationReason === "check_review")
+                  ? { verificationReason: d.verificationReason }
+                  : {}),
+              },
+              { skipIfSameAsLast: true },
+            );
           }
           break;
         }
@@ -1155,7 +1229,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // The transcript is going away, so acked queue texts from the old
           // session must not gate clears in the new one.
           ackedQueueTextsRef.current.clear();
-          idealArmedRef.current = false;
+          queueSnapshotRef.current = [];
+          armedHooksRef.current.clear();
           heldTextRef.current = "";
           stickToBottomRef.current = true;
           setItems([]);

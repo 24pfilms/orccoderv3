@@ -140,7 +140,7 @@ function printHelp(): void {
   // Banner — matches the interactive TUI banner layout
   console.log();
   for (const row of renderLogoBlock([
-    primary.bold("GG Coder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
+    primary.bold("OrcaCoder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
     dim("AI coding agent"),
   ])) {
     console.log(row);
@@ -180,7 +180,7 @@ function printHelp(): void {
       "--provider <name>",
       "AI provider (anthropic, xiaomi, openai, gemini, glm, moonshot, minimax, deepseek, openrouter, sakana, xai)",
     ],
-    ["--model <name>", "Model to use (e.g. claude-sonnet-5, gpt-5.5)"],
+    ["--model <name>", "Model to use (e.g. claude-sonnet-5, gpt-6-astra)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Replace the system prompt entirely"],
     ["--agent-prompt <text>", "Sub-agent body composed with tools/context/environment"],
@@ -321,7 +321,7 @@ function main(): void {
   if (values.json) {
     const message = positionals[0] ?? "";
     const jsonProvider = (values.provider ?? "anthropic") as Provider;
-    const jsonModel = values.model ?? "claude-opus-5";
+    const jsonModel = values.model ?? "claude-opus-5-5";
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
     // An agent definition's body: composed with the Tools/context/Environment
@@ -376,7 +376,7 @@ function main(): void {
   // RPC mode — headless JSON-over-stdio for IDE integrations
   if (values.rpc) {
     const rpcProvider = (values.provider ?? "anthropic") as Provider;
-    const rpcModel = values.model ?? "claude-opus-5";
+    const rpcModel = values.model ?? "claude-opus-5-5";
     const systemPrompt = values["system-prompt"];
     const cwd = process.cwd();
     runRpcMode({
@@ -398,7 +398,7 @@ function main(): void {
   const provider: Provider = saved.provider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
-    if (p === "openai") return "gpt-5.5";
+    if (p === "openai") return "gpt-6.1-sol";
     if (p === "gemini") return "gemini-3.1-flash-lite";
     if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
@@ -407,8 +407,8 @@ function main(): void {
     if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.6";
-    return "claude-opus-5";
+    if (p === "xai") return "grok-4.7";
+    return "claude-opus-5-5";
   }
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
@@ -493,7 +493,7 @@ async function runInkTUI(opts: {
   // fall back to whichever other provider actually resolved. Keyed by
   // auth-storage key (not always the provider id) — e.g. Xiaomi splits into
   // "xiaomi" (Token Plan) and "xiaomi-credits" (API Credits, required for
-  // mimo-v2.5-pro-ultraspeed) since a user may hold either or both.
+  // mimo-v2.6-pro-ultraspeed) since a user may hold either or both.
   const credentialsByProvider: Record<
     string,
     { accessToken: string; accountId?: string; projectId?: string; baseUrl?: string }
@@ -533,7 +533,7 @@ async function runInkTUI(opts: {
   // resolved: prefer the provider's default model, but for a provider like
   // Xiaomi that splits credentials across models, fall back to whichever
   // model's specific storage key DID resolve (e.g. a user who configured only
-  // API Credits, no Token Plan, must still land on mimo-v2.5-pro-ultraspeed,
+  // API Credits, no Token Plan, must still land on mimo-v2.6-pro-ultraspeed,
   // not get treated as logged out of Xiaomi entirely).
   const resolvedKeyFor = (p: Provider, modelId: string): string | undefined =>
     getAuthStorageKeys(p, modelId).find((key) => credentialsByProvider[key]);
@@ -552,7 +552,7 @@ async function runInkTUI(opts: {
   let model = preferredModel;
   if (!modelResolves(provider, model)) {
     // Same provider, different model first — e.g. Xiaomi Credits-only users
-    // land on mimo-v2.5-pro-ultraspeed instead of bouncing to another provider.
+    // land on mimo-v2.6-pro-ultraspeed instead of bouncing to another provider.
     const sameProviderModel = resolvableModelFor(provider);
     if (sameProviderModel) {
       model = sameProviderModel;
@@ -635,9 +635,8 @@ async function runInkTUI(opts: {
   let activeModel = model;
   let activeThinking = opts.thinkingLevel;
 
-  const { tools, processManager, rebuildReadTool, lspManager, subAgentManager } = await createTools(
-    cwd,
-    {
+  const { tools, processManager, rebuildReadTool, clearReadTracker, lspManager, subAgentManager } =
+    await createTools(cwd, {
       agents,
       skills,
       provider,
@@ -658,8 +657,7 @@ async function runInkTUI(opts: {
       getModel: () => activeModel,
       getThinkingLevel: () => activeThinking,
       getMaxPerModel: () => opts.subagentMaxPerModel,
-    },
-  );
+    });
 
   // MCP startup can involve `npx` installing/booting servers. Do it after the
   // TUI paints so a slow network or npm cache never looks like "nothing happens".
@@ -760,7 +758,13 @@ async function runInkTUI(opts: {
 
         if (
           savedSettings.autoCompact &&
-          shouldCompact(messages, contextWindow, policy.threshold, activeTokens)
+          shouldCompact(
+            messages,
+            contextWindow,
+            policy.threshold,
+            activeTokens,
+            policy.targetTokens,
+          )
         ) {
           await subAgentManager?.hydrate(loaded.header.id);
           log("INFO", "session", `Restored session exceeds context — auto-compacting`);
@@ -788,7 +792,16 @@ async function runInkTUI(opts: {
                   sessionPath = loaded.path;
                   sessionId = loaded.header.id;
                 }
-                if (!shouldCompact(messages, contextWindow, policy.threshold)) return;
+                if (
+                  !shouldCompact(
+                    messages,
+                    contextWindow,
+                    policy.threshold,
+                    undefined,
+                    policy.targetTokens,
+                  )
+                )
+                  return;
 
                 const fingerprint = sourceFingerprint(messages);
                 const attempt = await sessionManager.readCompactionAttemptState(conversationId);
@@ -971,6 +984,7 @@ async function runInkTUI(opts: {
     checkpointStore: checkpointRef.current ?? undefined,
     idealReviewEnabled: opts.idealReviewEnabled,
     rebuildReadTool,
+    clearReadTracker,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
     onRuntimeStateChange: (updates) => {
@@ -1007,7 +1021,7 @@ async function runSessions(): Promise<void> {
   const provider: Provider = saved2.provider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.5";
+    if (p === "openai") return "gpt-6.1-sol";
     if (p === "gemini") return "gemini-3.1-flash-lite";
     if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
@@ -1015,8 +1029,8 @@ async function runSessions(): Promise<void> {
     if (p === "deepseek") return "deepseek-v4-pro";
     if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.6";
-    return "claude-opus-5";
+    if (p === "xai") return "grok-4.7";
+    return "claude-opus-5-5";
   }
 
   const model = saved2.model ?? getDefault(provider);
@@ -1056,7 +1070,7 @@ async function runTelegramSetup(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("OrcaCoder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
       chalk.white.bold("Ken Kai"),
@@ -1331,7 +1345,7 @@ async function runAgentHomeLogin(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("OrcaCoder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
       chalk.white.bold("Ken Kai"),

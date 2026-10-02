@@ -11,19 +11,36 @@
 // its own runner, so copied native binaries match the target.
 import { build } from "esbuild";
 import { createRequire } from "node:module";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const sidecarEntry = join(here, "error-mom-sidecar.mjs");
+const sidecarEntry = join(here, "sidecar-bootstrap.mjs");
 const ggcoderSidecarEntry = join(repoRoot, "packages", "ggcoder", "dist", "app-sidecar.js");
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
 const bundledSkillsSource = join(repoRoot, "packages", "ggcoder", "assets", "skills");
 const bundledSkillsOut = join(outDir, "skills");
+// Motion mode's runtime bundle (authored skills + launcher). Kept apart from
+// `skills/` so its skills never enter coder or chat discovery.
+const motionBundleSource = join(repoRoot, "packages", "ggcoder", "assets", "motion");
+const motionBundleOut = join(outDir, "motion");
+// [motion] Motion (the bundle + the hyperframes package, ~70 MB) ships only in builds
+// made with VITE_MOTION_ENABLED=true — the same flag that shows the Home button.
+// A build without it is the Motion-free build: nothing of it is bundled.
+const motionEnabled = process.env.VITE_MOTION_ENABLED === "true";
 
 // Packages that must NOT be inlined: native addons, lazily-loaded optional
 // heavy deps, and child-process entry points that esbuild cannot discover.
@@ -57,6 +74,9 @@ const EXTERNAL = [
   // back to raw npx, paying a ~90 MB `npm exec` wrapper per MCP connection.
   "@kenkaiiii/kencode-search",
 ];
+// [motion] Motion runs the HyperFrames CLI through motion/bin/hyperframes.mjs, which
+// resolves this package from the sidecar's node_modules at runtime.
+if (motionEnabled) EXTERNAL.push("hyperframes");
 
 // require resolver anchored at the ggcoder package, where these deps live.
 const ggcoderRequire = createRequire(join(repoRoot, "packages", "ggcoder", "package.json"));
@@ -159,6 +179,21 @@ function packageRoot(name, fromRequire, fromDir) {
 }
 
 /**
+ * npm's `os` / `cpu` rule: a list allows the named values, or excludes the ones
+ * prefixed with "!". A package without the field runs everywhere.
+ */
+function allowsValue(list, value) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (list.includes(`!${value}`)) return false;
+  const allowed = list.filter((entry) => !entry.startsWith("!"));
+  return allowed.length === 0 || allowed.includes(value);
+}
+
+function matchesThisPlatform(pkg) {
+  return allowsValue(pkg.os, process.platform) && allowsValue(pkg.cpu, process.arch);
+}
+
+/**
  * Copy a package and its (optional) dependency tree into the flat output
  * node_modules, dereferencing pnpm symlinks. First version of a name wins
  * (npm-style hoist); the smoke test validates the result loads.
@@ -177,11 +212,14 @@ function copyPackage(name, fromRequire, fromDir, copied) {
   // shipped without the MCP SDK's dependency tree and crashed on spawn.
   const root = realpathSync(linkedRoot);
   copied.add(name);
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  // Platform-specific binaries (@esbuild/linux-x64, @img/sharp-darwin-arm64, …)
+  // can all be present on disk after a forced install; ship only this runner's.
+  if (!matchesThisPlatform(pkg)) return;
   const dest = join(nodeModulesOut, ...name.split("/"));
   mkdirSync(dirname(dest), { recursive: true });
   cpSync(root, dest, { recursive: true, dereference: true });
 
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const deps = {
     ...(pkg.dependencies || {}),
     ...(pkg.optionalDependencies || {}),
@@ -267,10 +305,19 @@ function stripSourceMaps() {
  * rather than shipping a package that cannot load.
  */
 function pruneBrowserOnnxPayloads() {
-  const KEEP = ["package.json", "types.d.ts", join("dist", "ort.node.min.js"), join("dist", "ort.node.min.mjs")];
+  const KEEP = [
+    "package.json",
+    "types.d.ts",
+    join("dist", "ort.node.min.js"),
+    join("dist", "ort.node.min.mjs"),
+  ];
   const roots = [];
   walk(nodeModulesOut, (p, entry) => {
-    if (entry.isDirectory() && entry.name === "onnxruntime-web" && existsSync(join(p, "package.json"))) {
+    if (
+      entry.isDirectory() &&
+      entry.name === "onnxruntime-web" &&
+      existsSync(join(p, "package.json"))
+    ) {
       roots.push(p);
     }
   });
@@ -299,9 +346,21 @@ async function main() {
   if (!existsSync(bundledSkillsSource)) {
     throw new Error(`bundled skills missing: ${bundledSkillsSource}`);
   }
+  if (motionEnabled && !existsSync(join(motionBundleSource, "plugin.json"))) {
+    throw new Error(`motion bundle missing: ${motionBundleSource}`);
+  }
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   cpSync(bundledSkillsSource, bundledSkillsOut, { recursive: true });
+  if (motionEnabled)
+    cpSync(motionBundleSource, motionBundleOut, {
+      recursive: true,
+      filter: (source) => {
+        const parts = relative(motionBundleSource, source).split(sep);
+        // Scratch files and After Effects sources are never release assets.
+        return !(parts.includes("__pycache__") || /\.(?:aep|aepx|pyc)$/i.test(source));
+      },
+    });
 
   await build({
     entryPoints: [sidecarEntry],

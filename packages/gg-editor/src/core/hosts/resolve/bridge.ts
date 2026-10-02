@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir, platform } from "node:os";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { logError, logInfo, logWarn } from "../../logger.js";
 import { findPython, type PythonCmd } from "../../python.js";
 import { BRIDGE_PY } from "./bridge-source.js";
@@ -367,7 +367,9 @@ export function resolveEnv(py?: PythonCmd): NodeJS.ProcessEnv {
   // Prepend Modules to PYTHONPATH so DaVinciResolveScript imports.
   if (env.RESOLVE_SCRIPT_API) {
     const sep = platform() === "win32" ? ";" : ":";
-    const modulesDir = join(env.RESOLVE_SCRIPT_API, "Modules");
+    const modulesDir = env.RESOLVE_SCRIPT_API.startsWith("/")
+      ? path.posix.join(env.RESOLVE_SCRIPT_API, "Modules")
+      : join(env.RESOLVE_SCRIPT_API, "Modules");
     const existing = env.PYTHONPATH ?? "";
     if (!existing.split(sep).includes(modulesDir)) {
       env.PYTHONPATH = existing ? `${modulesDir}${sep}${existing}` : modulesDir;

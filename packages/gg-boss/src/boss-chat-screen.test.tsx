@@ -11,7 +11,7 @@ const modelSelectorSource = readFileSync(
 );
 
 describe("BossChatScreen", () => {
-  it("keeps GG Coder chat layout order", () => {
+  it("keeps OrcaCoder chat layout order", () => {
     const layout = source.indexOf("<ChatLayout");
     const live = source.indexOf("{livePane}");
     const controls = source.indexOf("<ChatControls");
@@ -70,7 +70,7 @@ describe("BossChatScreen", () => {
     expect(appSource).toContain('if (getBossState().phase === "working") return;');
   });
 
-  it("uses a Boss-owned full GG Coder model selector", () => {
+  it("uses a Boss-owned full OrcaCoder model selector", () => {
     expect(source).toContain("<BossModelSelector");
     expect(source).not.toContain("loggedInProviders={state.loggedInProviders}");
     expect(modelSelectorSource).toContain('import { MODELS } from "@kenkaiiii/gg-core"');
@@ -80,7 +80,7 @@ describe("BossChatScreen", () => {
     expect(modelSelectorSource).not.toContain("loggedInProviders");
   });
 
-  it("supports GG Coder-style model aliases and keeps radio opening through the overlay reset", () => {
+  it("supports OrcaCoder-style model aliases and keeps radio opening through the overlay reset", () => {
     expect(slashSource).toContain('aliases: ["m", "model", "models"]');
     expect(appSource).toContain('case "model-boss":');
     expect(appSource).toContain('openOverlay("radio")');

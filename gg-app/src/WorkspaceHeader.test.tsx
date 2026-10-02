@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   }),
 }));
 
-import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
+import { formatActivityTitle, formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 
 afterEach(cleanup);
 
@@ -61,16 +61,25 @@ describe("WorkspaceHeader", () => {
     expect(screen.getByText("OrcaCoder")).toBeDefined();
   });
 
+  it("formats a stable project signal for ActivityWatch", () => {
+    expect(formatActivityTitle("L:\\projects\\Blobby's", "OrcaCoder")).toBe("Blobby's · OrcaCoder");
+    expect(formatActivityTitle("/work/activity-watch", "OrcaCoder")).toBe(
+      "activity-watch · OrcaCoder",
+    );
+    expect(formatActivityTitle("/work/line\nbreak", "OrcaCoder")).toBe("line break · OrcaCoder");
+    expect(formatActivityTitle(undefined, "OrcaCoder")).toBe("OrcaCoder");
+  });
+
   it("formats clean, dirty, and pre-commit project context", () => {
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder")).toBe("app │ ⎇ main");
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 3)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "OrcaCoder")).toBe("app │ ⎇ main");
+    expect(formatWorkspaceTitle("/work/app", "main", "OrcaCoder", 3)).toBe(
       "app │ ⎇ main │ 3 uncommitted",
     );
-    expect(formatWorkspaceTitle("/work/app", null, "GG Coder", 1)).toBe("app │ 1 uncommitted");
+    expect(formatWorkspaceTitle("/work/app", null, "OrcaCoder", 1)).toBe("app │ 1 uncommitted");
   });
 
   it("shows GitHub issue/PR counts and appends them to the window title", () => {
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, 4, 1)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "OrcaCoder", 0, 4, 1)).toBe(
       "app │ ⎇ main │ 4 issues │ 1 PR",
     );
 
@@ -95,7 +104,7 @@ describe("WorkspaceHeader", () => {
 
   it("shows an added-roots badge and appends it to the window title", () => {
     expect(
-      formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, null, null, ["/work/sdk"]),
+      formatWorkspaceTitle("/work/app", "main", "OrcaCoder", 0, null, null, ["/work/sdk"]),
     ).toBe("app │ +1 root │ ⎇ main");
 
     render(
@@ -133,7 +142,7 @@ describe("WorkspaceHeader", () => {
 
   it("hides a zero-count chip but keeps a non-zero one", () => {
     // 3 open issues, 0 open PRs → issues chip shows, PR chip is hidden.
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, 3, 0)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "OrcaCoder", 0, 3, 0)).toBe(
       "app │ ⎇ main │ 3 issues",
     );
 
@@ -212,6 +221,6 @@ describe("WorkspaceHeader", () => {
     expect(screen.getByText("⎇ feature/titlebar")).toBeDefined();
     expect(screen.getByText("3 uncommitted")).toBeDefined();
     expect(screen.getByTitle("gg-coder │ ⎇ feature/titlebar │ 3 uncommitted")).toBeDefined();
-    expect(screen.queryByText("GG Coder")).toBeNull();
+    expect(screen.queryByText("OrcaCoder")).toBeNull();
   });
 });

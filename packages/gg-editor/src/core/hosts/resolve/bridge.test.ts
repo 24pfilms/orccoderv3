@@ -70,16 +70,22 @@ describe("resolveEnv", () => {
     }
   });
 
-  it("does not set PYTHONHOME on darwin/linux", () => {
-    // Real platform() on the test runner is darwin or linux — no Windows path
-    // taken, so PYTHONHOME stays undefined unless the user pre-set it.
+  it("does not set PYTHONHOME on darwin/linux", async () => {
+    vi.resetModules();
+    vi.doMock("node:os", async () => {
+      const real = await vi.importActual<typeof NodeOs>("node:os");
+      return { ...real, platform: () => "linux" };
+    });
     const beforeHome = process.env.PYTHONHOME;
     delete process.env.PYTHONHOME;
     try {
-      const env = resolveEnv({ cmd: "python3", args: [], prefix: "/usr/local" });
+      const mod = await import("./bridge.js");
+      const env = mod.resolveEnv({ cmd: "python3", args: [], prefix: "/usr/local" });
       expect(env.PYTHONHOME).toBeUndefined();
     } finally {
       if (beforeHome !== undefined) process.env.PYTHONHOME = beforeHome;
+      vi.doUnmock("node:os");
+      vi.resetModules();
     }
   });
 

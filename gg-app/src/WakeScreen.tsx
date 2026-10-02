@@ -31,6 +31,12 @@ const CHAT_LINES = [
   "Channel open. Judgment temporarily disabled.",
 ] as const;
 
+const MOTION_LINES = [
+  "Lights\u2026",
+  "Drop in a website, a PDF, or an idea.",
+  "Tell me what to make. Let\u2019s make it move.",
+] as const;
+
 const TYPE_MS = 55;
 const HOLD_MS = 6000;
 const ERASE_MS = 22;
@@ -162,7 +168,9 @@ function OceanCurrent(): React.ReactElement {
       }
     }
 
-    startLoop();
+    // A window restored at launch never receives a blur event, so an
+    // unconditional start would loop forever in the background.
+    if (document.hasFocus()) startLoop();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", startLoop);
     window.addEventListener("blur", stopLoop);
@@ -179,9 +187,15 @@ function OceanCurrent(): React.ReactElement {
   return <canvas ref={canvasRef} className="wake-rain" aria-hidden="true" />;
 }
 
-export function WakeScreen({ chat = false }: { chat?: boolean }): React.ReactElement {
+export function WakeScreen({
+  chat = false,
+  motion = false,
+}: {
+  chat?: boolean;
+  motion?: boolean;
+}): React.ReactElement {
   const reduced = prefersReducedMotion();
-  const lines = chat ? CHAT_LINES : CODE_LINES;
+  const lines = motion ? MOTION_LINES : chat ? CHAT_LINES : CODE_LINES;
   const [text, setText] = useState(reduced ? lines[lines.length - 1] : "");
 
   useEffect(() => {

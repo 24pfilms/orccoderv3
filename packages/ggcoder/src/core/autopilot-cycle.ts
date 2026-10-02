@@ -6,7 +6,7 @@
  * unit-testable without booting the sidecar.
  *
  * Two branches share one loop:
- *  - PLAN branch (planPending): GG Coder submitted a plan via exit_plan. Ken
+ *  - PLAN branch (planPending): OrcaCoder submitted a plan via exit_plan. Ken
  *    reviews the PLAN itself — approve (auto-accept + implement, then the next
  *    round work-reviews the implementation), send revision feedback, or hand a
  *    genuine user-level decision to the human. Verdict mapping for plans:
@@ -21,18 +21,18 @@
  * plan) still halts as HUMAN — Ken must never prompt into a read-only
  * plan-mode session.
  */
-import type { AutopilotVerdict } from "./autopilot-verdict.js";
+import { CORPUS_UNVERIFIED_REASON, type AutopilotVerdict } from "./autopilot-verdict.js";
 
 /** Reason shown in the Ken bubble when the build session is still INSIDE plan
  *  mode (enter_plan without exit_plan) when the cycle checks in — there is no
  *  submitted plan to review and the session is read-only, so the loop halts
  *  and hands control to the user. */
 export const AUTOPILOT_PLAN_DRAFTING_REASON =
-  "GG Coder is still drafting a plan (plan mode is active with nothing submitted). Finish or cancel the plan yourself; autopilot can't prompt a read-only session.";
+  "OrcaCoder is still drafting a plan (plan mode is active with nothing submitted). Finish or cancel the plan yourself; autopilot can't prompt a read-only session.";
 
 /** Situational-awareness preamble prepended to EVERY build-session run that
  *  Autopilot Ken injects (fix prompts, plan-revision prompts, the post-approval
- *  "implement it now" run). GG Coder otherwise can't tell an autopilot-injected
+ *  "implement it now" run). OrcaCoder otherwise can't tell an autopilot-injected
  *  prompt from a human one — it lands as a plain user message — so it behaves as
  *  if someone is watching: it may stop to ask permission for safe, already-
  *  implied work (which only burns a review round, since no human is there) and
@@ -42,7 +42,7 @@ export const AUTOPILOT_PLAN_DRAFTING_REASON =
  *  human-typed prompts — the sidecar applies it only at the autopilot cycle's
  *  injection sites. */
 export const AUTOPILOT_INJECTION_PREAMBLE =
-  "[Autopilot] This turn was triggered by Ken, GG Coder's automated reviewer — " +
+  "[Autopilot] This turn was triggered by Orca, OrcaCoder's automated reviewer — " +
   "not by a human, and no human is watching it land. So:\n" +
   "- Prove your work before finishing: run the tests/build or screenshot the UI. " +
   'Don\'t end on "should work" — nobody is here to catch a mistake, so verify it ' +
@@ -51,7 +51,7 @@ export const AUTOPILOT_INJECTION_PREAMBLE =
   "request and safe to do. Just do it and keep going.\n" +
   "- Only surface a question when it needs a real human decision (a product/taste " +
   "call, a destructive or irreversible action, a missing secret or external " +
-  "access). State it plainly and stop; Ken routes it to the user.\n\n" +
+  "access). State it plainly and stop; Orca routes it to the user.\n\n" +
   "Your instruction:";
 
 /** Prepend {@link AUTOPILOT_INJECTION_PREAMBLE} to a body destined for the build
@@ -67,7 +67,7 @@ export function frameAutopilotInjection(body: string): string {
  *  plan was not approved, revise it, resubmit via exit_plan. */
 export function buildPlanRevisionPrompt(feedback: string): string {
   return (
-    `The plan was not approved. Feedback from Ken (automated reviewer):\n\n` +
+    `The plan was not approved. Feedback from Orca (automated reviewer):\n\n` +
     `${feedback}\n\n` +
     `Revise the plan based on this feedback, then call exit_plan again for review.`
   );
@@ -75,7 +75,7 @@ export function buildPlanRevisionPrompt(feedback: string): string {
 
 /** SSE frame types the cycle can emit (matched by the webview). */
 export type AutopilotCycleEmit =
-  | { type: "autopilot_done"; data: Record<string, never> }
+  | { type: "autopilot_done"; data: { reason?: string } }
   | { type: "autopilot_ignored"; data: Record<string, never> }
   | { type: "autopilot_human"; data: { reason: string } }
   | { type: "autopilot_capped"; data: { rounds: number } }
@@ -88,6 +88,8 @@ export interface AutopilotCycleDeps {
   maxRounds: number;
   /** True once /cancel fires — checked between every step. */
   isCancelled: () => boolean;
+  /** Host evidence, independent of Ken's verdict and reminder budgets. */
+  verificationProblem: () => string | null;
   /** Live plan-mode state of the BUILD session. */
   isPlanMode: () => boolean;
   /** True while a submitted plan (exit_plan) awaits a verdict. */
@@ -104,10 +106,10 @@ export interface AutopilotCycleDeps {
   /** Auto-accept the pending plan (fresh session + approved-plan prompt).
    *  Resolves false when the plan generation went stale (a user Accept/Reject
    *  raced the review and won) — the cycle stops silently. */
-  acceptPlan: () => Promise<boolean>;
+  acceptPlan: (reason?: string) => Promise<boolean>;
   /** Run the "plan approved — implement it now" prompt on the fresh session. */
   runImplement: () => Promise<void>;
-  /** Feed a PROMPT verdict's body to GG Coder as an injected run. */
+  /** Feed a PROMPT verdict's body to OrcaCoder as an injected run. */
   runPrompt: (body: string) => Promise<void>;
   /** Called BEFORE runPrompt: record the injected body (digest labeling) and
    *  broadcast the autopilot_prompted marker. */
@@ -129,13 +131,19 @@ export interface AutopilotCycleDeps {
  *  - rounds exhausted          → autopilot_capped
  */
 export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<void> {
-  if (deps.isCancelled()) return;
+  const stopIfUnverified = () => {
+    const reason = deps.verificationProblem();
+    if (!reason) return false;
+    deps.emit({ type: "autopilot_human", data: { reason } });
+    return true;
+  };
+  if (deps.isCancelled() || stopIfUnverified()) return;
   await deps.resetReviewer();
   for (let round = 1; round <= deps.maxRounds; round++) {
-    if (deps.isCancelled()) return;
+    if (deps.isCancelled() || stopIfUnverified()) return;
     if (deps.planPending()) {
       const verdict = await deps.reviewPlan();
-      if (!verdict || deps.isCancelled()) return;
+      if (!verdict || deps.isCancelled() || stopIfUnverified()) return;
       if (verdict.kind === "human") {
         deps.emit({ type: "autopilot_human", data: { reason: verdict.reason } });
         return;
@@ -153,7 +161,11 @@ export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<voi
       }
       // all_clear — and ignore mapped to approve ("nothing to object to" on a
       // plan means it's sound; plans never get a silent-ignore user blocker).
-      const ok = await deps.acceptPlan();
+      const reason =
+        verdict.kind === "all_clear" && verdict.evidenceLimitation
+          ? CORPUS_UNVERIFIED_REASON
+          : undefined;
+      const ok = await deps.acceptPlan(reason);
       if (!ok) return; // generation went stale — the user's manual action won
       await deps.runImplement();
       // Next round: normal work review of the implementation.
@@ -167,9 +179,12 @@ export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<voi
       return;
     }
     const verdict = await deps.review();
-    if (!verdict || deps.isCancelled()) return;
+    if (!verdict || deps.isCancelled() || stopIfUnverified()) return;
     if (verdict.kind === "all_clear") {
-      deps.emit({ type: "autopilot_done", data: {} });
+      deps.emit({
+        type: "autopilot_done",
+        data: verdict.evidenceLimitation ? { reason: CORPUS_UNVERIFIED_REASON } : {},
+      });
       return;
     }
     if (verdict.kind === "ignore") {

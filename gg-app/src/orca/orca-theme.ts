@@ -91,6 +91,9 @@ export interface OrcaThemeState {
   saturation: number;
   /** 15..80 → glass rgba opacity percentage. */
   glass: number;
+  /** Temporarily override the palette when this window needs the user's next task. */
+  attentionEnabled: boolean;
+  attentionTheme: ThemeName;
 }
 
 export const DEFAULT_STATE: OrcaThemeState = {
@@ -99,11 +102,14 @@ export const DEFAULT_STATE: OrcaThemeState = {
   brightness: 72,
   saturation: 115,
   glass: 42,
+  attentionEnabled: true,
+  attentionTheme: "scarlet",
 };
 
 // The versioned key intentionally starts fresh from the upstream theme-kit default.
 const STORAGE_KEY = "orcacoder-v3-appearance-scarlet-v1";
 const ROOT = (): HTMLElement => document.documentElement;
+let attentionRequested = false;
 
 /** #rrggbb → rgba(r,g,b,a) */
 function hexToRgba(hex: string, alpha: number): string {
@@ -133,6 +139,14 @@ export function loadState(): OrcaThemeState {
           ? clamp(parsed.saturation, 0, 200)
           : DEFAULT_STATE.saturation,
       glass: typeof parsed.glass === "number" ? clamp(parsed.glass, 15, 80) : DEFAULT_STATE.glass,
+      attentionEnabled:
+        typeof parsed.attentionEnabled === "boolean"
+          ? parsed.attentionEnabled
+          : DEFAULT_STATE.attentionEnabled,
+      attentionTheme:
+        parsed.attentionTheme && THEMES[parsed.attentionTheme]
+          ? parsed.attentionTheme
+          : DEFAULT_STATE.attentionTheme,
     };
   } catch {
     return { ...DEFAULT_STATE };
@@ -150,8 +164,8 @@ export function saveState(state: OrcaThemeState): void {
 
 /** Wallpaper colors → --orca-wp-1..8, plus accent → --primary/--secondary. */
 export function applyTheme(theme: ThemeName, state: OrcaThemeState): void {
-  const palette = THEMES[theme];
-  if (!palette) return;
+  const palette =
+    THEMES[attentionRequested && state.attentionEnabled ? state.attentionTheme : theme];
   const r = ROOT().style;
 
   // Wallpaper colors
@@ -218,6 +232,44 @@ export function applyAll(state: OrcaThemeState): void {
   applyTheme(state.theme, state);
   applyBrightness(state.brightness);
   applySaturation(state.saturation);
+}
+
+/**
+ * Temporarily use the selected attention palette while this window is waiting.
+ * The saved normal palette remains untouched and is restored when work resumes.
+ */
+function applySavedState(): OrcaThemeState {
+  const state = loadState();
+  ROOT().toggleAttribute("data-orca-attention", attentionRequested && state.attentionEnabled);
+  applyAll(state);
+  return state;
+}
+
+export function setAttentionOverride(active: boolean): void {
+  attentionRequested = active;
+  applySavedState();
+}
+
+/** Persist and immediately apply the user's attention-theme preference. */
+export function setAttentionEnabled(enabled: boolean): void {
+  saveState({ ...loadState(), attentionEnabled: enabled });
+  applySavedState();
+}
+
+/** Choose which palette is used while a window is waiting. */
+export function setAttentionTheme(theme: ThemeName): void {
+  saveState({ ...loadState(), attentionTheme: theme });
+  applySavedState();
+}
+
+/** Keep the attention preference synchronized across all open app windows. */
+export function subscribeToThemeChanges(onChange?: (state: OrcaThemeState) => void): () => void {
+  const sync = (event: StorageEvent): void => {
+    if (event.key !== STORAGE_KEY) return;
+    onChange?.(applySavedState());
+  };
+  window.addEventListener("storage", sync);
+  return () => window.removeEventListener("storage", sync);
 }
 
 /** A CSS gradient string for a theme dot, used by the appearance panel. */

@@ -523,7 +523,7 @@ const parityCaseByKind = {
     kind: "session_summary",
     id: "session-summary",
     summary: {
-      title: "GG Coder is powering down. Goodbye!",
+      title: "OrcaCoder is powering down. Goodbye!",
       sessionId: "session.jsonl",
       provider: "anthropic",
       model: "claude-sonnet-4-5",

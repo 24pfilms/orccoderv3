@@ -1,6 +1,6 @@
 import { isValidElement, type ReactNode } from "react";
 
-// Pure helpers behind Ken's "Send to GG Coder" button. Kept dependency-free (no
+// Pure helpers behind Ken's "Send to OrcaCoder" button. Kept dependency-free (no
 // Tauri/agent imports) so they're unit-testable in a node env and reusable.
 // ReactMarkdown hands the `pre` override a `<code class="language-xxx">…</code>`
 // child: `codeLanguage` decides whether the fenced block becomes a Ken prompt

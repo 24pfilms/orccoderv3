@@ -1,0 +1,1755 @@
+/* Board chrome uses the app's glass system (--orca-glass / --orca-glass-solid /
+   --orca-accent-glow, blur 24px + saturate 180%) rather than a hand-mixed copy, so the
+   board matches every other surface in the app and follows the theme.
+   */
+/* Theme tokens are the app's: --primary, --border, --bg, --error. This file used to
+   reference --accent/--line/--surface-0/--danger, none of which exist, so every rule
+   that touched them was invalid and silently dropped. */
+.workspace-surface {
+  display: contents;
+}
+
+.workspace-surface[hidden] {
+  display: none;
+}
+
+.board-surface {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: auto 1fr;
+  place-items: stretch;
+  overflow: hidden;
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.board-shell-header {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-shell-header > span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* All bottom chrome shares one baseline; they previously sat at 20px / 12px / 12px with
+   different heights, which read as misalignment. */
+.board-toolbar {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: 16px;
+  max-width: min(calc(100% - 380px), 760px);
+  transform: translateX(-50%);
+}
+
+.board-toolbar[data-position="top"] {
+  top: 20px;
+  bottom: auto;
+}
+
+/* Glassmorphism, after Mero's toolbar: translucent dark plate, heavy backdrop blur, an
+   accent-tinted hairline, and a layered shadow that lifts it off the canvas. Mero used
+   its blue; this uses the Orca accent so the board matches the rest of the app. */
+.board-toolbar-scroll {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 13px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.board-toolbar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* A non-visible overflow on one axis forces the other to clip too, so the shape and
+   export menus (which open above/below the bar) were cut off entirely. Let the bar
+   overflow while a menu is open; it goes back to scrolling when the menu closes. */
+.board-toolbar-scroll:has([role="menu"]) {
+  overflow: visible;
+}
+
+.board-tool-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.board-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.board-toolbar .board-tool-button,
+.board-export-menu > button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+}
+
+.board-toolbar .board-tool-button {
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.board-toolbar .board-tool-button:hover:not(:disabled),
+.board-toolbar .board-tool-button:focus-visible {
+  color: color-mix(in srgb, var(--primary) 70%, var(--text));
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+.board-toolbar .board-tool-button[data-active="true"] {
+  color: color-mix(in srgb, var(--primary) 82%, var(--text));
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+  box-shadow:
+    0 0 11px color-mix(in srgb, var(--primary) 34%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.board-toolbar .board-tool-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.board-toolbar .board-tool-button:disabled {
+  opacity: 0.38;
+}
+
+.board-tool-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
+.board-toolbar .board-tool-split {
+  grid-template-columns: 18px 8px;
+  width: 36px;
+}
+
+.board-tool-split svg:last-child {
+  width: 10px;
+}
+
+.board-shape-menu {
+  position: absolute;
+  z-index: 44;
+  bottom: calc(100% + 10px);
+  left: 0;
+  display: grid;
+  width: 190px;
+  padding: 6px;
+  gap: 2px;
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 18px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent);
+}
+
+.board-toolbar[data-position="top"] .board-shape-menu {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.board-shape-menu button {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  color: var(--text-muted);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.board-shape-menu button:hover,
+.board-shape-menu button:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.board-shape-menu svg {
+  width: 15px;
+  height: 15px;
+}
+
+.board-export-menu {
+  position: relative;
+}
+
+/* The toolbar is anchored to the BOTTOM of the canvas, so its menus must open upward or
+   they land below the window edge. Flipped back down only when the bar sits at the top. */
+.board-export-menu [role="menu"] {
+  position: absolute;
+  z-index: 44;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: grid;
+  min-width: 104px;
+  padding: 5px;
+  gap: 3px;
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 18px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent);
+}
+
+.board-toolbar[data-position="top"] .board-export-menu [role="menu"] {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.board-export-menu [role="menu"] button {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.board-export-menu [role="menu"] button:hover,
+.board-export-menu [role="menu"] button:focus-visible {
+  color: color-mix(in srgb, var(--primary) 70%, var(--text));
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  outline: none;
+}
+
+.board-manager {
+  display: flex;
+  align-items: center;
+}
+
+.board-name-button {
+  display: flex;
+  max-width: 280px;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  color: var(--text);
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.board-name-button:hover,
+.board-name-button:focus-visible {
+  background: var(--surface-1);
+  outline: none;
+}
+
+.board-name-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-name-button svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.board-name-button svg:last-child { width: 13px; color: var(--text-muted); }
+
+/* The app only defines .sr-only inside .memory-table, so every visually-hidden label on
+   the board ("Search boards", "Selection color", "Font size") was rendering as text. */
+.board-surface .sr-only,
+.board-manager-dialog .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.board-manager-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 48px));
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+}
+
+.board-manager-dialog::backdrop {
+  background: rgb(0 0 0 / 58%);
+  backdrop-filter: blur(3px);
+}
+
+.board-manager-panel {
+  display: grid;
+  max-height: inherit;
+  grid-template-rows: auto auto auto auto;
+  overflow: hidden;
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 80px rgb(0 0 0 / 58%),
+    0 0 28px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.board-manager-panel > header,
+.board-manager-panel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.board-manager-panel > footer {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.board-manager-panel h2 { margin: 0; color: var(--text); font-size: 15px; font-weight: 600; }
+.board-manager-panel header button { width: 28px; height: 28px; padding: 0; color: var(--text-muted); background: transparent; border: 0; border-radius: 7px; }
+.board-manager-panel header button svg { width: 15px; height: 15px; }
+.board-manager-panel header button:hover { color: var(--text); background: var(--surface-2); }
+
+.board-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 12px;
+  padding: 0 11px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 10px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.board-search:focus-within {
+  background: var(--bg);
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}
+
+.board-search svg { width: 16px; color: var(--text-muted); }
+.board-search input { width: 100%; height: 34px; color: var(--text); font-size: 13px; background: transparent; border: 0; outline: none; }
+.board-search svg { width: 14px; height: 14px; flex: none; }
+
+.board-manager-cards {
+  display: grid;
+  align-content: start;
+  margin: 0;
+  padding: 0 16px 12px;
+  gap: 4px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+/* One row per board: name + relative time on the left, rename on the right. */
+.board-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 0;
+  border-radius: 10px;
+  transition: background 140ms ease;
+}
+
+.board-card:hover,
+.board-card:focus-within {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+
+/* The open board is marked with an accent edge rather than an outline, so the list
+   reads as a set of rows instead of a stack of input fields. */
+.board-card[data-selected] {
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg));
+}
+
+.board-card[data-selected]::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--primary);
+  content: "";
+}
+
+.board-card-open {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+}
+
+.board-card-open strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-card-rename {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  opacity: 0;
+}
+
+.board-card:hover .board-card-rename,
+.board-card-rename:focus-visible {
+  opacity: 1;
+}
+
+.board-card-rename:hover { color: color-mix(in srgb, var(--primary) 75%, var(--text)); }
+.board-card-rename svg { width: 13px; height: 13px; }
+
+.board-rename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.board-rename input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 8px;
+  outline: none;
+}
+
+.board-rename button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  color: color-mix(in srgb, var(--primary) 80%, var(--text));
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.board-rename button svg { width: 14px; height: 14px; }
+
+.board-manager-cards span {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.board-manager-empty { padding: 16px 0; color: var(--text-muted); font-size: 12px; text-align: center; }
+
+.board-manager-panel > footer { border-top: 1px solid var(--border); }
+.board-manager-panel footer form { display: flex; width: 100%; align-items: end; gap: 8px; }
+.board-manager-panel footer label { display: grid; flex: 1; gap: 5px; color: var(--text-muted); font-size: 11px; }
+.board-manager-panel footer input { height: 36px; padding: 0 9px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+.board-manager-panel footer button { min-height: 36px; padding: 0 12px; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; }
+.board-manager-panel footer .is-primary { color: var(--bg); background: var(--primary); border-color: var(--primary); font-weight: 650; }
+
+/* Minimap sits on the shared bottom baseline and can be collapsed to a single chip. */
+.board-minimap-shell {
+  position: absolute;
+  z-index: 25;
+  left: 16px;
+  bottom: 16px;
+}
+
+.board-minimap {
+  position: relative;
+  display: block;
+  width: 168px;
+  height: 112px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.board-minimap-item {
+  position: absolute;
+  min-width: 2px;
+  min-height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+}
+
+.board-minimap-viewport {
+  position: absolute;
+  padding: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid var(--primary);
+}
+
+.board-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--text-muted) 28%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+  outline: none;
+}
+
+.board-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.board-canvas-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.board-selection-box {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border: 1px solid var(--primary);
+}
+
+.board-resize-handle,
+.board-rotate-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  pointer-events: auto;
+  background: #fff;
+  border: 2px solid var(--primary);
+  border-radius: 3px;
+}
+
+.board-resize-handle[data-handle="nw"] { left: -6px; top: -6px; cursor: nwse-resize; }
+.board-resize-handle[data-handle="ne"] { right: -6px; top: -6px; cursor: nesw-resize; }
+.board-resize-handle[data-handle="se"] { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.board-resize-handle[data-handle="sw"] { left: -6px; bottom: -6px; cursor: nesw-resize; }
+
+/* Rotation lives BELOW the selection, because the contextual toolbar occupies the band
+   above it and the two were colliding. */
+.board-rotate-stem {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 1px);
+  width: 1px;
+  height: 12px;
+  background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.board-rotate-handle {
+  left: 50%;
+  top: calc(100% + 13px);
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--primary);
+  background: var(--surface-1);
+  border: 1px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+  transition: background 120ms ease, transform 120ms ease;
+  cursor: grab;
+}
+
+.board-rotate-handle svg {
+  width: 12px;
+  height: 12px;
+  color: var(--bg);
+}
+
+.board-context-toolbar {
+  position: absolute;
+  z-index: 32;
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 0;
+  padding: 2px;
+  color: var(--text-muted);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
+}
+
+.board-context-toolbar button,
+.board-context-toolbar select,
+.board-color-control {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 3px;
+  place-items: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.board-context-toolbar button:hover,
+.board-context-toolbar button:focus-visible,
+.board-context-toolbar select:hover,
+.board-context-toolbar select:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
+  outline: none;
+}
+
+.board-context-toolbar svg { width: 16px; height: 16px; }
+.board-color-control input { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; }
+
+.board-item {
+  /* The app's sans token is `--sans` (Geist Variable). `--font-sans` was never
+     defined, so every board label silently fell back to the browser default serif. */
+  --board-font-sans: var(--sans);
+  --board-font-serif: Georgia, serif;
+  --board-font-mono: var(--mono);
+  --board-font-hand: "Comic Sans MS", cursive;
+  position: absolute;
+  box-sizing: border-box;
+  color: var(--text);
+  transform-origin: center;
+  user-select: none;
+}
+
+.board-item[data-item-type="frame"] {
+  pointer-events: none;
+}
+
+/* Only the border zones and the title are interactive. A frame's interior must stay
+   click-through: it is a large, nearly transparent box, and making the whole thing
+   clickable let it swallow every press over its area, including on items beneath it. */
+.board-item[data-item-type="frame"] .board-frame-edge,
+.board-item[data-item-type="frame"] .board-frame-title {
+  pointer-events: auto;
+}
+
+.board-frame-edge {
+  position: absolute;
+  cursor: move;
+}
+
+.board-frame-edge[data-edge="top"] {
+  top: -8px;
+  right: -8px;
+  left: -8px;
+  height: 16px;
+}
+
+.board-frame-edge[data-edge="bottom"] {
+  right: -8px;
+  bottom: -8px;
+  left: -8px;
+  height: 16px;
+}
+
+.board-frame-edge[data-edge="left"] {
+  top: 8px;
+  bottom: 8px;
+  left: -8px;
+  width: 16px;
+}
+
+.board-frame-edge[data-edge="right"] {
+  top: 8px;
+  right: -8px;
+  bottom: 8px;
+  width: 16px;
+}
+
+.board-item-text {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  place-items: center;
+  overflow: hidden;
+  resize: none;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.board-item-text > span:first-child {
+  max-width: 100%;
+  text-align: center;
+}
+
+/* Content-sized editor centred by the wrapper, matching the display state. */
+.board-item-textarea {
+  width: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  resize: none;
+}
+
+.board-item-textarea:focus {
+  outline: none;
+}
+
+/* Paper feel rather than a flat rectangle: a faint top-light gradient, a hairline inner
+   highlight, and a two-stop shadow (tight contact + soft ambient) so notes sit ON the
+   canvas instead of floating above it. */
+.board-item-sticky_note {
+  position: relative;
+  color: #202124;
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.4;
+  border: 0;
+  border-radius: 6px;
+  background-image: linear-gradient(
+    170deg,
+    rgb(255 255 255 / 26%) 0%,
+    rgb(255 255 255 / 6%) 34%,
+    rgb(0 0 0 / 5%) 100%
+  );
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 22%),
+    0 10px 24px -6px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 38%);
+}
+
+.board-item[data-selected] .board-item-sticky_note {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 24%),
+    0 14px 30px -6px rgb(0 0 0 / 40%),
+    inset 0 1px 0 rgb(255 255 255 / 42%);
+}
+
+/* Shapes: crisper edges and a touch of depth without the cartoon outline. */
+.board-shape svg,
+.board-shape {
+  filter: drop-shadow(0 2px 6px rgb(0 0 0 / 28%));
+}
+
+.board-arrow {
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 32%));
+}
+
+.board-item-text {
+  letter-spacing: 0.01em;
+}
+
+.board-note-votes {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  min-width: 24px;
+  padding: 2px 6px;
+  color: #30250b;
+  font-size: 11px;
+  text-align: center;
+  background: rgb(255 255 255 / 42%);
+  border-radius: 99px;
+}
+
+.board-item-text:not(.board-item-sticky_note) {
+  padding: 2px;
+  place-items: start;
+}
+
+.board-item-text:not(.board-item-sticky_note) > span { text-align: left; }
+
+.board-shape,
+.board-frame,
+.board-asset-item,
+.board-asset-item img,
+.board-arrow,
+.board-drawing {
+  width: 100%;
+  height: 100%;
+}
+
+.board-shape,
+.board-arrow,
+.board-drawing {
+  display: block;
+  overflow: visible;
+}
+
+.board-shape-hit-target,
+.board-drawing-hit-target {
+  stroke: transparent;
+  stroke-width: 16;
+}
+
+.board-frame {
+  position: relative;
+  box-sizing: border-box;
+  border: 1.5px dashed;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 2%, transparent);
+}
+
+.board-frame-title,
+.board-frame input {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: -1px;
+  max-width: calc(100% + 2px);
+  padding: 3px 7px;
+  overflow: hidden;
+  color: var(--text);
+  font: 600 12px var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.board-frame input {
+  min-width: 150px;
+  outline: 2px solid var(--primary);
+}
+
+.board-asset-item {
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.board-asset-item img { object-fit: contain; }
+.board-asset-item button { min-height: 34px; padding: 0 10px; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; }
+
+.board-marquee {
+  position: absolute;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid var(--primary);
+}
+
+.board-drawing-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.board-canvas[data-tool="place"],
+.board-canvas[data-tool="pen"] { cursor: crosshair; }
+
+.board-fixture-page,
+.board-fixture-page body,
+.board-fixture-page #root,
+.board-fixture-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.board-fixture-root {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (max-width: 900px) {
+  .board-toolbar {
+    left: 12px;
+    right: 12px;
+    bottom: 64px;
+    max-width: none;
+    transform: none;
+  }
+
+  .board-toolbar-scroll {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-toolbar *,
+  .board-item {
+    scroll-behavior: auto;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .board-shell-header {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .board-shell-header > span {
+    display: none;
+  }
+
+  .board-minimap {
+    width: 108px;
+    height: 72px;
+  }
+}
+
+.board-zoom-controls {
+  position: absolute;
+  z-index: 25;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 4px;
+  color: var(--text-muted);
+  background: var(--orca-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 13px;
+  box-shadow:
+    0 4px 30px rgb(0 0 0 / 42%),
+    0 0 22px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 26%);
+}
+
+.board-zoom-controls button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.board-zoom-controls button:hover,
+.board-zoom-controls button:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
+  outline: none;
+}
+
+.board-zoom-controls svg { width: 15px; height: 15px; }
+.board-zoom-controls output { min-width: 46px; text-align: center; font: 10px var(--mono); }
+.board-zoom-controls > span { width: 1px; height: 22px; margin: 0 3px; background: var(--border); }
+
+.board-surface-empty {
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.board-agent-status {
+  max-width: 140px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.board-agent-status:hover,
+.board-agent-status:focus-visible {
+  color: var(--text);
+}
+
+.board-error {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px;
+  place-content: center;
+  justify-items: start;
+}
+
+/* ── Right-click menu ─────────────────────────────────────────────────────
+   Fixed to the viewport (not the world) so it never scales with zoom. */
+.board-context-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.board-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-context-menu button:hover,
+.board-context-menu button:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.board-context-menu button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.8;
+}
+
+.board-context-menu-danger {
+  color: var(--error);
+}
+
+.board-context-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.board-font-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.board-font-size output {
+  min-width: 16px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Embedded YouTube player. Pointer input is refused until the item is selected so the
+   first click selects (and drag still works) rather than landing on the player controls. */
+
+
+/* ── Prompt dialog (YouTube URL / generation prompt) ───────────────────── */
+.board-prompt-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+.board-prompt {
+  display: grid;
+  width: min(460px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 50%);
+}
+
+.board-prompt h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.board-prompt label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.board-prompt input,
+.board-prompt textarea {
+  width: 100%;
+  padding: 9px 11px;
+  color: var(--text);
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.board-prompt input:focus,
+.board-prompt textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  outline: none;
+}
+
+.board-prompt-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.board-prompt footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The icon had no size rule, so a 24px lucide glyph sat inside a 20px button with no
+   colour — the handle rendered as a blank white blob. */
+.board-rotate-handle svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.2;
+}
+
+.board-rotate-handle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface-1));
+  transform: translateX(-50%) scale(1.08);
+}
+
+.board-rotate-handle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.board-rotate-handle:active {
+  cursor: grabbing;
+}
+
+.board-minimap-toggle {
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  right: -9px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 40%);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease;
+  cursor: pointer;
+}
+
+.board-minimap-shell:hover .board-minimap-toggle,
+.board-minimap-toggle:focus-visible {
+  opacity: 1;
+}
+
+.board-minimap-toggle:hover {
+  color: color-mix(in srgb, var(--primary) 78%, var(--text));
+}
+
+.board-minimap-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Collapsed state: a small chip on the same baseline, always visible. */
+.board-minimap-collapsed {
+  position: absolute;
+  z-index: 25;
+  top: auto;
+  right: auto;
+  left: 16px;
+  bottom: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  opacity: 1;
+}
+
+.board-minimap-collapsed svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Footer actions */
+.board-manager-panel footer .is-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 14px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  border-radius: 9px;
+  transition: background 140ms ease;
+}
+
+.board-manager-panel footer .is-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+}
+
+.board-manager-panel footer .is-primary:disabled {
+  opacity: 0.45;
+}
+
+.board-manager-panel footer .is-primary svg {
+  width: 14px;
+  height: 14px;
+}
+
+.board-manager-panel footer form {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+}
+
+.board-manager-panel footer form input {
+  flex: 1;
+  min-height: 34px;
+  padding: 0 11px;
+  color: var(--text);
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: 9px;
+  outline: none;
+}
+
+.board-manager-panel footer form > button[type="button"] {
+  min-height: 34px;
+  padding: 0 11px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+}
+
+.board-manager-panel footer form > button[type="button"]:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* Shape label editing: the editor overlays the shape so the geometry stays put. */
+.board-shape-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.board-shape-text {
+  position: absolute;
+  inset: 0;
+  padding: 8px 10px;
+  background: transparent;
+}
+
+/* Shape sheen and rim weight. Tuned by eye against real shapes on the dark canvas; the
+   variables stay overridable so the values can be adjusted without touching geometry. */
+.board-shape > g {
+  stroke-width: var(--board-shape-stroke, 0.75);
+}
+
+.board-sheen-top { stop-opacity: var(--board-sheen-top, 0.41); }
+.board-sheen-mid { stop-opacity: var(--board-sheen-mid, 0.18); }
+.board-sheen-bottom { stop-opacity: var(--board-sheen-bottom, 0.09); }
+
+
+/* Shape and arrow labels are HTML, so they keep the app font and never distort with the
+   shape's aspect ratio (the SVG itself is drawn with preserveAspectRatio="none"). */
+.board-shape-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  padding: 8px 10px;
+  place-items: center;
+  overflow: hidden;
+  font-family: var(--board-font-sans);
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  user-select: none;
+}
+
+.board-context-toolbar svg {
+  width: 13px;
+  height: 13px;
+}
+
+.board-context-toolbar .board-color-control input {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Orca busy indicator ───────────────────────────────────────────────────
+   A thin track with an accent arc sweeping round it, and an orca gliding inside. */
+.orca-spinner {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.orca-spinner svg {
+  width: 52px;
+  height: 52px;
+}
+
+.orca-spinner-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--border) 90%, transparent);
+  stroke-width: 2;
+}
+
+.orca-spinner-arc {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 30 121;
+  transform-origin: 28px 28px;
+  animation: orca-arc 1.4s linear infinite;
+}
+
+.orca-spinner-body {
+  fill: var(--text);
+  transform-origin: 28px 28px;
+  animation: orca-swim 3s ease-in-out infinite;
+}
+
+.orca-spinner-eye {
+  fill: var(--bg);
+}
+
+.orca-spinner span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+@keyframes orca-arc {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Glide forward, bank into the turn, glide back — a lazy circuit, not a spin. */
+@keyframes orca-swim {
+  0%,
+  100% {
+    transform: translateX(-3px) rotate(-6deg);
+  }
+  50% {
+    transform: translateX(3px) rotate(5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orca-spinner-arc,
+  .orca-spinner-body {
+    animation: none;
+  }
+}
+
+/* Compact prompt dialog */
+.board-prompt {
+  width: min(392px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 16px;
+}
+
+.board-prompt h2 {
+  font-size: 14px;
+}
+
+.board-prompt label {
+  gap: 5px;
+  font-size: 11px;
+}
+
+.board-prompt input,
+.board-prompt textarea {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* The player holds 16:9 however the item is resized, letterboxed inside the item rather
+   than stretched, and stays inert until the shield is clicked. */
+
+
+/* An item waiting on its generated picture: just the orca, sized to the item. */
+.board-asset-generating {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 8px;
+}
+/* ── YouTube embed ─────────────────────────────────────────────────────────
+   Ported from Mero: the player never takes pointer input until it is handed control by
+   a double-click, because an iframe swallows everything inside its own frame — including
+   the inner half of the resize handles. Escape gives control back. */
+.board-video-item {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+}
+
+.board-video-frame {
+  position: relative;
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.board-video-item iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.board-video-item[data-playing] iframe {
+  pointer-events: auto;
+}
+
+.board-video-shield {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 4%);
+  cursor: move;
+  transition: background 160ms ease;
+}
+
+.board-video-shield:hover {
+  background: rgb(0 0 0 / 22%);
+}
+
+.board-video-shield span {
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.board-video-shield:hover span {
+  opacity: 1;
+}
+
+.board-video-hint {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* ── Canvas settings ───────────────────────────────────────────────────────
+   Lives in the board header; dot spacing is a stored per-board setting. */
+.board-canvas-settings {
+  position: relative;
+}
+
+.board-canvas-settings > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.board-canvas-settings > button:hover,
+.board-canvas-settings > button[aria-expanded="true"] {
+  color: color-mix(in srgb, var(--primary) 70%, var(--text));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.board-canvas-settings > button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.board-canvas-settings-panel {
+  position: absolute;
+  z-index: 44;
+  top: calc(100% + 8px);
+  left: 0;
+  padding: 10px 12px;
+  background: var(--orca-glass-solid);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 11px;
+  box-shadow:
+    0 12px 34px rgb(0 0 0 / 46%),
+    0 0 18px color-mix(in srgb, var(--orca-accent-glow) 28%, transparent);
+}
+
+.board-canvas-settings-panel label {
+  display: grid;
+  /* The readout column has to hold "#4e42f0", not just a two-digit number — at 24px the
+     values overflowed the panel entirely. */
+  grid-template-columns: 84px 1fr 62px;
+  align-items: center;
+  gap: 9px;
+}
+
+/* The colour row shows the colour itself, so it needs no numeric readout. */
+.board-canvas-settings-panel label:has(input[type="color"]) {
+  grid-template-columns: 84px 1fr;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.board-canvas-settings-panel output {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dropping images from the desktop. The whole canvas is the target; the ring makes it
+   obvious the board will take the file rather than the window navigating to it. */
+.board-canvas[data-drop-active]::after {
+  position: absolute;
+  z-index: 36;
+  inset: 8px;
+  border: 2px dashed color-mix(in srgb, var(--primary) 65%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+/* ── Grid light pass ───────────────────────────────────────────────────────
+   A wide, very soft band drifting across the dotted background. Animated with a
+   transform so it runs on the compositor: no repaint of the dot pattern, and no cost
+   while the user is dragging or panning. Sits beneath the world, so items are untouched. */
+.board-sheen {
+  position: absolute;
+  z-index: 0;
+  top: -20%;
+  bottom: -20%;
+  left: -70%;
+  /* A wider, softer band spreads each colour step over more pixels, so consecutive
+     8-bit steps land further apart and the seam between them stops reading as an edge. */
+  width: 85%;
+  /* Many stops rather than a blur. A large CSS blur is rendered at reduced resolution by
+     Chromium, which is what produced the chunky, rasterised edges — the fix is a gradient
+     that is already smooth, not a blurred one that is not. */
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 8%, transparent) 20%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 22%, transparent) 30%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 42%, transparent) 38%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 65%, transparent) 44%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 85%, transparent) 48%,
+    var(--board-light-tint, var(--primary)) 50%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 85%, transparent) 52%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 65%, transparent) 56%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 42%, transparent) 62%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 22%, transparent) 70%,
+    color-mix(in srgb, var(--board-light-tint, var(--primary)) 8%, transparent) 80%,
+    transparent 100%
+  );
+  opacity: var(--board-light-opacity, 0.1);
+  pointer-events: none;
+  animation: board-light-pass var(--board-light-speed, 34s) ease-in-out infinite alternate;
+}
+
+@keyframes board-light-pass {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(280%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-sheen {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+.board-canvas-settings-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 316px;
+}
+
+.board-canvas-settings-panel hr {
+  width: 100%;
+  height: 1px;
+  margin: 2px 0;
+  border: 0;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.board-canvas-settings-panel input[type="color"] {
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.board-canvas-settings-reset {
+  justify-self: end;
+  min-height: 24px;
+  padding: 0 9px;
+  color: var(--text-muted);
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.board-canvas-settings-reset:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+

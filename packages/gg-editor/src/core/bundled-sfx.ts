@@ -24,7 +24,7 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve as resolvePath } from "node:path";
+import path, { join, resolve as resolvePath } from "node:path";
 import { runFfmpeg } from "./media/ffmpeg.js";
 
 export interface SfxRecipe {
@@ -213,7 +213,8 @@ export async function resolveSfx(
     return { path, bundled: true, name: nameOrPath };
   }
   // Treat as a file path.
-  return { path: resolvePath(cwd, nameOrPath), bundled: false };
+  const resolver = cwd.startsWith("/") ? path.posix : path;
+  return { path: resolver.resolve(cwd, nameOrPath), bundled: false };
 }
 
 /**

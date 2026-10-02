@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { theme } from "./theme";
 import { recentChangelog } from "./changelog";
-import { Confetti } from "./Confetti";
 import { ShimmerText } from "./ShimmerText";
 import { Badge } from "./Badge";
 
@@ -15,7 +14,11 @@ import { Badge } from "./Badge";
  * whole window.
  */
 const HIGHLIGHT_TERMS = [
+  "GPT-6 Astra",
   "MiMo-V2.5-Pro-UltraSpeed",
+  "GPT-6.1 Sol",
+  "GPT-6 Sol",
+  "GPT-6 Luna",
   "GPT-5.6 Ultra",
   "GPT-5.6",
   "GPT-5.5",
@@ -25,6 +28,7 @@ const HIGHLIGHT_TERMS = [
   "Gemini 3.5 Flash",
   "Gemini 3.1 Pro",
   "Claude Sonnet 5",
+  "Claude Fable 5.1",
   "Claude Fable 5",
   "Sakana Fugu",
   "Fugu Ultra",
@@ -90,7 +94,6 @@ export function WhatsNewWindow(): React.ReactElement {
 
   return (
     <div className="whatsnew-window" style={{ background: theme.surface2 }}>
-      <Confetti />
       <div className="modal-head">
         <div className="modal-title">
           <ShimmerText base={theme.primary} bright={theme.secondary}>

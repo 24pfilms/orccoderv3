@@ -11,7 +11,7 @@ const supportsNativeMock = vi.mocked(supportsNativeSelectPopup);
 
 const MODELS: ModelOption[] = [
   { id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "anthropic" },
-  { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", provider: "openai" },
+  { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", provider: "openai" },
   { id: "grok-4.5", name: "Grok 4.5", provider: "xai" },
   {
     id: "local/ollama/gemma4:e2b",
@@ -36,6 +36,58 @@ const MODELS: ModelOption[] = [
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("ModelSelect — empty list recovery", () => {
+  // The hydrate load is the only unprompted one and its backoff is bounded, so
+  // a slow sidecar used to leave both pickers permanently dead. The click is
+  // the user's only way back short of reopening the project.
+  it.each([true, false])("offers a retry instead of going dead (native=%s)", (native) => {
+    supportsNativeMock.mockReturnValue(native);
+    const onReload = vi.fn();
+    render(
+      <ModelSelect
+        models={[]}
+        currentModel="claude-sonnet-5"
+        onSelect={vi.fn()}
+        onReload={onReload}
+        title="Switch model"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /no models loaded, click to retry/i });
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(trigger);
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays disabled when no retry is wired, rather than clicking into nothing", () => {
+    supportsNativeMock.mockReturnValue(false);
+    render(
+      <ModelSelect models={[]} currentModel="claude-sonnet-5" onSelect={vi.fn()} title="Switch" />,
+    );
+
+    expect(screen.getByRole("button").hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps the run lock ahead of the retry — a run in flight is not a missing list", () => {
+    supportsNativeMock.mockReturnValue(false);
+    const onReload = vi.fn();
+    render(
+      <ModelSelect
+        models={[]}
+        currentModel="claude-sonnet-5"
+        onSelect={vi.fn()}
+        onReload={onReload}
+        disabled
+        title="Switch"
+      />,
+    );
+
+    const trigger = screen.getByRole("button");
+    expect(trigger.hasAttribute("disabled")).toBe(true);
+    expect(trigger.title).toMatch(/while the agent is running/i);
+  });
 });
 
 describe("ModelSelect — native popup", () => {

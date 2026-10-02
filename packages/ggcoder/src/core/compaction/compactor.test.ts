@@ -23,7 +23,14 @@ import {
 } from "./compactor.js";
 import { remapAnchorForCompaction } from "../session-history.js";
 import { estimateConversationTokens } from "./token-estimator.js";
-import { MODELS, getContextWindow } from "@kenkaiiii/gg-core";
+import {
+  MODELS,
+  getContextWindow,
+  registerRuntimeModels,
+  clearRuntimeModels,
+  toModelInfo,
+  DEFAULT_LOCAL_ENDPOINTS,
+} from "@kenkaiiii/gg-core";
 import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
 
 // ── Helpers ────────────────────────────────────────────────
@@ -120,16 +127,18 @@ describe("shouldCompact", () => {
     }
     const estimated = estimateConversationTokens(messages);
 
-    const opusContext = getContextWindow("claude-opus-5");
+    // GLM-5.3 serves its full 1M window. (Claude advertises 1M too, but only
+    // serves 200K without the context-1m beta, so it can't be the big example.)
+    const glmContext = getContextWindow("glm-5.3");
     const kimiContext = getContextWindow("kimi-k2.7-code");
 
-    // Sanity: Opus has 1M, Kimi has 256k
-    expect(opusContext).toBe(1_000_000);
+    // Sanity: GLM-5.3 has 1M, Kimi has 256k
+    expect(glmContext).toBe(1_000_000);
     expect(kimiContext).toBe(262_144);
 
-    // Under Opus (1M): conversation is under 80% threshold (800k) — no compaction
-    expect(shouldCompact(messages, opusContext, 0.8)).toBe(false);
-    expect(estimated).toBeLessThan(opusContext * 0.8);
+    // Under GLM-5.3 (1M): conversation is under 80% threshold (800k) — no compaction
+    expect(shouldCompact(messages, glmContext, 0.8)).toBe(false);
+    expect(estimated).toBeLessThan(glmContext * 0.8);
 
     // Under Kimi (256k): same conversation exceeds 80% threshold (~210k) — must compact
     expect(shouldCompact(messages, kimiContext, 0.8)).toBe(true);
@@ -142,6 +151,17 @@ describe("shouldCompact", () => {
     expect(shouldCompact(messages, 200_000, 0.8, 170_000)).toBe(true);
     // actualTokens under threshold — no compact despite same messages
     expect(shouldCompact(messages, 200_000, 0.8, 100_000)).toBe(false);
+  });
+
+  it("honors an explicit latency-capped trigger limit over window × threshold", () => {
+    // The GLM latency-cap path: a 1M window at 0.85 would never fire at
+    // 150K tokens, but the policy's capped target (176K × 0.85 ≈ 149.6K)
+    // must — this is exactly the 2026-09-22 session that ran 60 minutes.
+    const messages = [makeMessage("system", "sys"), makeMessage("user", "hello")];
+    expect(shouldCompact(messages, 1_000_000, 0.85, 150_000, 149_600)).toBe(true);
+    expect(shouldCompact(messages, 1_000_000, 0.85, 149_599, 149_600)).toBe(false);
+    // Without the explicit limit, the old behavior holds (no compaction)
+    expect(shouldCompact(messages, 1_000_000, 0.85, 150_000)).toBe(false);
   });
 
   it("falls back to char-based estimate when actualTokens is undefined", () => {
@@ -175,13 +195,16 @@ describe("shouldCompact", () => {
     expect(getCompactionReserveTokens(16_384)).toBe(21_384);
   });
 
-  it("does not let an output-token reserve move the percentage boundary", () => {
+  it("does not let theoretical output size move the percentage boundary", () => {
+    // The old deprecated `_reserveTokens` parameter is gone: output-token
+    // ceilings no longer affect the trigger at all — there is no slot to
+    // smuggle one through.
     const messages = [makeMessage("user", "x")];
     const contextWindow = 272_000;
     const boundary = Math.ceil(contextWindow * 0.8);
 
-    expect(shouldCompact(messages, contextWindow, 0.8, boundary - 1, 128_000)).toBe(false);
-    expect(shouldCompact(messages, contextWindow, 0.8, boundary, 128_000)).toBe(true);
+    expect(shouldCompact(messages, contextWindow, 0.8, boundary - 1)).toBe(false);
+    expect(shouldCompact(messages, contextWindow, 0.8, boundary)).toBe(true);
   });
 });
 
@@ -194,7 +217,11 @@ describe("compaction thresholds across all models", () => {
     const contextWindow = getContextWindow(model.id, { provider: model.provider });
     const boundary = Math.ceil(contextWindow * 0.85);
 
-    expect(contextWindow).toBe(model.contextWindow);
+    // Compaction targets the SERVED window: Claude's advertised 1M is served
+    // as 200K without the context-1m beta; every other model serves as listed.
+    const servedWindow =
+      model.provider === "anthropic" ? Math.min(model.contextWindow, 200_000) : model.contextWindow;
+    expect(contextWindow).toBe(servedWindow);
     expect(shouldCompact(messages, contextWindow, undefined, boundary - 1)).toBe(false);
     expect(shouldCompact(messages, contextWindow, undefined, boundary)).toBe(true);
   });
@@ -208,13 +235,14 @@ describe("compaction thresholds across all models", () => {
   });
 
   it.each(MODELS)("$id ignores theoretical output size at the boundary", (model) => {
+    // Output-token ceilings do not move the boundary — the deprecated
+    // reserve parameter is gone, so there is no slot to smuggle one through.
     const contextWindow = getContextWindow(model.id, { provider: model.provider });
     const boundary = Math.ceil(contextWindow * 0.8);
+    expect(model.maxOutputTokens).toBeGreaterThan(0);
 
-    expect(shouldCompact(messages, contextWindow, 0.8, boundary - 1, model.maxOutputTokens)).toBe(
-      false,
-    );
-    expect(shouldCompact(messages, contextWindow, 0.8, boundary, model.maxOutputTokens)).toBe(true);
+    expect(shouldCompact(messages, contextWindow, 0.8, boundary - 1)).toBe(false);
+    expect(shouldCompact(messages, contextWindow, 0.8, boundary)).toBe(true);
   });
 
   it("unknown models fall back to a 200k context window", () => {
@@ -222,10 +250,9 @@ describe("compaction thresholds across all models", () => {
   });
 
   const openAITransportCases = [
-    { id: "gpt-5.6-sol", publicWindow: 1_050_000, codexWindow: 272_000 },
-    { id: "gpt-5.6-terra", publicWindow: 1_050_000, codexWindow: 272_000 },
-    { id: "gpt-5.6-luna", publicWindow: 1_050_000, codexWindow: 272_000 },
-    { id: "gpt-5.5", publicWindow: 1_050_000, codexWindow: 272_000 },
+    { id: "gpt-6-astra", publicWindow: 1_050_000, codexWindow: 272_000 },
+    { id: "gpt-6.1-sol", publicWindow: 1_050_000, codexWindow: 272_000 },
+    { id: "gpt-6-luna", publicWindow: 1_050_000, codexWindow: 272_000 },
   ] as const;
 
   it.each(openAITransportCases)("$id uses its public API window without accountId", (testCase) => {
@@ -645,7 +672,7 @@ vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
 });
 
 // Must import stream AFTER mock setup
-import { stream } from "@kenkaiiii/gg-ai";
+import { stream, StreamResult } from "@kenkaiiii/gg-ai";
 
 describe("compact", () => {
   const baseOptions = {
@@ -708,6 +735,53 @@ describe("compact", () => {
     expect(result.result.originalCount).toBe(3);
     expect(result.result.newCount).toBe(3);
     expect(result.messages).toHaveLength(3);
+  });
+
+  it("caps local summaries at the discovered model output allowance", async () => {
+    const model = toModelInfo(
+      {
+        rawId: "small-context",
+        endpointId: "ollama",
+        contextWindow: 4096,
+        contextWindowKnown: true,
+        supportsTools: true,
+        supportsImages: false,
+        supportsThinking: false,
+      },
+      DEFAULT_LOCAL_ENDPOINTS[0]!,
+    );
+    registerRuntimeModels([model]);
+    const mockStream = vi.mocked(stream);
+    mockStream.mockClear();
+    mockStream.mockImplementation(
+      () =>
+        new StreamResult(
+          (async function* () {
+            yield { type: "text_delta", text: "Conversation summary." };
+            return {
+              message: { role: "assistant", content: "Conversation summary." },
+              stopReason: "end_turn",
+              usage: { inputTokens: 100, outputTokens: 10 },
+            };
+          })(),
+        ),
+    );
+    try {
+      await compact(buildConversation(30), {
+        ...baseOptions,
+        provider: "local",
+        model: model.id,
+        contextWindow: model.contextWindow,
+      });
+      expect(mockStream).toHaveBeenCalled();
+      for (const [options] of mockStream.mock.calls) {
+        expect(options.maxTokens).toBe(model.maxOutputTokens);
+        expect(options.maxTokens).toBeLessThan(MIN_SUMMARY_OUTPUT_TOKENS);
+      }
+    } finally {
+      clearRuntimeModels();
+      mockStream.mockReset();
+    }
   });
 
   it("produces summary message with LLM response", async () => {

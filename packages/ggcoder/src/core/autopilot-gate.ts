@@ -1,6 +1,6 @@
 /**
  * Autopilot gate — pure decision logic for whether Ken's auto-review cycle may
- * start after a finished GG Coder turn.
+ * start after a finished OrcaCoder turn.
  *
  * Autopilot must NOT review every turn. The concrete leak cases this gate
  * closes (each has a matching unit test in autopilot-gate.test.ts):

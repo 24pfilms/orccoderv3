@@ -23,6 +23,7 @@ describe("releaseText", () => {
 
     expect(latestIndex).toBeGreaterThan(-1);
     expect(html).toContain("What&#x27;s new with OrcaCoder");
+    expect(html).not.toContain("confetti-canvas");
     expect(html.match(/whatsnew-section latest/g)).toHaveLength(1);
     expect(html).toContain('class="badge"');
     expect(historyIndex).toBeGreaterThan(latestIndex);

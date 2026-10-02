@@ -11,9 +11,11 @@ import {
   listRecentSessions,
   type RecentSession,
 } from "./core/project-discovery.js";
+import { MOTION_SESSIONS_QUERY, motionSessionsDir } from "./motion-agent/motion-agent.js";
 
 const CODING_SESSION_LIMIT = 5;
 const CHAT_SESSION_LIMIT = 30;
+const MOTION_SESSION_LIMIT = 30;
 /** Foreign rows are additive, so keep them a short tail under the native list. */
 const FOREIGN_SESSION_LIMIT = 5;
 
@@ -31,6 +33,9 @@ export async function listSidecarSessions(
   coderSessionsDir: string,
   homeDir?: string,
 ): Promise<SidecarSession[]> {
+  if (requestedAgent === MOTION_SESSIONS_QUERY) {
+    return listRecentSessions(cwd, MOTION_SESSION_LIMIT, motionSessionsDir(coderSessionsDir));
+  }
   if (requestedAgent !== "all") {
     // Chat agents have their own private stores; only the coding list (no
     // requested agent) shares a cwd with Claude Code and Codex.
@@ -70,7 +75,7 @@ export async function listSidecarSessions(
 }
 
 /**
- * GG Coder's own sessions for this project plus any Claude Code / Codex
+ * OrcaCoder's own sessions for this project plus any Claude Code / Codex
  * transcripts recorded against the same cwd.
  *
  * The project picker already surfaces those stores, so a project can appear

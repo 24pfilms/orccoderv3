@@ -37,6 +37,10 @@ async function loadSharp(): Promise<SharpFn> {
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** Max width (px) for inline terminal-graphics previews so scrollback stays small. */
 const PREVIEW_MAX_WIDTH = 480;
+/** Above this, a resized preview is re-encoded as JPEG. Flat-colour images
+ *  (screenshots, diagrams) land well under it and keep their crisp text as PNG;
+ *  photographs do not, and are the ones worth re-encoding. */
+const PREVIEW_REENCODE_BYTES = 150_000;
 /**
  * Visual token budget — vision encoders tile an image into fixed-size patches
  * and charge per patch, so pixels beyond the budget are re-scaled away by the
@@ -521,24 +525,53 @@ export async function shrinkToFit(
 }
 
 /**
- * Downscale an image buffer for an inline terminal preview, capping its width
- * at PREVIEW_MAX_WIDTH so previews stay small in scrollback. The full-resolution
- * copy is kept separately for the model. Preserves format and aspect ratio.
+ * Downscale an image buffer for an inline preview, capping its width at
+ * PREVIEW_MAX_WIDTH. The full-resolution copy is kept separately for the model.
  *
- * On any sharp failure the original buffer is returned unchanged — a preview is
+ * Re-encodes rather than only resizing. Resizing alone kept the source format,
+ * and a photograph held as PNG stays about a megabyte even at 480px wide — that
+ * preview then travels to the webview as base64 inside an event payload, roughly
+ * 1.3MB for a thumbnail, and arrives as a broken image. As JPEG the same preview
+ * is around 50KB.
+ *
+ * Images WITH transparency stay PNG. JPEG has no alpha, so a screenshot or a
+ * diagram would gain a black background, and JPEG artifacts around text are
+ * worse than the extra bytes. Those are also the images that compress well as
+ * PNG anyway — flat colour, few gradients — so they were never the problem.
+ *
+ * On any sharp failure the original buffer is returned unchanged: a preview is
  * cosmetic and must never break the turn.
  */
-export async function downscaleForPreview(buffer: Buffer): Promise<Buffer> {
+export async function downscaleForPreview(
+  buffer: Buffer,
+  mediaType = "image/png",
+): Promise<{ buffer: Buffer; mediaType: string }> {
   try {
     const sharp = await loadSharp();
     const meta = await sharp(buffer).metadata();
     const width = meta.width ?? 0;
-    if (width > 0 && width <= PREVIEW_MAX_WIDTH) return buffer;
-    return await sharp(buffer)
-      .resize(PREVIEW_MAX_WIDTH, undefined, { fit: "inside", withoutEnlargement: true })
-      .toBuffer();
+    const opaque = meta.hasAlpha !== true;
+    const alreadySmall = width > 0 && width <= PREVIEW_MAX_WIDTH;
+
+    const resized = alreadySmall
+      ? buffer
+      : await sharp(buffer)
+          .resize(PREVIEW_MAX_WIDTH, undefined, { fit: "inside", withoutEnlargement: true })
+          .toBuffer();
+
+    // Re-encode only when resizing did not do the job. A screenshot or a diagram
+    // is flat colour and compresses to well under the threshold as PNG, and JPEG
+    // would put ringing around its text for no benefit. A photograph does not
+    // shrink, and it is the one that needs a different format.
+    if (!opaque || resized.length <= PREVIEW_REENCODE_BYTES) {
+      return { buffer: resized, mediaType };
+    }
+    return {
+      buffer: await sharp(resized).jpeg({ quality: 78 }).toBuffer(),
+      mediaType: "image/jpeg",
+    };
   } catch {
-    return buffer;
+    return { buffer, mediaType };
   }
 }
 

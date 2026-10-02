@@ -162,6 +162,7 @@ import {
   IDEAL_HOOK_NOTICE_TEXT,
   LOOP_BREAK_NOTICE_TEXT,
   REGROUNDING_NOTICE_TEXT,
+  VERIFICATION_HOOK_NOTICE_TEXT,
   TRUNCATED_CONTINUING_NOTICE_TEXT,
   TRUNCATED_INCOMPLETE_NOTICE_TEXT,
   TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT,
@@ -701,8 +702,8 @@ export function App(props: AppProps) {
 
   // Derive credentials for the current provider + model. Almost always keyed
   // by provider id, but a model can prefer one storage key and fall back to
-  // another (e.g. Xiaomi's mimo-v2.5-pro-ultraspeed is API-Credits-only,
-  // while mimo-v2.5-pro prefers the Token Plan but falls back to API Credits
+  // another (e.g. Xiaomi's mimo-v2.6-pro-ultraspeed is API-Credits-only,
+  // while mimo-v2.6-pro prefers the Token Plan but falls back to API Credits
   // when only that's configured) — see getAuthStorageKeys().
   const currentCreds = getAuthStorageKeys(currentProvider, currentModel)
     .map((key) => props.credentialsByProvider?.[key])
@@ -1817,11 +1818,29 @@ export function App(props: AppProps) {
         }
 
         // Verification gate: code was edited but no test/typecheck/lint/build
-        // completed since the last edit — block "done" until it runs (or the
-        // budget escalates to an honest unverified statement).
+        // completed since the last edit — demand it once, then let the run stop.
         if (verificationGateEnabledRef.current) {
+          const verificationReason = verificationGateRef.current.pendingReason();
           const verificationFollowUp = verificationGateRef.current.followUp();
-          if (verificationFollowUp) return verificationFollowUp;
+          if (verificationFollowUp) {
+            // Say why the run is continuing past its apparent end, or the extra
+            // answer reads as the agent talking to itself.
+            setLiveItems((prev) => [
+              ...prev,
+              {
+                kind: "ideal_hook",
+                text:
+                  verificationReason === "tamper"
+                    ? "Hook engaged — reviewing changes to tests and checks."
+                    : verificationReason === "recheck"
+                      ? "Hook engaged — re-checking the changes made after verification."
+                      : VERIFICATION_HOOK_NOTICE_TEXT,
+                tone: "review",
+                id: getId(),
+              },
+            ]);
+            return verificationFollowUp;
+          }
         }
 
         const steps = planStepsRef.current;
@@ -2189,8 +2208,14 @@ export function App(props: AppProps) {
           inputImages
             .filter((img) => img.kind === "image")
             .map(async (img): Promise<ImagePreview> => {
-              const downscaled = await downscaleForPreview(Buffer.from(img.data, "base64"));
-              return { base64: downscaled.toString("base64"), mediaType: img.mediaType };
+              const downscaled = await downscaleForPreview(
+                Buffer.from(img.data, "base64"),
+                img.mediaType,
+              );
+              return {
+                base64: downscaled.buffer.toString("base64"),
+                mediaType: downscaled.mediaType,
+              };
             }),
         );
         imagePreviews = built.length > 0 ? built : undefined;
@@ -2315,7 +2340,7 @@ export function App(props: AppProps) {
       const newModelId = value.slice(colonIdx + 1);
       log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
       // Keep the ref in sync before any prompt rebuild so the identity (Claude
-      // Code vs GG Coder) reflects the newly selected provider immediately.
+      // Code vs OrcaCoder) reflects the newly selected provider immediately.
       currentProviderRef.current = newProvider;
 
       const rebuildPromptWithTools = (tools: AgentTool[]) => {

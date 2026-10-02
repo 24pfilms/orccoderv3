@@ -167,7 +167,7 @@ export function createScreenshotTool(cwd: string): AgentTool<typeof ScreenshotPa
         // Shrink for the model (provider image limits) and a smaller copy for
         // the inline terminal preview.
         const { buffer, mediaType } = await shrinkToFit(raw, "image/png");
-        const previewBuffer = await downscaleForPreview(buffer);
+        const preview = await downscaleForPreview(buffer, mediaType);
 
         return {
           content: [
@@ -179,7 +179,13 @@ export function createScreenshotTool(cwd: string): AgentTool<typeof ScreenshotPa
           ],
           details: {
             outPath,
-            imagePreviews: [{ base64: previewBuffer.toString("base64"), mediaType, path: outPath }],
+            imagePreviews: [
+              {
+                base64: preview.buffer.toString("base64"),
+                mediaType: preview.mediaType,
+                path: outPath,
+              },
+            ],
           },
         };
       } catch (err) {

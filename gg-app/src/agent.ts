@@ -20,9 +20,13 @@ export const windowLabel = appWindow.label;
 /** True for secondary windows opened via the Windows button (not the main one). */
 export const isSecondaryWindow = appWindow.label !== "main";
 
-/** Set the native (macOS overlay) window title bar text for THIS window. */
+/** Set THIS window's native title, also recorded by ActivityWatch on Windows. */
 export function setWindowTitle(title: string): void {
-  void appWindow.setTitle(title).catch(() => {});
+  void appWindow.setTitle(title).catch(() => {
+    void logError(
+      "Native window title update failed; ActivityWatch project attribution unavailable",
+    ).catch(() => console.error("Native window title update failed"));
+  });
 }
 
 export interface SubAgentStatePayload {
@@ -88,8 +92,14 @@ export interface BackgroundTask {
   exitCode: number | null;
 }
 
-export type WorkspaceMode = "code" | "chat";
+export type WorkspaceMode = "code" | "chat" | "motion";
+export type WindowSurface = "workspace" | "board";
 export type ChatAgentId = "general" | "therapist" | "research";
+
+/** Product name shown when a window has no project context to title it. */
+export function workspaceProductName(mode: WorkspaceMode): string {
+  return mode === "chat" ? "GG Chat" : mode === "motion" ? "GG Motion" : "GG Coder";
+}
 
 export type MemoryCategory =
   | "identity"
@@ -176,10 +186,10 @@ export interface AgentState {
   autopilot?: boolean;
   /** Provider of the model Ken (mentor + autopilot) uses next turn. */
   kenProvider?: string;
-  /** The model Ken uses next turn — his pin when set, else GG Coder's model.
+  /** The model Ken uses next turn — his pin when set, else OrcaCoder's model.
    *  Absent on frames from older sidecars (footer falls back to `model`). */
   kenModel?: string;
-  /** True when Ken is pinned to his own model (not following GG Coder). */
+  /** True when Ken is pinned to his own model (not following OrcaCoder). */
   kenModelOverride?: boolean;
   /** Live background tasks (footer indicator). */
   tasks?: BackgroundTask[];
@@ -282,7 +292,7 @@ export interface DiscoveredProject {
   sources: string[];
 }
 
-/** Store a session row came from; absent means a native GG Coder session. */
+/** Store a session row came from; absent means a native OrcaCoder session. */
 export type SessionSource = "ggcoder" | "claude-code" | "codex";
 
 export interface RecentSession {
@@ -560,8 +570,8 @@ export async function cancel(): Promise<CancelResult> {
 
 // ── Ken Kai (mentor agent) ──────────────────────────────────
 // Ken is a second, read-only agent in this window. The user reaches him with
-// `@Ken …`; he reads GG Coder's transcript and hands back runnable prompts +
-// blunt mentorship. His replies stream over the SAME SSE channel as GG Coder's
+// `@Ken …`; he reads OrcaCoder's transcript and hands back runnable prompts +
+// blunt mentorship. His replies stream over the SAME SSE channel as OrcaCoder's
 // but with `ken_`-prefixed event types, so the webview routes them to a separate
 // magenta bubble:
 //   ken_run_start { text }         — Ken started thinking
@@ -573,12 +583,12 @@ export async function cancel(): Promise<CancelResult> {
 //   ken_error { message }          — Ken failed
 //
 // Autopilot Ken (auto-reviewer) is a SEPARATE, non-chatty mode of the same Ken.
-// When autopilot is on, after each GG Coder run the sidecar silently drives a
+// When autopilot is on, after each OrcaCoder run the sidecar silently drives a
 // review→prompt→review loop and emits the `autopilot_*` family (no chat bubble,
 // no new IPC — cancel reuses agent_cancel). All ride the same generic
 // `agent-event` SSE channel:
 //   autopilot_review_start {}       — Ken started an auto-review (spinner)
-//   autopilot_prompted { round }    — Ken fed GG Coder another prompt (marker)
+//   autopilot_prompted { round }    — Ken fed OrcaCoder another prompt (marker)
 //   autopilot_done {}               — Ken gave the all-clear, loop stops
 //   autopilot_ignored {}            — nothing worth reviewing, loop stops SILENTLY (no marker)
 //   autopilot_human { reason }      — Ken needs a human decision, loop stops
@@ -602,7 +612,7 @@ export async function sendKenPrompt(text: string): Promise<void> {
   }
 }
 
-/** Cancel Ken's in-flight run (does not touch GG Coder's run). */
+/** Cancel Ken's in-flight run (does not touch OrcaCoder's run). */
 export async function cancelKen(): Promise<void> {
   try {
     await waitForReady();
@@ -670,7 +680,7 @@ export interface HistoryEntry {
     /** Stable seed from persisted marker data so resumed all-clear copy doesn't flicker. */
     copySeed?: string;
   };
-  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+  /** True when this user prompt came from a Ken "Send to OrcaCoder" button —
    *  render the shimmering label instead of the prompt body (matches live). */
   kenSent?: boolean;
   /** Enhancer highlight segments, restored for unedited enhanced sends. */
@@ -854,6 +864,22 @@ export async function mcpElicit(
 }
 
 /**
+ * Answer (or dismiss) an `ask_user` question band — the `ask_user` SSE frame.
+ * `answers` is a map of question id → picked value(s) and applies only to
+ * `answer`. The coding/chat turn is blocked on the parked tool call until this
+ * lands, so every dismissal path must call it; the sidecar only auto-cancels
+ * after a multi-minute timeout.
+ */
+export async function answerAskUser(
+  id: string,
+  action: "answer" | "cancel",
+  answers?: Record<string, string | string[]>,
+): Promise<void> {
+  await waitForReady();
+  await invoke("agent_ask_user", { id, action, answers: answers ?? null });
+}
+
+/**
  * Disconnect a provider (clear stored credentials). Handled NATIVELY in Rust
  * (removes the provider from ~/.gg/auth.json, including a dual-auth provider's
  * separate OAuth key) so it never depends on the sidecar.
@@ -891,9 +917,14 @@ export interface RadioState {
   volume: number;
 }
 
-/** Read app-wide radio state (stations, playback, and volume). */
+/**
+ * Read app-wide radio state (stations, playback, and volume). Waits for the
+ * sidecar first: the titlebar button asks on mount, which at launch lands
+ * before the daemon is up and would otherwise fail with "daemon not ready".
+ */
 export async function getRadioState(): Promise<RadioState> {
   try {
+    await waitForReady();
     const res = await invoke<RadioState>("agent_radio_state");
     return {
       stations: res.stations ?? [],
@@ -927,18 +958,17 @@ export interface QueuedMessage {
 /**
  * Cancel one pending queued message by id.
  *
- * Returns the remaining queue, or null if the call itself failed. A `cancelled:
- * false` from the sidecar is NOT a failure: it means the agent consumed the
- * message between the row rendering and the click landing, so the caller should
- * simply reconcile to the returned list.
+ * Returns the explicit cancellation verdict, or null on transport failure.
+ * Queue state is owned exclusively by ordered sidecar events: the HTTP response
+ * may arrive after newer enqueue/drain events and must never replace their state.
  */
-export async function cancelQueued(id: string): Promise<QueuedMessage[] | null> {
+export async function cancelQueued(id: string): Promise<boolean | null> {
   try {
     const res = await invoke<{ cancelled?: boolean; queued?: QueuedMessage[] }>(
       "agent_cancel_queued",
       { id },
     );
-    return res.queued ?? [];
+    return res.cancelled === true;
   } catch (e) {
     await logError(`agent_cancel_queued failed: ${String(e)}`);
     return null;
@@ -972,7 +1002,7 @@ export type ImportTranscriptResult =
   | { ok: false; error: string };
 
 /**
- * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+ * Import a Claude Code / Codex / Cursor transcript as a resumable OrcaCoder
  * session. Failures come back as `{ ok: false, error }` rather than throwing,
  * so the caller can render the reason directly.
  */
@@ -1064,7 +1094,7 @@ export function isSwitchModelError(
 }
 
 /** Pin Ken (mentor + autopilot) to a model, or pass null to clear the pin so
- *  he follows GG Coder's model again. Returns his effective model. */
+ *  he follows OrcaCoder's model again. Returns his effective model. */
 export async function switchKenModel(model: string | null): Promise<SwitchKenModelResult | null> {
   try {
     return await invoke<SwitchKenModelResult>("agent_switch_ken_model", { model });
@@ -1228,10 +1258,13 @@ export async function searchFiles(query: string): Promise<FileHit[]> {
   }
 }
 
-/** List the latest sessions for a project, one chat agent, or every chat agent. */
+/**
+ * List the latest sessions for a project, one chat agent, every chat agent
+ * (`"all"`), or GG Motion (`"motion"`).
+ */
 export async function listSessions(
   cwd: string,
-  chatAgent?: ChatAgentId | "all",
+  chatAgent?: ChatAgentId | "all" | "motion",
 ): Promise<RecentSession[]> {
   try {
     const res = await invoke<{ sessions: RecentSession[] }>("agent_sessions", {
@@ -1271,6 +1304,8 @@ export async function selectProject(cwd: string, sessionPath?: string): Promise<
 /** The active project/session Rust can restore into this webview. */
 export interface RestoreTarget {
   mode: WorkspaceMode;
+  surface?: WindowSurface;
+  selectedBoardId?: string;
   chatAgent?: ChatAgentId;
   cwd: string;
   sessionPath: string | null;
@@ -1289,6 +1324,13 @@ export async function restoreTarget(): Promise<RestoreTarget | null> {
     await logError(`window_restore_target failed: ${String(e)}`);
     return null;
   }
+}
+
+export async function setWindowSurface(
+  surface: WindowSurface,
+  selectedBoardId?: string,
+): Promise<void> {
+  await invoke("set_window_surface", { surface, selectedBoardId: selectedBoardId ?? null });
 }
 
 /**
@@ -1426,6 +1468,33 @@ export async function focusWindowByOffset(offset: number): Promise<void> {
 }
 
 /** Re-tile every open window into a clean grid (no create/destroy). */
+/**
+ * Minimize every OrcaCoder window at once, or bring them all back. Minimize rather than
+ * hide, so the windows stay reachable from the taskbar with no global shortcut needed.
+ */
+export async function setAllWindowsMinimized(minimized?: boolean): Promise<void> {
+  try {
+    // Omit `minimized` to toggle: restore everything if anything is minimized, otherwise
+    // put it all away.
+    await invoke("set_all_minimized", { minimized: minimized ?? null });
+  } catch (e) {
+    await logError(`set_all_minimized failed: ${String(e)}`);
+  }
+}
+
+/**
+ * Quit the whole app in one action, preserving every open project window for the
+ * next launch. This is the graceful path — it writes the restore snapshot before
+ * exiting — whereas closing each window's X drops those windows from the set.
+ */
+export async function quitApp(): Promise<void> {
+  try {
+    await invoke("quit_app");
+  } catch (e) {
+    await logError(`quit_app failed: ${String(e)}`);
+  }
+}
+
 export async function arrangeAllWindows(): Promise<void> {
   try {
     await invoke("arrange_all");

@@ -41,6 +41,7 @@ import {
   switchChatAgent,
   type ChatAgentId,
 } from "./chat-agents/index.js";
+import { createMotionAgentSession } from "./motion-agent/motion-agent.js";
 import { buildJiwaTools, JiwaStore } from "./chat-agents/jiwa.js";
 import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./core/ken-prompt.js";
@@ -189,6 +190,8 @@ import {
   type MCPScope,
   type MCPServerConfig,
 } from "./core/mcp/index.js";
+import { createAskUserBridge, type AskUserResult } from "./core/ask-user.js";
+import { createAskUserTool } from "./tools/ask-user.js";
 import type { ElicitResult } from "@modelcontextprotocol/client";
 import { buildSnapshot, levelForXp, rankForLevel } from "./core/progress/ranks.js";
 import { loadProgress, peekProgress, updateProgress } from "./core/progress/store.js";
@@ -253,8 +256,8 @@ interface AppSettings {
    *  (one window = one cwd); absent/false → off. Restored on boot. */
   autopilot?: Record<string, boolean>;
   /** Ken's model override keyed by normalized project cwd. Absent → Ken follows
-   *  GG Coder's model (the historical behavior). Set → Ken (chat + autopilot)
-   *  uses this model regardless of GG Coder's. */
+   *  OrcaCoder's model (the historical behavior). Set → Ken (chat + autopilot)
+   *  uses this model regardless of OrcaCoder's. */
   kenModels?: Record<string, KenModelPref>;
   /** Extra folders scanned for projects alongside `projectsRoot`. */
   projectRoots?: string[];
@@ -396,6 +399,33 @@ async function persistThinkingLevel(
   }
 }
 
+/**
+ * Persist the radio selection to ~/.gg/settings.json so the station you were
+ * listening to is the one that comes back.
+ *
+ * Volume rides along deliberately: restoring a station at a default volume
+ * rather than the one you left it at is its own small annoyance, and it is the
+ * kind of thing you only notice at 2am.
+ *
+ * `null` means "off" and is stored as such, so stopping the radio is remembered
+ * as a choice rather than falling back to whatever played before it.
+ */
+async function persistRadioSelection(
+  settingsFile: string,
+  station: string | null,
+  volume: number,
+): Promise<void> {
+  try {
+    const sm = new SettingsManager(settingsFile);
+    await sm.load();
+    await sm.set("radioStation", station ?? undefined);
+    await sm.set("radioVolume", volume);
+  } catch (err) {
+    captureSidecarError(err, "app-sidecar.settings.persist-radio");
+    log("WARN", "app-sidecar", "failed to persist radio selection", { err: String(err) });
+  }
+}
+
 /** Validate a project folder name: lowercase letters, digits, dashes only. */
 function isValidProjectName(name: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
@@ -429,7 +459,7 @@ interface HistoryEntryForWire {
     /** Stable seed derived from persisted marker data for deterministic all-clear copy. */
     copySeed?: string;
   };
-  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+  /** True when this user prompt came from a Ken "Send to OrcaCoder" button —
    *  the webview renders the shimmering label instead of the prompt body. */
   kenSent?: boolean;
   /** Enhancer highlight segments for this user prompt (unedited enhanced sends). */
@@ -798,7 +828,7 @@ async function runJsonModeIfRequested(): Promise<boolean> {
   await runJsonMode({
     message: positionals[0] ?? "",
     provider: (values.provider ?? "anthropic") as Provider,
-    model: values.model ?? "claude-opus-5",
+    model: values.model ?? "claude-opus-5-5",
     cwd: process.cwd(),
     systemPrompt: values["system-prompt"],
     agentPrompt: values["agent-prompt"],
@@ -1177,7 +1207,7 @@ async function main(): Promise<void> {
           } catch {
             /* empty/invalid body → defaults below */
           }
-          const mode: WorkspaceMode = body.mode === "chat" ? "chat" : "code";
+          const mode: WorkspaceMode = parseWorkspaceMode(body.mode);
           const chatAgent = parseChatAgentId(body.chatAgent);
           const sessionCwd =
             typeof body.cwd === "string" && body.cwd
@@ -1304,6 +1334,29 @@ async function main(): Promise<void> {
   });
   process.once("exit", stopRadio);
 
+  // Bring back the station that was playing when the daemon last stopped.
+  //
+  // Volume is restored FIRST: `playRadio` passes the current volume to the
+  // player process on spawn, so setting it afterwards would start the stream at
+  // the default and jump — audibly — a moment later.
+  //
+  // Failures here are deliberately quiet. A station can 404, a stream can move,
+  // and the player binary may not be installed on this machine; none of that is
+  // worth an error on startup for something the user can simply press play on.
+  {
+    const savedRadio = loadSavedSettings(paths.settingsFile);
+    if (typeof savedRadio.radioVolume === "number") setRadioVolume(savedRadio.radioVolume);
+    if (savedRadio.radioStation) {
+      const result = playRadio(savedRadio.radioStation);
+      if (!result.ok) {
+        log("INFO", "app-sidecar", "saved radio station did not resume", {
+          station: savedRadio.radioStation,
+          reason: result.error ?? "unknown",
+        });
+      }
+    }
+  }
+
   // Tauri can disappear without delivering a signal (force-quit, dev runner
   // teardown, crash). Detect reparenting or a dead shell so the daemon and its
   // radio player do not survive as audible orphans.
@@ -1377,6 +1430,8 @@ function buildKenContext(
     cwd,
     gitBranch,
     messages: buildSession.getMessages(),
+    verificationEvidence: buildSession.getVerificationEvidence(),
+    verificationProblem: buildSession.getVerificationProblem(),
     workflowCommands,
     injectedPrompts,
   });
@@ -1511,7 +1566,12 @@ async function createProgressManager(
   return { snapshot, awardRun, dispose };
 }
 
-type WorkspaceMode = "code" | "chat";
+type WorkspaceMode = "code" | "chat" | "motion";
+
+/** Unknown or missing modes fall back to the coding agent. */
+function parseWorkspaceMode(value: unknown): WorkspaceMode {
+  return value === "chat" || value === "motion" ? value : "code";
+}
 
 interface SessionContext {
   id: string;
@@ -1567,6 +1627,9 @@ async function createSession(
   const mode = opts.mode;
   let chatAgent = opts.chatAgent;
   const cwd = opts.cwd;
+  // Motion's workspace is a dedicated folder the app names inside the projects
+  // root; create it on first use so a fresh install can start a video at once.
+  if (mode === "motion") await fs.mkdir(cwd, { recursive: true });
   // Base host for parsing request-URL query params (value is irrelevant to
   // parsing); the daemon owns the real listen host.
   const host = "127.0.0.1";
@@ -1643,10 +1706,7 @@ async function createSession(
           "Start a new session to reset the context.",
         )
         // /model: handle each phrasing pattern
-        .replaceAll(
-          /switch to claude-fable-5 with \/model/gi,
-          "switch to claude-fable-5 using the model selector",
-        )
+        .replaceAll(/switch to (\S+) with \/model/gi, "switch to $1 using the model selector")
         .replaceAll(/Switch with \/model\./gi, "Switch using the model selector.")
         .replaceAll(
           /try a different model with \/model\./gi,
@@ -1737,6 +1797,16 @@ async function createSession(
       }),
   });
 
+  // ── ask_user bridge ────────────────────────────────────────
+  // The `ask_user` tool parks the turn on a human answer. Same shape as the
+  // elicitation bridge: broadcast the question band over SSE, resolve it when
+  // the webview POSTs /ask/:id.
+  const asks = createAskUserBridge({
+    broadcast: (prompt) => broadcast("ask_user", prompt),
+    onTimeout: (prompt) => log("WARN", "app-sidecar", "ask_user timed out", { id: prompt.id }),
+  });
+  const askUserTool = createAskUserTool(asks.park);
+
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
   const resumeSessionPath = opts.sessionPath;
@@ -1763,7 +1833,11 @@ async function createSession(
     session = createChatAgent(chatAgent, {
       ...baseSessionOptions,
       sessionsDir: paths.sessionsDir,
-      additionalTools: [...buildMemoryTools(memoryStore), ...buildJiwaTools(jiwaStore)],
+      additionalTools: [
+        askUserTool,
+        ...buildMemoryTools(memoryStore),
+        ...buildJiwaTools(jiwaStore),
+      ],
       getSystemPromptTail: () =>
         `${memoryStore.renderForPrompt()}\n\n${jiwaStore.renderForPrompt()}`,
       onAgentChange: async (nextAgent) => {
@@ -1777,9 +1851,16 @@ async function createSession(
         });
       },
     });
+  } else if (mode === "motion") {
+    session = await createMotionAgentSession({
+      ...baseSessionOptions,
+      sessionsDir: paths.sessionsDir,
+      additionalTools: [askUserTool],
+    });
   } else {
     session = new AgentSession({
       ...baseSessionOptions,
+      additionalTools: [askUserTool],
       // Plan mode belongs only to the coding agent.
       onEnterPlan: async (reason) => {
         deactivateApprovedPlan();
@@ -2368,6 +2449,7 @@ async function createSession(
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
+  session.eventBus.on("diagnostics", (d) => broadcast("diagnostics", d));
   // Fires BEFORE the candidate final answer streams. The webview holds assistant
   // text back while armed, so an Ideal review supersedes a draft that was never
   // painted instead of deleting one the user already started reading.
@@ -2436,7 +2518,7 @@ async function createSession(
   // cycles drift into Ken reviewing against his own last prompt. Cleared
   // whenever the conversation resets (new session / plan accept / task run).
   let injectedAutopilotPrompts: string[] = [];
-  // The plan GG Coder submitted via exit_plan that still awaits a decision
+  // The plan OrcaCoder submitted via exit_plan that still awaits a decision
   // (Ken's auto-review in autopilot, or the user's modal). Path + the content
   // read at submission time (fallback if the file becomes unreadable).
   let pendingPlanPath: string | null = null;
@@ -2479,7 +2561,7 @@ async function createSession(
 
   // ── Ken Kai (mentor agent) ─────────────────────────────────
   // A second, read-only AgentSession on this same window. The user talks to him
-  // with `@Ken …`; he reads GG Coder's transcript (one-way — GG Coder never sees
+  // with `@Ken …`; he reads OrcaCoder's transcript (one-way — OrcaCoder never sees
   // Ken's) and hands back runnable prompts + mentorship. Created lazily on the
   // first `@Ken` so windows that never use Ken pay zero cost. His events ride the
   // SAME SSE stream with `ken_`-prefixed types, routed to the Ken bubble.
@@ -2491,7 +2573,7 @@ async function createSession(
 
   // Ken's per-project model override. null → Ken (chat + autopilot) follows GG
   // Coder's model, including live switches (the historical behavior). Set → Ken
-  // is pinned to his own model and GG Coder switches no longer touch him. A
+  // is pinned to his own model and OrcaCoder switches no longer touch him. A
   // stale persisted pin (model dropped from the registry / provider logged
   // out) validates to null so Ken degrades to following instead of erroring.
   let kenModelOverride: KenModelPref | null = validateKenModelPref(await loadKenModelPref(cwd), {
@@ -2506,7 +2588,7 @@ async function createSession(
     kenModelOverride = null;
   }
 
-  /** The model Ken uses next turn: the pin when set, else GG Coder's. */
+  /** The model Ken uses next turn: the pin when set, else OrcaCoder's. */
   function kenCurrentModel(): { provider: Provider; model: string } {
     if (kenModelOverride) return kenModelOverride;
     const st = session.getState();
@@ -2557,7 +2639,7 @@ async function createSession(
     });
     await ken.initialize();
     // Bridge Ken's bus to the shared SSE fan-out with ken_-prefixed types so the
-    // webview routes them to the Ken bubble, never GG Coder's.
+    // webview routes them to the Ken bubble, never OrcaCoder's.
     ken.eventBus.on("text_delta", (d) => broadcast("ken_text_delta", d));
     ken.eventBus.on("thinking_delta", (d) => broadcast("ken_thinking_delta", d));
     ken.eventBus.on("tool_call_start", (d) => {
@@ -2587,7 +2669,7 @@ async function createSession(
 
   // ── Autopilot Ken (auto-reviewer) ──────────────────────────
   // A THIRD read-only AgentSession, separate from chat Ken. In autopilot mode
-  // Ken silently reviews each finished GG Coder turn and returns a verdict
+  // Ken silently reviews each finished OrcaCoder turn and returns a verdict
   // (PROMPT / ALL_CLEAR / HUMAN). Its bus is intentionally NOT bridged to the
   // ken_* chat bubbles — the review is silent; we read its final assistant text
   // and parse it. Uses the lean autopilot system prompt + the same read-only
@@ -2624,7 +2706,7 @@ async function createSession(
       // there, and keep the daemon's sessions uniformly interactive so they
       // share one pooled MCP connection.
       onMcpElicit: elicitations.onElicit,
-      // Autopilot review rounds routinely span the injected GG Coder run
+      // Autopilot review rounds routinely span the injected OrcaCoder run
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
@@ -2649,6 +2731,8 @@ async function createSession(
     // the promise lives in the bridge. Release it, or the aborted turn's tool
     // call never returns.
     elicitations.cancelAll();
+    // Same for an `ask_user` question parked on the user.
+    asks.cancelAll();
     // Stop a run-all sweep and every async child through AgentSession's signal.
     taskRunAll = false;
     autopilotCancelled = true;
@@ -2703,8 +2787,15 @@ async function createSession(
       }
     } finally {
       const cancelled = runLifecycle.isCancellationRequested(generation);
+      const verificationProblem = cancelled ? null : session.getVerificationProblem();
+      if (runSucceeded && verificationProblem && ownsGeneration) {
+        // Expected control outcome: run_end and the journal already carry Unverified.
+        // Do not format it as a crash or persist a misleading error marker.
+        log("WARN", "app-sidecar", "verification incomplete", { message: verificationProblem });
+      }
       if (
         runSucceeded &&
+        !verificationProblem &&
         !cancelled &&
         cancelGeneration === cancelGenAtStart &&
         countAssistantMessages(session.getMessages()) > assistantsBeforeRun
@@ -2729,6 +2820,7 @@ async function createSession(
       if (
         runSucceeded &&
         !cancelled &&
+        !verificationProblem &&
         approvedPlanPath !== null &&
         (await queueApprovedPlanProgressSync())
       ) {
@@ -2746,7 +2838,11 @@ async function createSession(
         }
       }
       if (ownsGeneration) {
-        finishOwnedGeneration(generation, false, runSucceeded ? "completed" : "failed");
+        finishOwnedGeneration(
+          generation,
+          false,
+          verificationProblem ? "unverified" : runSucceeded ? "completed" : "failed",
+        );
       }
       // A cancelled injected run is still owned by the surrounding autopilot
       // cycle; its outer finalizer emits the one terminal cancelled run_end.
@@ -2754,6 +2850,7 @@ async function createSession(
         if (cancelled) cancelledRunEndGenerations.add(generation);
         broadcast("run_end", {
           ...(cancelled ? { cancelled: true } : {}),
+          ...(verificationProblem ? { unverified: true } : {}),
           runState: runLifecycle.state,
         });
       }
@@ -2784,6 +2881,8 @@ async function createSession(
         cwd,
         gitBranch,
         messages: session.getMessages(),
+        verificationEvidence: session.getVerificationEvidence(),
+        verificationProblem: session.getVerificationProblem(),
         originalRequest,
         injectedPrompts: [...injectedAutopilotPrompts],
         workflowCommands: await loadWorkflowCommandSpecs(),
@@ -2823,6 +2922,8 @@ async function createSession(
         cwd,
         gitBranch,
         messages: session.getMessages(),
+        verificationEvidence: session.getVerificationEvidence(),
+        verificationProblem: session.getVerificationProblem(),
         originalRequest,
         injectedPrompts: [...injectedAutopilotPrompts],
         workflowCommands: await loadWorkflowCommandSpecs(),
@@ -2860,7 +2961,7 @@ async function createSession(
   // control flow lives in driveAutopilotCycle (core/autopilot-cycle.ts) so
   // every exit path is unit-tested; this only wires the real dependencies.
   async function runAutopilotCycle(originalRequest: string): Promise<void> {
-    if (!autopilot || autopilotCancelled) return;
+    if (!autopilot || autopilotCancelled || session.getVerificationProblem()) return;
     const generation = runLifecycle.begin(abortOwnedWork).generation;
     pendingCancelDrain = null;
     autopilotActive = true;
@@ -2875,6 +2976,7 @@ async function createSession(
         // round available.
         maxRounds: pendingPlanPath !== null ? MAX_AUTOPILOT_ROUNDS + 2 : MAX_AUTOPILOT_ROUNDS,
         isCancelled: () => autopilotCancelled,
+        verificationProblem: () => session.getVerificationProblem(),
         // An injected run entering plan mode WITHOUT submitting (enter_plan,
         // no exit_plan) halts the cycle — Ken never prompts into a read-only
         // plan-mode session. A submitted plan takes the planPending branch.
@@ -2887,7 +2989,7 @@ async function createSession(
         // Auto-accept: the inlined POST /plan/accept body. Returns false when
         // the plan generation moved since the review (user acted) — the cycle
         // exits silently and the user's action stands.
-        acceptPlan: async () => {
+        acceptPlan: async (reason) => {
           if (pendingPlanPath === null || planGeneration !== planGenAtReview) return false;
           const planPath = pendingPlanPath;
           let planTotal: number;
@@ -2902,15 +3004,15 @@ async function createSession(
           clearPendingPlan();
           // Keep the approval marker ahead of the reset, then seed the reset
           // with the sidecar's canonical count from the actual plan file.
-          broadcast("autopilot_plan_accepted", {});
+          broadcast("autopilot_plan_accepted", reason ? { reason } : {});
           broadcast("session_reset", { planTotal });
           broadcast("plan_progress", planProgressPayload());
           // Persisted into the NEW session so a resume shows the marker.
-          void session.persistAutopilotMarker("plan_approved");
+          void session.persistAutopilotMarker("plan_approved", { reason });
           return true;
         },
         runImplement: () => {
-          // Autopilot-injected run: frame it so GG Coder knows no human is
+          // Autopilot-injected run: frame it so OrcaCoder knows no human is
           // watching the implementation. Record the framed string so Ken's
           // digest labels it as injected, not as the user's ask. The run_start
           // label stays the clean prompt.
@@ -2922,14 +3024,14 @@ async function createSession(
         },
         // Lean context per user turn: wipe prior review history so each new
         // turn starts cheap, while within this cycle the few review messages
-        // persist so Ken remembers what he already asked GG Coder to fix.
+        // persist so Ken remembers what he already asked OrcaCoder to fix.
         resetReviewer: async () => {
           await kenAutoSession?.newSession().catch(() => {});
         },
         review: () => runAutopilotReview(originalRequest),
         // prompt → record the injected body (so later digests label it as
         // Ken's, not the user's), show a compact Ken-tinted marker (not the
-        // prompt body), then feed GG Coder bracketed by runAgent so the run
+        // prompt body), then feed OrcaCoder bracketed by runAgent so the run
         // streams normally; the shared finally never re-triggers autopilot,
         // so this can't recurse.
         onInjected: (body, round) => {
@@ -2945,7 +3047,7 @@ async function createSession(
           broadcast("autopilot_prompted", { round, body });
           void session.persistAutopilotMarker("prompted", { body });
         },
-        // Autopilot-injected run: GG Coder receives the framed prompt (no human
+        // Autopilot-injected run: OrcaCoder receives the framed prompt (no human
         // is watching this turn) while run_start keeps the clean label.
         runPrompt: (body) =>
           runAgent(body, () =>
@@ -2965,9 +3067,10 @@ async function createSession(
               version: 1,
               phase: "done",
               afterMessageCount: session.getPersistedTranscriptCount(),
+              ...event.data,
             });
             broadcast(event.type, { ...event.data, copySeed: seed });
-            void session.persistAutopilotMarker("done");
+            void session.persistAutopilotMarker("done", event.data);
             return;
           }
           broadcast(event.type, event.data);
@@ -2982,7 +3085,11 @@ async function createSession(
     } finally {
       autopilotActive = false;
       session.setIdealReviewSuppressed(autopilot);
-      finishOwnedGeneration(generation, true);
+      finishOwnedGeneration(
+        generation,
+        true,
+        session.getVerificationProblem() ? "unverified" : "completed",
+      );
       queueMicrotask(() => void runStrandedQueue());
     }
   }
@@ -3577,7 +3684,8 @@ async function createSession(
       }
       const requestedAgent = new URL(url, `http://${host}`).searchParams.get("chatAgent");
       // An omitted chatAgent means coding history; chat callers identify one
-      // agent or request the combined, recency-sorted "all" listing.
+      // agent or request the combined, recency-sorted "all" listing; the
+      // reserved value "motion" lists Motion sessions.
       void listSidecarSessions(target, requestedAgent, paths.sessionsDir)
         .then((sessions) => json(res, 200, { sessions }))
         .catch((error) => {
@@ -3694,7 +3802,7 @@ async function createSession(
           if (!turns) return;
           kenByCount.delete(count);
           for (const turn of turns) {
-            history.push({ role: "user", text: `@Ken ${turn.question}`, ken: true });
+            history.push({ role: "user", text: `@Orca ${turn.question}`, ken: true });
             history.push({ role: "assistant", text: turn.reply, ken: true });
           }
         };
@@ -3804,7 +3912,7 @@ async function createSession(
                   scope: "interrupted_run",
                   headline: "A run was interrupted",
                   message:
-                    "GG Coder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
+                    "OrcaCoder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
                   guidance:
                     "Review the working tree, then re-send the request if you still want it.",
                 },
@@ -3847,9 +3955,9 @@ async function createSession(
                   if (block.type !== "image") continue;
                   try {
                     const rawBuf = Buffer.from(block.data, "base64");
-                    const previewBuf = await downscaleForPreview(rawBuf);
+                    const preview = await downscaleForPreview(rawBuf, block.mediaType);
                     toolImages.push({
-                      src: `data:${block.mediaType};base64,${previewBuf.toString("base64")}`,
+                      src: `data:${preview.mediaType};base64,${preview.buffer.toString("base64")}`,
                       path: imgPath,
                     });
                   } catch {
@@ -4007,7 +4115,7 @@ async function createSession(
     }
 
     if (method === "GET" && url === "/commands") {
-      if (mode === "chat") {
+      if (mode !== "code") {
         json(res, 200, { commands: [] });
         return;
       }
@@ -4083,6 +4191,13 @@ async function createSession(
             json(res, 400, { error: "empty prompt" });
             return;
           }
+          // A typed prompt supersedes any question parked on the user: they
+          // answered with a message of their own. Release the blocked tool call
+          // NOW — otherwise it waits out its ten-minute timeout while this very
+          // message sits behind it as steering that only drains once the tool
+          // returns, so the turn looks frozen. The webview closes the band on
+          // send; a racing /ask POST just 409s.
+          asks.cancelAll({ action: "cancel", superseded: true });
           if (
             runLifecycle.running &&
             runLifecycle.isCancellationRequested(runLifecycle.generation)
@@ -4187,7 +4302,7 @@ async function createSession(
           // failed runs add no assistant work to judge; a turn that ended in plan
           // mode has a pending Accept/Reject modal Ken must not preempt. This is
           // the ONLY entry point into the cycle besides the stranded-queue drain —
-          // it drives any follow-up GG Coder runs itself, so the shared runAgent
+          // it drives any follow-up OrcaCoder runs itself, so the shared runAgent
           // finally never recurses.
           const decision = shouldStartAutopilotCycle({
             enabled: autopilot,
@@ -4228,8 +4343,10 @@ async function createSession(
     // webview keeps the bubbles separate. The context digest is assembled fresh
     // from the BUILD session's transcript each turn (one-way mirror).
     if (method === "POST" && url === "/ken/prompt") {
-      if (mode === "chat") {
-        json(res, 404, { error: "Orca is not available in Orca Chat." });
+      if (mode !== "code") {
+        json(res, 404, {
+          error: `Orca is not available in Orca ${mode === "chat" ? "Chat" : "Motion"}.`,
+        });
         return;
       }
       void readBody(req, res).then(async (raw) => {
@@ -4292,8 +4409,10 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/autopilot") {
-      if (mode === "chat") {
-        json(res, 404, { error: "Autopilot is not available in GG Chat." });
+      if (mode !== "code") {
+        json(res, 404, {
+          error: `Autopilot is not available in Orca ${mode === "chat" ? "Chat" : "Motion"}.`,
+        });
         return;
       }
       void readBody(req, res).then(async (raw) => {
@@ -4387,6 +4506,7 @@ async function createSession(
           json(res, 400, { error: result.error ?? "Radio volume failed to update." });
           return;
         }
+        void persistRadioSelection(paths.settingsFile, getCurrentStation(), getRadioVolume());
         json(res, 200, { current: getCurrentStation(), volume: getRadioVolume() });
       });
       return;
@@ -4404,6 +4524,7 @@ async function createSession(
         }
         if (!station || station === "off") {
           stopRadio();
+          void persistRadioSelection(paths.settingsFile, null, getRadioVolume());
           json(res, 200, { current: null });
           return;
         }
@@ -4412,6 +4533,7 @@ async function createSession(
           json(res, 400, { error: result.error ?? "Radio failed to start." });
           return;
         }
+        void persistRadioSelection(paths.settingsFile, getCurrentStation(), getRadioVolume());
         json(res, 200, { current: getCurrentStation() });
       });
       return;
@@ -4524,7 +4646,7 @@ async function createSession(
           }
         }
         await session.switchModel(target.provider, target.id);
-        // Ken follows GG Coder's model only while un-pinned; a user-set Ken
+        // Ken follows OrcaCoder's model only while un-pinned; a user-set Ken
         // override survives GG model switches untouched.
         if (!kenModelOverride) {
           await syncKenModel(target.provider, target.id);
@@ -4570,7 +4692,7 @@ async function createSession(
     }
 
     // Set or clear Ken's model pin. Body: { model: "<id>" } to pin, or
-    // { model: null } / "" to clear (Ken resumes following GG Coder). Applies
+    // { model: null } / "" to clear (Ken resumes following OrcaCoder). Applies
     // to BOTH Ken sessions (chat + autopilot reviewer); a switch landing while
     // either is mid-run defers via the pending-model mechanics.
     if (method === "POST" && url === "/ken/model") {
@@ -4585,7 +4707,7 @@ async function createSession(
           return;
         }
         if (modelId === null) {
-          // Clear the pin → follow GG Coder again, syncing both sessions back.
+          // Clear the pin → follow OrcaCoder again, syncing both sessions back.
           kenModelOverride = null;
           await saveKenModelPref(cwd, null);
           const st = session.getState();
@@ -4640,10 +4762,14 @@ async function createSession(
         }
         // `false` means it already drained into the run between render and
         // click. That is a race, not an error, so report it as a normal result
-        // and let the client reconcile from the fresh list.
+        // and let the client reconcile through the ordered event stream.
         const cancelled = session.cancelQueuedMessage(id);
         const queued = session.listQueuedMessages();
-        broadcast("queued", { count: queued.length, messages: queued });
+        broadcast("queued", {
+          count: queued.length,
+          messages: queued,
+          ...(cancelled ? { cancelledId: id } : {}),
+        });
         json(res, 200, { cancelled, queued });
       });
       return;
@@ -5035,6 +5161,50 @@ async function createSession(
         // the tool call has moved on, so the answer has nowhere to go.
         if (!elicitations.settle(id, result)) {
           json(res, 409, { error: "no elicitation is awaiting a response" });
+          return;
+        }
+        json(res, 200, { ok: true });
+      });
+      return;
+    }
+
+    // Answer (or dismiss) an `ask_user` question band. The turn is blocked on
+    // this, so both paths must land: "answer" carries the picked values,
+    // "cancel" releases the tool call with no answer.
+    if (method === "POST" && url.startsWith("/ask/")) {
+      const id = decodeURIComponent(url.slice("/ask/".length));
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
+        let result: AskUserResult;
+        try {
+          const parsed = JSON.parse(raw) as {
+            action?: string;
+            answers?: Record<string, unknown>;
+          };
+          if (parsed.action !== "answer" && parsed.action !== "cancel") {
+            json(res, 400, { error: "action must be answer or cancel" });
+            return;
+          }
+          if (parsed.action === "cancel") {
+            result = { action: "cancel" };
+          } else {
+            // Only strings and string arrays are answers; anything else is a
+            // malformed client, not a value to hand the model.
+            const answers: Record<string, string | string[]> = {};
+            for (const [key, value] of Object.entries(parsed.answers ?? {})) {
+              if (typeof value === "string") answers[key] = value;
+              else if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+                answers[key] = value as string[];
+              }
+            }
+            result = { action: "answer", answers };
+          }
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!asks.settle(id, result)) {
+          json(res, 409, { error: "no question is awaiting an answer" });
           return;
         }
         json(res, 200, { ok: true });
@@ -5525,6 +5695,7 @@ async function createSession(
 
   async function dispose(): Promise<void> {
     elicitations.cancelAll();
+    asks.cancelAll();
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
     gitPollStopped = true;

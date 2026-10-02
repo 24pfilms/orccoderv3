@@ -29,8 +29,10 @@ import {
   newWindow,
   focusWindowByOffset,
   arrangeAllWindows,
+  quitApp,
   onWindowOrder,
   restoreTarget,
+  setWindowSurface,
   onTrayIntent,
   takeTrayIntent,
   setUpdateAvailable,
@@ -47,6 +49,7 @@ import {
   openProjectPath,
   type AgentState,
   type WorkspaceMode,
+  type WindowSurface,
   type ModelOption,
   type SlashCommand,
   type BackgroundTask,
@@ -58,8 +61,21 @@ import {
   readDroppedFileAttachment,
   type Attachment,
   type PromptSegment,
+  answerAskUser,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
+import { AskBand } from "./AskBand";
+// [effects] Decorative UI effects. Remove per gg-app/src/effects/README.md.
+import { WorkingBeam } from "./effects/WorkingBeam";
+import { MetalButton } from "./effects/MetalButton";
+import { useGgUiEnabled } from "./effects/gg-ui";
+import {
+  dropSupersededAsks,
+  mergeAskAnswers,
+  isAskUserPrompt,
+  type AskUserPrompt,
+} from "./ask-user";
+import { pinAfterScroll, pinAfterWheel } from "./transcript-pin";
 import { KenActivityBar } from "./KenActivityBar";
 import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useKenMentor } from "./useKenMentor";
@@ -89,6 +105,7 @@ import { NotesModal } from "./NotesModal";
 import { MemoryModal } from "./MemoryModal";
 import { ShimmerText } from "./ShimmerText";
 import { WakeScreen } from "./WakeScreen";
+import { MotionStarters } from "./MotionStarters";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
@@ -106,20 +123,22 @@ import { BackButton } from "./BackButton";
 import { Badge } from "./Badge";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
+import { HomeBackdrop } from "./HomeBackdrop";
+import { UpdatePage } from "./UpdatePage";
 import { SettingsModal } from "./SettingsModal";
 import { initialEntryView, type EntryView } from "./app-entry-view";
 import { submitDisposition } from "./submit-disposition";
 import { Toaster } from "./Toaster";
-import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
 import { TitleUsageMeter } from "./TitleUsageMeter";
-import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
+import { useWindowFocused } from "./useWindowFocused";
+import { formatActivityTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
-import { Markdown, PromptSendProvider } from "./Markdown";
+import { Markdown, PromptSendProvider, ZoomableImage } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
-import { useAppUpdate } from "./update";
+import { reportUpdateReadiness, useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
 import { playSound } from "./sounds";
 import { segmentDoneMarkers, hasDoneMarker, countPlanSteps } from "./plan-steps";
@@ -131,9 +150,17 @@ import { toast } from "./toast";
 import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
 import { basename } from "./tool-format";
 import { OrcaAppearance } from "./orca/OrcaAppearance";
+import { setAttentionOverride } from "./orca/orca-theme";
+import { BoardModeButton } from "./BoardModeButton";
+import { BoardErrorBoundary } from "./board/BoardErrorBoundary";
+import { BoardSurface, WorkspaceSurface } from "./board/BoardSurface";
+import { isBoardModeEnabled } from "./board/feature";
+import { BoardFlushCoordinator, type BoardFlushReason } from "./board/flush";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 import "./orca/orca-theme.css";
 import "./orca/scarlet.css";
+import "./effects/effects.css"; // [effects]
 
 const DEFAULT_INPUT_PLACEHOLDER = "Send the pod a mission, / command, @ file, or @Orca";
 const INPUT_PLACEHOLDERS = [
@@ -258,7 +285,7 @@ export type Item =
     }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
   // rendered like the TUI: a shimmering tone-colored one-liner.
-  | { kind: "hook"; id: number; hook: HookKind }
+  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: "recheck" | "check_review" }
   // Images produced by a tool (screenshot / read of an image file).
   | { kind: "images"; id: number; images: TranscriptImage[]; caption?: string }
   // Image generation in progress — a shimmering square placeholder that gets
@@ -266,6 +293,19 @@ export type Item =
   | { kind: "generating_image"; id: number; prompt: string }
   // Plan-mode entry banner (ASCII logo + optional reason).
   | { kind: "plan"; id: number; reason: string }
+  // A question from the `ask_user` tool — clickable options rendered inline in
+  // the thread. The turn is blocked until the answers are sent, or until the
+  // run ends without them (`cancelled`, which closes the band).
+  | {
+      kind: "ask";
+      id: number;
+      prompt: AskUserPrompt;
+      /** Answers so far. Partial until every question in the band has one. */
+      answers?: Record<string, string | string[]>;
+      /** The complete set reached the blocked tool call. */
+      sent?: boolean;
+      cancelled?: boolean;
+    }
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
@@ -388,7 +428,6 @@ function App(): React.ReactElement {
   const [rankCelebrateNonce, setRankCelebrateNonce] = useState<string | null>(null);
   const [xpChips, setXpChips] = useState<Array<{ id: string; label: string }>>([]);
   const lastProgressXpRef = useRef<number | null>(null);
-  const [confettiNonce, setConfettiNonce] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
@@ -454,6 +493,9 @@ function App(): React.ReactElement {
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
   const [tokens, setTokens] = useState(0);
   const [doneStatus, setDoneStatus] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    setAttentionOverride(doneStatus !== null);
+  }, [doneStatus]);
   // Pending plan awaiting review (the markdown). Non-null opens the review modal.
   const [planReview, setPlanReview] = useState<string | null>(null);
   // Path of the plan awaiting review, captured from `plan_exit`. Needed on accept
@@ -511,10 +553,18 @@ function App(): React.ReactElement {
   const [showNotes, setShowNotes] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const [notes, setNotes] = useState("");
-  // Every window chooses a code or chat workspace before connecting. Mode stays
-  // separate from picker visibility so restore and reopened pickers are explicit.
+  // Every window chooses a code or chat workspace before connecting. Board Mode
+  // is a separate visual surface and never replaces that workspace or its session.
   const [needsProject, setNeedsProject] = useState(true);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("code");
+  const [boardModeEnabled] = useState(() => isBoardModeEnabled());
+  const [windowSurface, setWindowSurfaceState] = useState<WindowSurface>("workspace");
+  const [boardMounted, setBoardMounted] = useState(false);
+  const [surfaceChanging, setSurfaceChanging] = useState(false);
+  const [boardDirty, setBoardDirty] = useState(false);
+  const [boardFlushCoordinator] = useState(() => new BoardFlushCoordinator(setBoardDirty));
+  const closingAfterBoardFlushRef = useRef(false);
+  const restoredSurfaceRef = useRef<WindowSurface>("workspace");
   // False until the boot-time workspace-restore check resolves.
   const [restoreChecked, setRestoreChecked] = useState(false);
   // Every window starts from the mode-neutral home screen before choosing Code or Chat.
@@ -608,8 +658,45 @@ function App(): React.ReactElement {
       setExporting(false);
     }
   }, []);
-  // App self-update (GitHub releases). Drives the footer update banner.
+  // Rust owns update checks and installation; this window only reports work that
+  // must not be interrupted and renders the shared coordinator state.
   const appUpdate = useAppUpdate();
+  const previewUpdateFooter =
+    import.meta.env.DEV && import.meta.env.VITE_UPDATE_FOOTER_PREVIEW === "true";
+  const previewUpdatePage = import.meta.env.DEV && import.meta.env.VITE_UPDATE_PREVIEW === "true";
+  const [updatePageOpen, setUpdatePageOpen] = useState(previewUpdatePage);
+  const displayedUpdate = previewUpdatePage
+    ? {
+        ...appUpdate,
+        phase: "available" as const,
+        version: "0.55.0",
+        notes:
+          "A clearer update flow with OrcaCoder styling.\nFaster startup and smoother workspace recovery.\nReliability fixes for Windows installation and restart.",
+        install: () => Promise.resolve(),
+      }
+    : appUpdate;
+  useEffect(() => {
+    if (appUpdate.phase === "updated") setUpdatePageOpen(true);
+  }, [appUpdate.phase]);
+  useEffect(() => {
+    const blockers: string[] = [];
+    if (running || kenRunning) blockers.push("An agent is still running");
+    if (autopilotReviewing || planReview) blockers.push("A review is waiting for a decision");
+    if (input.trim() || attachments.length > 0) blockers.push("A draft or attachment is waiting");
+    if (enhancing || queuedCount > 0) blockers.push("A prompt operation is still active");
+    if (boardDirty) blockers.push("Board changes need saving");
+    void reportUpdateReadiness(blockers);
+  }, [
+    attachments.length,
+    autopilotReviewing,
+    boardDirty,
+    enhancing,
+    input,
+    kenRunning,
+    planReview,
+    queuedCount,
+    running,
+  ]);
 
   // ── macOS menu-bar tray ───────────────────────────────────────────────────
   // Settings opened from the tray. Owned HERE, not by HomeScreen, because the
@@ -627,8 +714,8 @@ function App(): React.ReactElement {
     setHomeRefreshSignal((n) => n + 1);
   }, []);
 
-  // Rust owns the tray menu but not the updater — the webview polls GitHub. Push
-  // availability down so "Update now" shows only while an update is pending.
+  // Rust owns update state; mirror availability into the native tray so its
+  // update action appears only while a signed update is pending.
   const updateVersion = appUpdate.phase === "available" ? appUpdate.version : null;
   useEffect(() => {
     void setUpdateAvailable(updateVersion);
@@ -745,12 +832,99 @@ function App(): React.ReactElement {
   // Bumped by every hydrate. Lets work that outlives a hydrate (a project
   // switch, or re-selecting a session) tell whether its result is still wanted.
   const hydrateGenerationRef = useRef(0);
+  // User-initiated model refetch, offered by the picker when the list is empty.
+  // Hydrate's load is the only unprompted one and its backoff is bounded, so a
+  // sidecar that answers late leaves the picker with nothing; this is the way
+  // back without reopening the project. Guarded by the same generation check as
+  // hydrate so a slow answer can't repopulate a project the user has left.
+  const reloadModels = useCallback(() => {
+    const generation = hydrateGenerationRef.current;
+    void loadModelsInto(listModels, setModels, () => hydrateGenerationRef.current !== generation);
+  }, []);
   // Mirror of `state` for use inside the memoized event handler (which doesn't
   // re-capture state). Lets turn_end pick the right context-token formula by
   // provider without re-subscribing the SSE listener on every state change.
   const stateRef = useRef<AgentState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── ask_user question band ─────────────────────────────────
+  // The agent's `ask_user` tool parks its turn on a human answer: the sidecar
+  // broadcasts an `ask_user` frame and blocks until we POST the answer to
+  // /ask/:id. We render it inline as a transcript "ask" item (clickable
+  // options), and close it when the run ends without an answer.
+  useEffect(() => {
+    const unsub = subscribe((e) => {
+      if (e.type === "ask_user") {
+        if (!isAskUserPrompt(e.data)) return;
+        const prompt = e.data;
+        setItems((prev) =>
+          prev.some((it) => it.kind === "ask" && it.prompt.id === prompt.id)
+            ? prev
+            : [...prev, { kind: "ask", id: nextId(), prompt }],
+        );
+        return;
+      }
+      // A run that ends with a band still open means the parked tool call was
+      // released without an answer (timeout/abort/superseded on the sidecar) —
+      // close the band so it stops offering dead buttons.
+      if (e.type === "run_end" || e.type === "agent_done") {
+        setItems((prev) =>
+          prev.map((it) =>
+            it.kind === "ask" && it.sent !== true && it.cancelled !== true
+              ? { ...it, cancelled: true }
+              : it,
+          ),
+        );
+      }
+    });
+    return () => unsub();
+  }, [nextId, setItems]);
+
+  // Record answers for an ask band. Once every question has one, settle the
+  // parked tool call and collapse the band (`sent`).
+  const answerAsk = useCallback(
+    (itemId: number, delta: Record<string, string | string[]>) => {
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.kind !== "ask" || it.id !== itemId) return it;
+          const { answers, complete } = mergeAskAnswers(it.answers, delta, it.prompt.questions);
+          if (complete) void answerAskUser(it.prompt.id, "answer", answers).catch(() => {});
+          return { ...it, answers, sent: complete ? true : it.sent };
+        }),
+      );
+    },
+    [setItems],
+  );
+
+  // "Type your own answer instead": focus the composer, seeded with the first
+  // keystroke. Sending it supersedes the band — the sidecar releases the parked
+  // call when the prompt lands, and `dismissOpenAsks` drops the dead band.
+  const askTypeInstead = useCallback(
+    (_questionId: string, seed?: string) => {
+      if (seed) setInput((prev) => prev + seed);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [setInput],
+  );
+
+  /** [motion] Put a starter's text in the composer, caret at the end, ready to finish and send. */
+  function fillComposer(text: string): void {
+    setInput(text);
+    setCaret(text.length);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  }
+
+  // A prompt sent while a band is open supersedes it — drop the dead band.
+  const dismissOpenAsks = useCallback(() => {
+    setItems(dropSupersededAsks);
+  }, [setItems]);
+
   // NOTE: the build-session event machine's private refs (streaming bubble id,
   // rAF buffer, per-run accumulators, sub-agent / compaction group ids) now live
   // inside the useAgentEvents hook. Only the cross-cutting refs that App's render
@@ -759,16 +933,24 @@ function App(): React.ReactElement {
 
   // Whether the transcript is "pinned" to the bottom. Auto-scroll only runs
   // while pinned. The user scrolling up un-pins it — so they can read freely
-  // even while the agent keeps streaming — and scrolling back to the bottom
-  // re-pins. Default true so a fresh transcript follows the newest output.
+  // even while the agent keeps streaming — and scrolling back down to the
+  // bottom re-pins (rules in transcript-pin.ts). Default true so a fresh
+  // transcript follows the newest output.
   const stickToBottomRef = useRef(true);
+  // The transcript's offset as last seen by a scroll event or left by our own
+  // scrollToBottom — the baseline that tells an up-scroll from a down-scroll.
+  const lastScrollTopRef = useRef(0);
 
   // Pin to the bottom. Images (screenshots / attachments) load asynchronously
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight });
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight });
+    // A reader's scroll landing in this same frame shares one scroll event with
+    // this jump; measuring it from the pre-jump offset would read up as down.
+    lastScrollTopRef.current = el.scrollTop;
   }, []);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
@@ -776,15 +958,23 @@ function App(): React.ReactElement {
     if (stickToBottomRef.current) scrollToBottom();
   }, [scrollToBottom]);
 
-  // Track the user's scroll intent. Any real scroll that lands more than a
-  // small threshold above the bottom un-pins; returning to (near) the bottom
-  // re-pins. Our own programmatic scrollToBottom lands at the bottom, so it
-  // simply keeps the pin set — no need to distinguish it from a user scroll.
+  // Track the user's scroll intent by direction, not distance: while a reply
+  // streams, every commit re-pins, so any "near the bottom" allowance snapped a
+  // small scroll up straight back down. The wheel handler runs before the
+  // scroll it causes, so a commit landing in between can't erase the move.
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom <= 48;
+    stickToBottomRef.current = pinAfterScroll(
+      stickToBottomRef.current,
+      lastScrollTopRef.current,
+      el,
+    );
+    lastScrollTopRef.current = el.scrollTop;
+  }, []);
+  const onTranscriptWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (el) stickToBottomRef.current = pinAfterWheel(stickToBottomRef.current, e, el);
   }, []);
 
   const insertDroppedFolderPaths = useCallback((paths: string[]): void => {
@@ -826,17 +1016,7 @@ function App(): React.ReactElement {
     setRankCelebrateNonce(levelUpNonce);
     const clearRank = window.setTimeout(() => setRankCelebrateNonce(null), 2400);
 
-    const crossedTier = Math.floor((levelUp.from - 1) / 5) !== Math.floor((levelUp.to - 1) / 5);
-    let clearConfetti = 0;
-    if (crossedTier) {
-      setConfettiNonce(levelUpNonce);
-      clearConfetti = window.setTimeout(() => setConfettiNonce(null), 1900);
-    }
-
-    return () => {
-      window.clearTimeout(clearRank);
-      if (clearConfetti) window.clearTimeout(clearConfetti);
-    };
+    return () => window.clearTimeout(clearRank);
   }, [levelUp, levelUpNonce, levelUpOrigin]);
 
   // Re-pin to the bottom before every paint — but only while pinned. The live
@@ -875,6 +1055,7 @@ function App(): React.ReactElement {
   const attachTranscript = useCallback(
     (el: HTMLDivElement | null) => {
       scrollRef.current = el;
+      if (el) lastScrollTopRef.current = el.scrollTop;
       transcriptRoRef.current?.disconnect();
       transcriptRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
@@ -999,31 +1180,18 @@ function App(): React.ReactElement {
     };
   }, [insertDroppedFolderPaths]);
 
-  // Keep the native window title aligned with the visible title-bar context.
+  // ActivityWatch records this native title, so keep it stable and project-specific.
   useEffect(() => {
-    const fallbackTitle = workspaceMode === "chat" ? "Orca Chat" : "OrcaCoder";
+    const fallbackTitle =
+      workspaceMode === "chat"
+        ? "Orca Chat"
+        : workspaceMode === "motion"
+          ? "Orca Motion"
+          : "OrcaCoder"; // [motion]
     const title =
-      !needsProject && !showPicker
-        ? formatWorkspaceTitle(
-            state?.cwd,
-            state?.gitBranch,
-            fallbackTitle,
-            state?.gitDirtyFileCount,
-            state?.gitHubIssues ?? null,
-            state?.gitHubPRs ?? null,
-          )
-        : fallbackTitle;
+      !needsProject && !showPicker ? formatActivityTitle(state?.cwd, fallbackTitle) : fallbackTitle;
     setWindowTitle(title);
-  }, [
-    needsProject,
-    showPicker,
-    state?.cwd,
-    state?.gitBranch,
-    state?.gitDirtyFileCount,
-    state?.gitHubIssues,
-    state?.gitHubPRs,
-    workspaceMode,
-  ]);
+  }, [needsProject, showPicker, state?.cwd, workspaceMode]);
 
   // Auto-grow the chat textarea to fit its content, up to a CSS max-height
   // after which it scrolls.
@@ -1072,22 +1240,34 @@ function App(): React.ReactElement {
   // is acted on; reacting to height would feed our own resize back in as a loop.
   // Attached via a callback ref because the composer unmounts whenever a
   // picker/home view takes over the window.
-  const inputRoRef = useRef<ResizeObserver | null>(null);
+  //
+  // The resize runs on the next frame, not inside the callback: autosizing
+  // changes this same textarea's height (and width, via is-multiline), and
+  // resizing an observed element from its own callback leaves a notification
+  // undelivered, which WebKit reports as "ResizeObserver loop completed with
+  // undelivered notifications" on every send.
+  const inputRoRef = useRef<{ observer: ResizeObserver; cancel: () => void } | null>(null);
   const attachInput = useCallback(
     (el: HTMLTextAreaElement | null) => {
       inputRef.current = el;
-      inputRoRef.current?.disconnect();
+      inputRoRef.current?.observer.disconnect();
+      inputRoRef.current?.cancel();
       inputRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
       let lastWidth = el.clientWidth;
+      let frame = 0;
       const ro = new ResizeObserver(() => {
         const width = el.clientWidth;
         if (width === lastWidth) return;
         lastWidth = width;
-        autosizeInput();
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          autosizeInput();
+        });
       });
       ro.observe(el);
-      inputRoRef.current = ro;
+      inputRoRef.current = { observer: ro, cancel: () => cancelAnimationFrame(frame) };
     },
     [autosizeInput],
   );
@@ -1140,9 +1320,13 @@ function App(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Track whether THIS window holds OS focus (for the prominent input border).
-  // The webview's own focus/blur events are instant — no IPC round-trip.
-  const [windowFocused, setWindowFocused] = useState(true);
+  // Whether THIS window holds OS focus — drives the prominent input border and
+  // pauses decorative animations/canvas loops in background windows. Seeded from
+  // document.hasFocus() so a window restored at launch (which never gets a blur
+  // event) doesn't animate forever unattended.
+  const windowFocused = useWindowFocused();
+  // [effects] Master on/off for decorative UI effects (default on).
+  const ggUiEnabled = useGgUiEnabled();
 
   // Position in the multi-window reading order (e.g. window 2 of 4), plus
   // whether this window is the focused one. Driven by the Rust `window-order`
@@ -1175,17 +1359,10 @@ function App(): React.ReactElement {
       }
       inputRef.current?.focus();
     };
-    const onFocus = (): void => {
-      setWindowFocused(true);
-      focusInput();
-    };
-    const onBlur = (): void => setWindowFocused(false);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", focusInput);
     window.addEventListener("mouseup", focusInput);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", focusInput);
       window.removeEventListener("mouseup", focusInput);
     };
   }, []);
@@ -1444,12 +1621,144 @@ function App(): React.ReactElement {
       .then((target) => {
         if (target) {
           setWorkspaceMode(target.mode);
+          restoredSurfaceRef.current =
+            boardModeEnabled && target.surface === "board" ? "board" : "workspace";
           onProjectChosen();
         }
       })
       .finally(() => setRestoreChecked(true));
     // Mount-only: the native target remains stable for this window's lifetime.
+  }, [boardModeEnabled]);
+
+  useEffect(() => {
+    if (!hydrated || restoredSurfaceRef.current !== "board") return;
+    restoredSurfaceRef.current = "workspace";
+    setBoardMounted(true);
+    setWindowSurfaceState("board");
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!boardModeEnabled) return;
+    document.documentElement.dataset.windowSurface = windowSurface;
+    return () => {
+      delete document.documentElement.dataset.windowSurface;
+    };
+  }, [boardModeEnabled, windowSurface]);
+
+  const flushBoard = useCallback(
+    async (reason: BoardFlushReason): Promise<boolean> => {
+      const result = await boardFlushCoordinator.flush(reason);
+      if (result.ok) return true;
+      setStatus(`${result.error ?? "Board changes could not be saved"}; retry from Board Mode`);
+      return false;
+    },
+    [boardFlushCoordinator],
+  );
+
+  const changeWindowSurface = useCallback(
+    async (
+      surface: WindowSurface,
+      flushReason: BoardFlushReason = "surface-switch",
+    ): Promise<boolean> => {
+      if (!boardModeEnabled || surface === windowSurface) return true;
+      if (surfaceChanging) return false;
+      setSurfaceChanging(true);
+      try {
+        if (surface === "workspace" && !(await flushBoard(flushReason))) return false;
+        await setWindowSurface(surface);
+        setWindowSurfaceState(surface);
+        setBoardMounted(surface === "board");
+        if (surface === "board") setIsFileDragOver(false);
+        return true;
+      } catch {
+        setStatus("surface switch failed; current surface remains active");
+        return false;
+      } finally {
+        setSurfaceChanging(false);
+      }
+    },
+    [boardModeEnabled, flushBoard, surfaceChanging, windowSurface],
+  );
+
+  const openProjectPicker = useCallback(async (): Promise<void> => {
+    if (windowSurface === "board" && !(await changeWindowSurface("workspace", "project-change"))) {
+      return;
+    }
+    setShowPicker(true);
+  }, [changeWindowSurface, windowSurface]);
+
+  useEffect(() => {
+    if (!boardModeEnabled) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
+        if (closingAfterBoardFlushRef.current) return;
+        // Flush pending board writes first, but NEVER let a failed flush hold the window
+        // open: this used to `return` on failure, which left the window permanently
+        // unclosable with nothing on screen explaining why. The save queue keeps failed
+        // work for the explicit retry path, so closing does not discard it.
+        const flushed = await flushBoard("window-close");
+        closingAfterBoardFlushRef.current = true;
+        try {
+          await getCurrentWindow().destroy();
+        } catch {
+          closingAfterBoardFlushRef.current = false;
+          setStatus(
+            flushed
+              ? "window close failed"
+              : "window close failed; some Board changes are still unsaved",
+          );
+        }
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [boardModeEnabled, flushBoard]);
+
+  // Ctrl/Cmd+Shift+H is now an OS-level global shortcut registered in Rust
+  // (see setup() in lib.rs), not a webview keydown. That is what lets the second
+  // press RESTORE every window — while they are all minimized no window has
+  // focus, so a keydown listener here would never hear it. The in-app listener
+  // was removed rather than kept alongside: with the global shortcut also live,
+  // one press while focused would fire both and toggle twice to a net no-op.
+  // The "Hide all windows" button in WindowLayoutButton still calls the command
+  // directly for a pointer-driven path.
+
+  useEffect(() => {
+    // Ctrl+Q quits the whole app in one action, preserving every open window for
+    // next launch. Windows/Linux only: macOS already quits the app with the
+    // native Cmd+Q, which fires the same graceful ExitRequested path. Scoped to
+    // the focused window (not a global shortcut) because quitting only makes
+    // sense while you are looking at the app.
+    if (navigator.userAgent.toLowerCase().includes("mac")) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
+      if (event.key.toLowerCase() !== "q") return;
+      event.preventDefault();
+      void quitApp();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!boardModeEnabled || needsProject) return;
+    const toggleSurface = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "b") return;
+      event.preventDefault();
+      void changeWindowSurface(windowSurface === "board" ? "workspace" : "board");
+    };
+    window.addEventListener("keydown", toggleSurface);
+    return () => window.removeEventListener("keydown", toggleSurface);
+  }, [boardModeEnabled, changeWindowSurface, needsProject, windowSurface]);
 
   useEffect(() => {
     // Only the main window auto-connects to its default project. Secondary
@@ -1660,31 +1969,9 @@ function App(): React.ReactElement {
     });
   }
 
-  /**
-   * Cancel one pending queued message. The sidecar returns the remaining queue,
-   * which we adopt wholesale rather than filtering locally: the agent may have
-   * consumed messages between render and click, so its list is authoritative.
-   */
+  /** Ordered queue events own both pending rows and cancelled transcript bubbles. */
   function handleCancelQueued(id: string): void {
-    const cancelledText = queuedMessages.find((m) => m.id === id)?.text;
-    void cancelQueued(id).then((remaining) => {
-      if (remaining === null) return;
-      setQueuedMessages(remaining);
-      setQueuedCount(remaining.length);
-      // Drop the transcript bubble for a message that will now never run.
-      // Leaving it would clear its `queued` flag on the next queue broadcast and
-      // render it identically to a message the agent actually received.
-      // Only remove it if the sidecar really dropped it: a cancel that lost the
-      // race (already consumed) comes back with the text still in the queue.
-      if (cancelledText === undefined) return;
-      if (remaining.some((m) => m.id === id)) return;
-      setItems((prev) => {
-        const index = prev.findIndex(
-          (it) => it.kind === "user" && it.queued && it.text === cancelledText,
-        );
-        return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
-      });
-    });
+    void cancelQueued(id);
   }
 
   function pickSlashCommand(cmd: SlashCommand): void {
@@ -1802,6 +2089,10 @@ function App(): React.ReactElement {
     // hint that the directory you just chose went nowhere.
     const disposition = submitDisposition(trimmed, readyRef.current, running);
     if (disposition === "ignore") return;
+    // Sending a message of your own answers any open `ask_user` band: the
+    // sidecar releases the parked tool call when this prompt lands, so drop the
+    // now-dead band rather than leaving its buttons in the transcript.
+    dismissOpenAsks();
     const queued = disposition === "queue";
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
@@ -2261,6 +2552,59 @@ function App(): React.ReactElement {
     setHydrateNonce((n) => n + 1);
   }
 
+  const boardControl = boardModeEnabled && state?.cwd && (
+    <BoardModeButton
+      surface={windowSurface}
+      disabled={surfaceChanging}
+      onChange={(surface) => void changeWindowSurface(surface)}
+    />
+  );
+  const boardAgentStatus =
+    running || kenRunning || autopilotReviewing
+      ? "Agent active"
+      : doneStatus
+        ? "Agent completed"
+        : /error|fail/i.test(status)
+          ? "Agent needs attention"
+          : "Agent ready";
+
+  const updateFooter =
+    appUpdate.phase === "available" || previewUpdateFooter ? (
+      <button
+        className="update-banner"
+        title={`View OrcaCoder ${appUpdate.version ?? "update"}`}
+        onClick={() => {
+          if (!previewUpdateFooter) setUpdatePageOpen(true);
+        }}
+      >
+        <span className="update-banner-dot" aria-hidden="true" />
+        OrcaCoder update ready
+        <Badge>View update</Badge>
+      </button>
+    ) : appUpdate.phase === "installing" ? (
+      <div
+        className="update-banner update-banner-busy update-banner-progress"
+        role="progressbar"
+        aria-valuenow={appUpdate.progress ?? 0}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Downloading update"
+      >
+        <span className="update-banner-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
+        <span className="update-banner-pct">{`${appUpdate.progress ?? 0}%`}</span>
+      </div>
+    ) : null;
+
+  if (updatePageOpen) {
+    return (
+      <div className="home home-update-page-open" data-tauri-drag-region>
+        <HomeBackdrop />
+        <UpdatePage update={displayedUpdate} onClose={() => setUpdatePageOpen(false)} />
+        <Toaster />
+      </div>
+    );
+  }
+
   // Show explicit recovery feedback while Rust resolves this window's durable
   // target. This branch used to paint only the dark background, which looked
   // indistinguishable from a dead/black webview during a slow recovery.
@@ -2272,6 +2616,7 @@ function App(): React.ReactElement {
           <span className="app-restoring-dot" aria-hidden="true" />
           Restoring workspace…
         </div>
+        {updateFooter}
       </div>
     );
   }
@@ -2290,6 +2635,11 @@ function App(): React.ReactElement {
               setWorkspaceMode("chat");
               setEntryView("chats");
             }}
+            onMotion={() => {
+              // [motion]
+              setWorkspaceMode("motion");
+              setEntryView("motion");
+            }}
             onLogin={() => setEntryView("login")}
             refreshSignal={homeRefreshSignal}
           />
@@ -2297,6 +2647,12 @@ function App(): React.ReactElement {
           <LoginScreen onClose={() => setEntryView("home")} />
         ) : entryView === "chats" ? (
           <ChatPicker onChosen={onProjectChosen} onClose={() => setEntryView("home")} />
+        ) : entryView === "motion" ? ( // [motion]
+          <ChatPicker
+            mode="motion"
+            onChosen={onProjectChosen}
+            onClose={() => setEntryView("home")}
+          />
         ) : (
           <ProjectPicker
             onChosen={onProjectChosen}
@@ -2305,6 +2661,7 @@ function App(): React.ReactElement {
           />
         )}
         {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
+        {(entryView !== "home" || previewUpdateFooter) && updateFooter}
         <Toaster />
       </div>
     );
@@ -2329,10 +2686,13 @@ function App(): React.ReactElement {
         <div className="orca-wallpaper" aria-hidden="true" />
         {workspaceMode === "chat" ? (
           <ChatPicker initialAgent={state?.chatAgent ?? "general"} {...pickerProps} />
+        ) : workspaceMode === "motion" ? (
+          <ChatPicker mode="motion" {...pickerProps} />
         ) : (
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
         {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
+        {updateFooter}
       </div>
     );
   }
@@ -2340,13 +2700,12 @@ function App(): React.ReactElement {
   return (
     <div
       className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}`}
-      onDragEnter={handleWindowDragEnter}
-      onDragOver={handleWindowDragOver}
-      onDragLeave={handleWindowDragLeave}
-      onDrop={handleWindowDrop}
+      onDragEnter={windowSurface === "workspace" ? handleWindowDragEnter : undefined}
+      onDragOver={windowSurface === "workspace" ? handleWindowDragOver : undefined}
+      onDragLeave={windowSurface === "workspace" ? handleWindowDragLeave : undefined}
+      onDrop={windowSurface === "workspace" ? handleWindowDrop : undefined}
     >
       <div className="orca-wallpaper" aria-hidden="true" />
-      {confettiNonce && <Confetti key={confettiNonce} />}
 
       <WorkspaceHeader
         workspaceMode={workspaceMode}
@@ -2362,6 +2721,17 @@ function App(): React.ReactElement {
         stripExtras={
           <>
             <TitleUsageMeter currentProvider={state?.provider ?? ""} />
+            {windowSurface === "board" && (
+              <button
+                type="button"
+                className="board-agent-status"
+                aria-live="polite"
+                title="Return to Workspace to view agent activity"
+                onClick={() => void changeWindowSurface("workspace")}
+              >
+                {boardAgentStatus}
+              </button>
+            )}
             {windowTotal > 1 && windowIndex !== null && (
               <span
                 className={`window-index${isThisFocused ? "" : " dim"}`}
@@ -2375,8 +2745,14 @@ function App(): React.ReactElement {
         }
       >
         <BackButton
-          label={workspaceMode === "chat" ? "Back to chats" : "Back to this project's sessions"}
-          onClick={() => setShowPicker(true)}
+          label={
+            workspaceMode === "chat"
+              ? "Back to chats"
+              : workspaceMode === "motion" // [motion]
+                ? "Back to motion sessions"
+                : "Back to this project's sessions"
+          }
+          onClick={() => void openProjectPicker()}
         />
         <div className="rank-badge-wrap">
           <RankBadge
@@ -2392,24 +2768,27 @@ function App(): React.ReactElement {
             ))}
           </div>
         </div>
-        {workspaceMode === "chat" ? (
+        {workspaceMode !== "code" ? (
           <span className="picker-head-actions">
             <OrcaAppearance />
+            {boardControl}
             <button
               className="btn btn-primary btn-sm"
               disabled={running}
-              title="Start a new chat"
+              title={workspaceMode === "motion" ? "Start a new video session" : "Start a new chat"}
               onClick={() => setConfirmNewSession(true)}
             >
               {"+ New"}
             </button>
-            <button
-              className="btn btn-sm btn-ghost"
-              title="View and curate chat memories and Jiwa"
-              onClick={() => setShowMemories(true)}
-            >
-              Brain
-            </button>
+            {workspaceMode === "chat" && ( // [motion] memories belong to chat only
+              <button
+                className="btn btn-sm btn-ghost"
+                title="View and curate chat memories and Jiwa"
+                onClick={() => setShowMemories(true)}
+              >
+                Brain
+              </button>
+            )}
             <RadioButton />
             <WindowLayoutButton />
           </span>
@@ -2429,6 +2808,7 @@ function App(): React.ReactElement {
                 }}
               />
               <OrcaAppearance />
+              {boardControl}
               <button
                 className="btn btn-primary btn-sm"
                 disabled={running}
@@ -2492,414 +2872,450 @@ function App(): React.ReactElement {
         )}
       </WorkspaceHeader>
 
-      {/* Non-scrolling frame the same size as the chat viewport. The banner
+      <WorkspaceSurface boardEnabled={boardModeEnabled} hidden={windowSurface === "board"}>
+        {/* Non-scrolling frame the same size as the chat viewport. The banner
           lives HERE, not inside `.transcript` — `.transcript` scrolls, and an
           absolutely positioned child of a scrolling container is pinned to the
           top of the scrolled CONTENT, not the visible viewport, so in an
           existing session scrolled down it rendered far above what's on
           screen. Anchoring to this non-scrolling sibling keeps it pinned to
           what the user is actually looking at, at any scroll position. */}
-      <div
-        className="transcript-frame"
-        onMouseEnter={() => setChatHovered(true)}
-        onMouseLeave={() => setChatHovered(false)}
-      >
-        {workspaceMode === "code" && kenPowerBanner && (
-          <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
-        )}
-        <div className="transcript" ref={attachTranscript} onScroll={onTranscriptScroll}>
-          {!hydrated && items.length === 0 ? (
-            <TranscriptSkeleton />
-          ) : (
-            <>
-              {items.length === 0 &&
-                (status === "ready" ? (
-                  <WakeScreen chat={workspaceMode === "chat"} />
-                ) : (
-                  <div className="line transcript-reveal" style={{ color: theme.textDim }}>
-                    {`\u273b ${status}`}
-                  </div>
-                ))}
-              <PromptSendProvider value={sendKenRecommendedPrompt}>
-                {items.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-                ))}
-              </PromptSendProvider>
-            </>
+        <div
+          className="transcript-frame"
+          onMouseEnter={() => setChatHovered(true)}
+          onMouseLeave={() => setChatHovered(false)}
+        >
+          {workspaceMode === "code" && kenPowerBanner && (
+            <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
+          )}
+          <div
+            className="transcript"
+            ref={attachTranscript}
+            onScroll={onTranscriptScroll}
+            onWheel={onTranscriptWheel}
+          >
+            {!hydrated && items.length === 0 ? (
+              <TranscriptSkeleton />
+            ) : (
+              <>
+                {items.length === 0 &&
+                  (status === "ready" ? (
+                    <WakeScreen
+                      chat={workspaceMode === "chat"}
+                      motion={workspaceMode === "motion"}
+                    /> /* [motion] */
+                  ) : (
+                    <div className="line transcript-reveal" style={{ color: theme.textDim }}>
+                      {`\u273b ${status}`}
+                    </div>
+                  ))}
+                <PromptSendProvider value={sendKenRecommendedPrompt}>
+                  {items.map((it) => (
+                    <TranscriptRow
+                      key={it.id}
+                      item={it}
+                      onImageLoad={maybeScrollToBottom}
+                      onAskAnswer={answerAsk}
+                      onAskTypeInstead={askTypeInstead}
+                    />
+                  ))}
+                </PromptSendProvider>
+              </>
+            )}
+          </div>
+          {items.length > 0 && (
+            <ExportChatButton
+              visible={chatHovered || exporting}
+              busy={exporting}
+              onExport={() => void exportTranscript()}
+            />
           )}
         </div>
-        {items.length > 0 && (
-          <ExportChatButton
-            visible={chatHovered || exporting}
-            busy={exporting}
-            onExport={() => void exportTranscript()}
-          />
-        )}
-      </div>
 
-      <div className="liveregion">
-        {workspaceMode === "code" && autopilotReviewing && (
-          <AutopilotReviewBar onCancel={requestCancel} />
-        )}
-        {workspaceMode === "code" && kenRunning && (
-          <KenActivityBar
-            runStartTs={kenRunStartTs}
-            tokens={kenTokens}
-            isThinking={kenIsThinking}
-            thinkingStartTs={kenThinkingStartTs}
-            thinkingAccumMs={kenThinkingAccumMs}
-            onCancel={() => void cancelKen()}
-          />
-        )}
-        {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
+        <div className="liveregion">
+          {/* [motion] Starting points sit just above the activity bar and go away
+              once the conversation has its first message. */}
+          {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
+            <MotionStarters onPick={fillComposer} />
+          )}
+          {workspaceMode === "code" && autopilotReviewing && (
+            <AutopilotReviewBar onCancel={requestCancel} />
+          )}
+          {workspaceMode === "code" && kenRunning && (
+            <KenActivityBar
+              runStartTs={kenRunStartTs}
+              tokens={kenTokens}
+              isThinking={kenIsThinking}
+              thinkingStartTs={kenThinkingStartTs}
+              thinkingAccumMs={kenThinkingAccumMs}
+              onCancel={() => void cancelKen()}
+            />
+          )}
+          {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
+          {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
             build is idle — otherwise the idle "Ready for work" line stacks under
             Ken's spinner. When the build is also running, both bars show. */}
-        {(workspaceMode === "chat" || running || (!kenRunning && !autopilotReviewing)) && (
-          <ActivityBar
-            running={running}
-            cancelling={cancelling}
-            tokens={tokens}
-            doneStatus={doneStatus}
-            isThinking={isThinking}
-            thinkingStartTs={thinkingStartTs}
-            thinkingAccumMs={thinkingAccumMs}
-            planTotal={workspaceMode === "chat" ? 0 : planTotal}
-            planDone={workspaceMode === "chat" ? 0 : Math.min(planDone.size, planTotal)}
-            onCancel={requestCancel}
-            toolsHidden={toolsHidden}
-            hasToolFeed={liveToolFeed.length > 0}
-            onToggleTools={toggleTools}
-          />
-        )}
-      </div>
-
-      <div
-        className={`inputwrap${isFileDragOver ? " dragover" : ""}${
-          scheduleInvalid ? " schedule-invalid" : ""
-        }`}
-      >
-        {scheduleDraft ? (
-          <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
-        ) : (
-          slashOpen && (
-            <SlashMenu
-              commands={slashMatches}
-              activeIndex={clampedSlashIndex}
-              onSelect={pickSlashCommand}
-              onHover={setSlashIndex}
+          {(workspaceMode !== "code" || running || (!kenRunning && !autopilotReviewing)) && (
+            <ActivityBar
+              running={running}
+              cancelling={cancelling}
+              tokens={tokens}
+              doneStatus={doneStatus}
+              isThinking={isThinking}
+              thinkingStartTs={thinkingStartTs}
+              thinkingAccumMs={thinkingAccumMs}
+              planTotal={workspaceMode !== "code" ? 0 : planTotal}
+              planDone={workspaceMode !== "code" ? 0 : Math.min(planDone.size, planTotal)}
+              onCancel={requestCancel}
+              toolsHidden={toolsHidden}
+              hasToolFeed={liveToolFeed.length > 0}
+              onToggleTools={toggleTools}
             />
-          )
-        )}
-        {mentionOpen && (
-          <FileMentionMenu
-            files={fileMatches}
-            activeIndex={clampedFileIndex}
-            isRecent={mention?.query === ""}
-            onSelect={pickMentionFile}
-            onHover={setFileIndex}
-          />
-        )}
-        <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
-        <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
-        <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
-        <div className="inputrow">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              if (e.target.files) void addFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          <button
-            className="attach-btn"
-            title="Attach files"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip size={16} />
-          </button>
-          <span className="prompt" style={{ color: theme.primary }}>
-            {">"}
-          </span>
-          <div className="input-stack">
-            {enhanceAnim && (
-              <EnhanceDissolve
-                oldText={enhanceAnim.oldText}
-                newText={enhanceAnim.newText}
-                onDone={onEnhanceAnimDone}
+          )}
+        </div>
+
+        <div
+          className={`inputwrap${isFileDragOver ? " dragover" : ""}${
+            scheduleInvalid ? " schedule-invalid" : ""
+          }`}
+        >
+          {/* [effects] decorative beam around the composer while a run is active */}
+          <WorkingBeam active={running && ggUiEnabled} />
+          {scheduleDraft ? (
+            <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
+          ) : (
+            slashOpen && (
+              <SlashMenu
+                commands={slashMatches}
+                activeIndex={clampedSlashIndex}
+                onSelect={pickSlashCommand}
+                onHover={setSlashIndex}
               />
-            )}
-            {/* `@Orca` active: a textarea can't color just one token, so we mirror
+            )
+          )}
+          {mentionOpen && (
+            <FileMentionMenu
+              files={fileMatches}
+              activeIndex={clampedFileIndex}
+              isRecent={mention?.query === ""}
+              onSelect={pickMentionFile}
+              onHover={setFileIndex}
+            />
+          )}
+          <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
+          <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
+          <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
+          <div className="inputrow">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,video/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                if (e.target.files) void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {/* [effects] representative metal-rimmed button; MetalButton passes
+                className/title/onClick straight to the real <button>. To remove,
+                change <MetalButton windowFocused={windowFocused} …> back to a
+                plain <button …> and drop the extra prop. */}
+            <MetalButton
+              windowFocused={windowFocused}
+              className="attach-btn"
+              title="Attach files"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip size={16} />
+            </MetalButton>
+            <span className="prompt" style={{ color: theme.primary }}>
+              {">"}
+            </span>
+            <div className="input-stack">
+              {enhanceAnim && (
+                <EnhanceDissolve
+                  oldText={enhanceAnim.oldText}
+                  newText={enhanceAnim.newText}
+                  onDone={onEnhanceAnimDone}
+                />
+              )}
+              {/* `@Orca` active: a textarea can't color just one token, so we mirror
                 the input in an aligned overlay where the leading `@Orca` shimmers
                 in Ken's color. The textarea text below is made transparent (caret
                 stays visible) so only this styled copy shows. Metrics match
                 `.input` 1:1 so wrapping/caret line up. */}
-            {kenActive && kenInputParts && (
-              <div className="ken-input-highlight" aria-hidden="true">
-                {kenInputParts.lead}
-                <ShimmerText base={theme.ken} bright="#ffffff">
-                  {kenInputParts.token}
-                </ShimmerText>
-                {kenInputParts.rest}
-              </div>
-            )}
-            <textarea
-              ref={attachInput}
-              className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
-              rows={1}
-              // Lock the input while the dissolve→decode animation plays: the caret
-              // is invisible, so typing would be silently discarded and Enter would
-              // submit the un-enhanced draft mid-animation.
-              readOnly={enhanceAnim !== null}
-              value={input}
-              placeholder={workspaceMode === "chat" ? "Ask anything\u2026" : displayPlaceholder}
-              onPaste={(e) => {
-                const files = Array.from(e.clipboardData.files);
-                if (files.length > 0) {
-                  e.preventDefault();
-                  void addFiles(files);
+              {kenActive && kenInputParts && (
+                <div className="ken-input-highlight" aria-hidden="true">
+                  {kenInputParts.lead}
+                  <ShimmerText base={theme.ken} bright="#ffffff">
+                    {kenInputParts.token}
+                  </ShimmerText>
+                  {kenInputParts.rest}
+                </div>
+              )}
+              <textarea
+                ref={attachInput}
+                className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
+                rows={1}
+                // Lock the input while the dissolve→decode animation plays: the caret
+                // is invisible, so typing would be silently discarded and Enter would
+                // submit the un-enhanced draft mid-animation.
+                readOnly={enhanceAnim !== null}
+                value={input}
+                placeholder={
+                  workspaceMode === "chat"
+                    ? "Ask anything\u2026"
+                    : workspaceMode === "motion" // [motion]
+                      ? "Describe a video, paste a link, or drop a PDF\u2026"
+                      : displayPlaceholder
                 }
-              }}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setSlashIndex(0);
-                setCaret(e.target.selectionStart ?? e.target.value.length);
-                // Typing exits history-recall mode so ↑/↓ start fresh next time.
-                if (historyIndex !== null) setHistoryIndex(null);
-                // Drop the enhancement the instant the text diverges from it, so
-                // the highlighted preview/bubble never misalign with edited text.
-                if (enhancement && e.target.value !== enhancement.plain) setEnhancement(null);
-                updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
-              }}
-              onClick={(e) => {
-                const el = e.currentTarget;
-                setCaret(el.selectionStart ?? el.value.length);
-                updateMention(el.value, el.selectionStart ?? el.value.length);
-              }}
-              onKeyUp={(e) => {
-                const el = e.currentTarget;
-                setCaret(el.selectionStart ?? el.value.length);
-                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                  updateMention(el.value, el.selectionStart ?? el.value.length);
-                }
-              }}
-              onKeyDown={(e) => {
-                // While the dissolve→decode animation plays the input is locked;
-                // swallow keys so Enter can't submit the un-enhanced draft.
-                if (enhanceAnim) {
-                  e.preventDefault();
-                  return;
-                }
-                if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  const delta = e.key === "ArrowDown" ? 1 : -1;
-                  setFileIndex((i) => (i + delta + fileMatches.length) % fileMatches.length);
-                } else if (mentionOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
-                  e.preventDefault();
-                  const file = fileMatches[clampedFileIndex];
-                  if (file) pickMentionFile(file);
-                } else if (mentionOpen && e.key === "Escape") {
-                  e.preventDefault();
-                  setMention(null);
-                } else if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  const delta = e.key === "ArrowDown" ? 1 : -1;
-                  setSlashIndex((i) => (i + delta + slashMatches.length) % slashMatches.length);
-                } else if (slashOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
-                  e.preventDefault();
-                  const cmd = slashMatches[clampedSlashIndex];
-                  if (cmd) pickSlashCommand(cmd);
-                } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                  // Menus are closed here (handled above), so arrows recall sent
-                  // prompts shell-style — unless the caret is mid-text in a
-                  // multi-line draft, where navigateHistory declines and the
-                  // cursor moves normally.
-                  if (navigateHistory(e.key === "ArrowUp" ? -1 : 1, e.currentTarget)) {
+                onPaste={(e) => {
+                  const files = Array.from(e.clipboardData.files);
+                  if (files.length > 0) {
                     e.preventDefault();
+                    void addFiles(files);
                   }
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  // Enter sends; Shift+Enter inserts a newline (textarea default).
-                  e.preventDefault();
-                  submit();
-                } else if (e.key === "Escape") {
-                  // Cancel the build if it's running; otherwise cancel Ken so the
-                  // "esc to cancel" on his bar actually works.
-                  if (slashOpen) setInput("");
-                  else if (running && !cancelling) requestCancel();
-                  else if (kenRunning) void cancelKen();
-                }
-              }}
-              autoFocus
-            />
+                }}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSlashIndex(0);
+                  setCaret(e.target.selectionStart ?? e.target.value.length);
+                  // Typing exits history-recall mode so ↑/↓ start fresh next time.
+                  if (historyIndex !== null) setHistoryIndex(null);
+                  // Drop the enhancement the instant the text diverges from it, so
+                  // the highlighted preview/bubble never misalign with edited text.
+                  if (enhancement && e.target.value !== enhancement.plain) setEnhancement(null);
+                  updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                }}
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  setCaret(el.selectionStart ?? el.value.length);
+                  updateMention(el.value, el.selectionStart ?? el.value.length);
+                }}
+                onKeyUp={(e) => {
+                  const el = e.currentTarget;
+                  setCaret(el.selectionStart ?? el.value.length);
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    updateMention(el.value, el.selectionStart ?? el.value.length);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // While the dissolve→decode animation plays the input is locked;
+                  // swallow keys so Enter can't submit the un-enhanced draft.
+                  if (enhanceAnim) {
+                    e.preventDefault();
+                    return;
+                  }
+                  if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                    e.preventDefault();
+                    const delta = e.key === "ArrowDown" ? 1 : -1;
+                    setFileIndex((i) => (i + delta + fileMatches.length) % fileMatches.length);
+                  } else if (
+                    mentionOpen &&
+                    (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))
+                  ) {
+                    e.preventDefault();
+                    const file = fileMatches[clampedFileIndex];
+                    if (file) pickMentionFile(file);
+                  } else if (mentionOpen && e.key === "Escape") {
+                    e.preventDefault();
+                    setMention(null);
+                  } else if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                    e.preventDefault();
+                    const delta = e.key === "ArrowDown" ? 1 : -1;
+                    setSlashIndex((i) => (i + delta + slashMatches.length) % slashMatches.length);
+                  } else if (slashOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
+                    e.preventDefault();
+                    const cmd = slashMatches[clampedSlashIndex];
+                    if (cmd) pickSlashCommand(cmd);
+                  } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                    // Menus are closed here (handled above), so arrows recall sent
+                    // prompts shell-style — unless the caret is mid-text in a
+                    // multi-line draft, where navigateHistory declines and the
+                    // cursor moves normally.
+                    if (navigateHistory(e.key === "ArrowUp" ? -1 : 1, e.currentTarget)) {
+                      e.preventDefault();
+                    }
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    // Enter sends; Shift+Enter inserts a newline (textarea default).
+                    e.preventDefault();
+                    submit();
+                  } else if (e.key === "Escape") {
+                    // Cancel the build if it's running; otherwise cancel Ken so the
+                    // "esc to cancel" on his bar actually works.
+                    if (slashOpen) setInput("");
+                    else if (running && !cancelling) requestCancel();
+                    else if (kenRunning) void cancelKen();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
           </div>
+          {!enhanceAnim && (
+            // Pill pinned to the center of the input box (.inputwrap) top border,
+            // overlapping it. Decoupled from text flow, so it never overlaps text,
+            // drifts, or shifts the caret/height; centered (not in a corner) to
+            // stay clear of the status row's "esc to cancel". Always mounted (so it
+            // can transition both ways); the `visible` class fades/slides it in
+            // when there's text and out when there isn't.
+            <button
+              className={`enhance-pill${enhanceHintVisible ? " visible" : ""}${enhancing ? " enhancing" : ""}`}
+              title="Enhance prompt — clearer wording + correct terms"
+              disabled={enhancing || !enhanceHintVisible}
+              aria-hidden={!enhanceHintVisible}
+              onClick={() => void runEnhance()}
+            >
+              {enhancing ? "Enhancing…" : "Enhance?"}
+            </button>
+          )}
         </div>
-        {!enhanceAnim && (
-          // Pill pinned to the center of the input box (.inputwrap) top border,
-          // overlapping it. Decoupled from text flow, so it never overlaps text,
-          // drifts, or shifts the caret/height; centered (not in a corner) to
-          // stay clear of the status row's "esc to cancel". Always mounted (so it
-          // can transition both ways); the `visible` class fades/slides it in
-          // when there's text and out when there isn't.
-          <button
-            className={`enhance-pill${enhanceHintVisible ? " visible" : ""}${enhancing ? " enhancing" : ""}`}
-            title="Enhance prompt — clearer wording + correct terms"
-            disabled={enhancing || !enhanceHintVisible}
-            aria-hidden={!enhanceHintVisible}
-            onClick={() => void runEnhance()}
-          >
-            {enhancing ? "Enhancing…" : "Enhance?"}
-          </button>
-        )}
-      </div>
 
-      <div
-        className={`footer${workspaceMode === "chat" ? " footer-chat" : ""}`}
-        style={{ color: theme.footerText }}
-      >
-        {!hydrated ? (
-          <FooterSkeleton />
-        ) : (
-          <>
-            {workspaceMode === "chat" ? (
-              <span
-                className="footer-left footer-reveal"
-                style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
-              >
-                {state?.chatAgent === "therapist"
-                  ? "Therapist Agent"
-                  : state?.chatAgent === "research"
-                    ? "Research Agent"
-                    : "General Agent"}
-              </span>
-            ) : (
-              <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
-                {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
-                {schedules.length > 0 && (
-                  <>
-                    {runningTaskCount > 0 && <FooterSep />}
-                    <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
-                  </>
-                )}
-                {state?.planMode && (
-                  <>
-                    {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
-                    <span className="footer-plan">
-                      <ShimmerText base={theme.secondary} bright="#ddd6fe">
-                        {"\u25C6 plan mode"}
-                      </ShimmerText>
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-            <span className="footer-right footer-reveal">
-              {contextPct > 0 && (
-                <>
-                  <ContextMeter pct={contextPct} />
-                  <FooterSep />
-                </>
-              )}
-              {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
-                (() => {
-                  const level = state?.thinkingLevel ?? null;
-                  const label = level ? `Thinking ${level}` : "Thinking off";
-                  const maxPower = level === "xhigh" || level === "max";
-                  return (
-                    <>
-                      <button
-                        className="thinking-toggle"
-                        style={{
-                          color: thinkingColor(level),
-                          fontWeight: level === "high" ? 600 : 400,
-                        }}
-                        title="Cycle reasoning level"
-                        onClick={() => void cycleThinking()}
-                      >
-                        {maxPower ? (
-                          <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
-                            {label}
-                          </ShimmerText>
-                        ) : (
-                          label
-                        )}
-                      </button>
-                      <FooterSep />
-                    </>
-                  );
-                })()}
-              <span className="model-anchor">
-                <span className="model-label" style={{ color: theme.text }}>
-                  OrcaCoder
-                </span>
-                <ModelSelect
-                  models={models}
-                  currentModel={state?.model ?? ""}
-                  onSelect={onSelectModel}
-                  disabled={running}
-                  title={
-                    workspaceMode === "chat" ? "Switch Orca's model" : "Switch OrcaCoder's model"
-                  }
-                />
-              </span>
-              {workspaceMode === "code" && (
-                <>
-                  <FooterSep />
-                  <span className="model-anchor">
-                    <span className="model-label" style={{ color: theme.ken }}>
-                      Orca
-                    </span>
-                    <ModelSelect
-                      models={models}
-                      currentModel={state?.kenModel ?? state?.model ?? ""}
-                      onSelect={(id) => onSelectKenModel(id)}
-                      color={theme.ken}
-                      title={
-                        state?.kenModelOverride
-                          ? "Orca is pinned to a separate model — click to change"
-                          : "Orca follows OrcaCoder's model — click to pin one"
-                      }
-                      onSelectFollow={() => onSelectKenModel(null)}
-                      followActive={!state?.kenModelOverride}
-                    />
-                  </span>
-                </>
-              )}
-            </span>
-          </>
-        )}
-      </div>
-
-      {appUpdate.phase === "available" && (
-        <button
-          className="update-banner"
-          title={`Update to ${appUpdate.version} — installs and restarts the app`}
-          onClick={() => void appUpdate.install()}
-        >
-          <span className="update-banner-dot" />
-          {"OrcaCoder update ready"}
-          <Badge>Install</Badge>
-        </button>
-      )}
-      {appUpdate.phase === "installing" && (
-        // Same .update-banner box (padding/font) as the available state, so
-        // banner → progress bar swaps content with zero layout shift. The fill
-        // is absolutely positioned; only the centered percentage is in flow.
         <div
-          className="update-banner update-banner-busy update-banner-progress"
-          role="progressbar"
-          aria-valuenow={appUpdate.progress ?? 0}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Downloading update"
+          className={`footer${workspaceMode !== "code" ? " footer-chat" : ""}`}
+          style={{ color: theme.footerText }}
         >
-          <span className="update-banner-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
-          <span className="update-banner-pct">{`${appUpdate.progress ?? 0}%`}</span>
+          {!hydrated ? (
+            <FooterSkeleton />
+          ) : (
+            <>
+              {workspaceMode === "motion" ? ( // [motion]
+                <span
+                  className="footer-left footer-reveal"
+                  style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
+                >
+                  Motion Agent
+                </span>
+              ) : workspaceMode === "chat" ? (
+                <span
+                  className="footer-left footer-reveal"
+                  style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
+                >
+                  {state?.chatAgent === "therapist"
+                    ? "Therapist Agent"
+                    : state?.chatAgent === "research"
+                      ? "Research Agent"
+                      : "General Agent"}
+                </span>
+              ) : (
+                <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
+                  {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
+                  {schedules.length > 0 && (
+                    <>
+                      {runningTaskCount > 0 && <FooterSep />}
+                      <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
+                    </>
+                  )}
+                  {state?.planMode && (
+                    <>
+                      {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
+                      <span className="footer-plan">
+                        <ShimmerText base={theme.secondary} bright="#ddd6fe">
+                          {"\u25C6 plan mode"}
+                        </ShimmerText>
+                      </span>
+                    </>
+                  )}
+                </span>
+              )}
+              <span className="footer-right footer-reveal">
+                {contextPct > 0 && (
+                  <>
+                    <ContextMeter pct={contextPct} />
+                    <FooterSep />
+                  </>
+                )}
+                {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
+                  (() => {
+                    const level = state?.thinkingLevel ?? null;
+                    const label = level ? `Thinking ${level}` : "Thinking off";
+                    const maxPower = level === "xhigh" || level === "max";
+                    return (
+                      <>
+                        <button
+                          className="thinking-toggle"
+                          style={{
+                            color: thinkingColor(level),
+                            fontWeight: level === "high" ? 600 : 400,
+                          }}
+                          title="Cycle reasoning level"
+                          onClick={() => void cycleThinking()}
+                        >
+                          {maxPower ? (
+                            <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
+                              {label}
+                            </ShimmerText>
+                          ) : (
+                            label
+                          )}
+                        </button>
+                        <FooterSep />
+                      </>
+                    );
+                  })()}
+                <span className="model-anchor">
+                  <span className="model-label" style={{ color: theme.text }}>
+                    OrcaCoder
+                  </span>
+                  <ModelSelect
+                    models={models}
+                    currentModel={state?.model ?? ""}
+                    onSelect={onSelectModel}
+                    disabled={running}
+                    onReload={reloadModels}
+                    title={
+                      workspaceMode === "chat"
+                        ? "Switch Orca's model"
+                        : workspaceMode === "motion" // [motion]
+                          ? "Switch Orca Motion's model"
+                          : "Switch OrcaCoder's model"
+                    }
+                  />
+                </span>
+                {workspaceMode === "code" && (
+                  <>
+                    <FooterSep />
+                    <span className="model-anchor">
+                      <span className="model-label" style={{ color: theme.ken }}>
+                        Orca
+                      </span>
+                      <ModelSelect
+                        models={models}
+                        currentModel={state?.kenModel ?? state?.model ?? ""}
+                        onSelect={(id) => onSelectKenModel(id)}
+                        onReload={reloadModels}
+                        color={theme.ken}
+                        title={
+                          state?.kenModelOverride
+                            ? "Orca is pinned to a separate model — click to change"
+                            : "Orca follows OrcaCoder's model — click to pin one"
+                        }
+                        onSelectFollow={() => onSelectKenModel(null)}
+                        followActive={!state?.kenModelOverride}
+                      />
+                    </span>
+                  </>
+                )}
+              </span>
+            </>
+          )}
         </div>
+      </WorkspaceSurface>
+
+      {boardModeEnabled && boardMounted && (
+        <BoardErrorBoundary
+          onFailure={() => {
+            setStatus("Board Mode failed; agent session remains active");
+            void changeWindowSurface("workspace");
+          }}
+          onReturnToWorkspace={() => void changeWindowSurface("workspace")}
+        >
+          <BoardSurface flushCoordinator={boardFlushCoordinator} />
+        </BoardErrorBoundary>
       )}
+
+      {updateFooter}
 
       {workspaceMode === "code" && showInitGit && (
         <InitGitModal
@@ -2918,7 +3334,9 @@ function App(): React.ReactElement {
           message={
             workspaceMode === "chat"
               ? "This will create a new chat. The current conversation will be cleared. Are you sure?"
-              : "This will create a new session for this project. The current conversation will be cleared. Are you sure?"
+              : workspaceMode === "motion" // [motion]
+                ? "This will start a new video session. The current conversation will be cleared. Are you sure?"
+                : "This will create a new session for this project. The current conversation will be cleared. Are you sure?"
           }
           confirmLabel={workspaceMode === "chat" ? "New Chat" : "New Session"}
           busy={newSessionBusy}
@@ -2988,9 +3406,15 @@ function App(): React.ReactElement {
 const TranscriptRow = memo(function TranscriptRow({
   item,
   onImageLoad,
+  onAskAnswer,
+  onAskTypeInstead,
 }: {
   item: Item;
   onImageLoad?: () => void;
+  /** Answer one `ask_user` band's question(s); App settles the tool call. */
+  onAskAnswer?: (itemId: number, delta: Record<string, string | string[]>) => void;
+  /** Route a typed answer to the composer instead of clicking an option. */
+  onAskTypeInstead?: (questionId: string, seed?: string) => void;
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
@@ -3037,7 +3461,13 @@ const TranscriptRow = memo(function TranscriptRow({
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
               {item.images.map((src, i) => (
-                <img key={i} className="user-img" src={src} alt="attachment" onLoad={onImageLoad} />
+                <ZoomableImage
+                  key={i}
+                  className="user-img"
+                  src={src}
+                  alt={`Attachment ${i + 1}`}
+                  onLoad={onImageLoad}
+                />
               ))}
             </div>
           )}
@@ -3115,10 +3545,17 @@ const TranscriptRow = memo(function TranscriptRow({
         prompted: item.body?.trim()
           ? `Sending OrcaCoder back in:\n\n${item.body.trim()}`
           : "Sending OrcaCoder back in for another pass.",
-        done: allClearCopy(item.copySeed, item.id),
+        done: [allClearCopy(item.copySeed, item.id), item.reason?.trim()]
+          .filter(Boolean)
+          .join("\n\n"),
         human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
         capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",
-        plan_approved: "Plan looks solid. Approved it — implementation is underway.",
+        plan_approved: [
+          "Plan looks solid. Approved it — implementation is underway.",
+          item.reason?.trim(),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       };
       return (
         <div className="assistant-msg ken-msg">
@@ -3155,7 +3592,13 @@ const TranscriptRow = memo(function TranscriptRow({
     case "hook": {
       // Mirrors the TUI IdealHookMessage: assistant-style dot + a shimmering
       // tone-colored one-liner so the self-correction is obvious.
-      const { text, color } = HOOK_PRESENTATION[item.hook];
+      const { text: defaultText, color } = HOOK_PRESENTATION[item.hook];
+      const text =
+        item.verificationReason === "check_review"
+          ? "Hook engaged. Reviewing changes to tests and checks."
+          : item.verificationReason === "recheck"
+            ? "Hook engaged. Re-checking the changes made after verification."
+            : defaultText;
       return (
         <div className="assistant-msg">
           <span className="assistant-dot" style={{ color }}>
@@ -3172,38 +3615,28 @@ const TranscriptRow = memo(function TranscriptRow({
     case "images":
       return (
         <div className="img-grid">
-          {item.images.map((img, i) => {
-            const openImage = (): void => {
-              if (img.path) void openProjectPath(img.path);
-            };
-            return (
-              <figure
-                key={img.path ?? i}
-                className={`img-card${img.path ? " img-card-clickable" : ""}`}
-                role={img.path ? "button" : undefined}
-                tabIndex={img.path ? 0 : undefined}
-                title={img.path ? `Open ${img.path}` : undefined}
-                onClick={openImage}
-                onKeyDown={(e) => {
-                  if (!img.path || (e.key !== "Enter" && e.key !== " ")) return;
-                  e.preventDefault();
-                  openImage();
-                }}
-              >
-                <img
-                  className="img-thumb"
-                  src={img.src}
-                  alt={img.path ?? "image"}
-                  onLoad={onImageLoad}
-                />
-                {img.path && (
-                  <figcaption className="img-cap" title={img.path}>
+          {item.images.map((img, i) => (
+            <figure key={img.path ?? i} className="img-card">
+              <ZoomableImage
+                className="img-thumb"
+                src={img.src}
+                alt={img.path ?? `Generated image ${i + 1}`}
+                onLoad={onImageLoad}
+              />
+              {img.path && (
+                <figcaption className="img-cap">
+                  <button
+                    type="button"
+                    className="img-open"
+                    title={`Open ${img.path}`}
+                    onClick={() => img.path && void openProjectPath(img.path)}
+                  >
                     {basename(img.path)}
-                  </figcaption>
-                )}
-              </figure>
-            );
-          })}
+                  </button>
+                </figcaption>
+              )}
+            </figure>
+          ))}
         </div>
       );
     case "generating_image":
@@ -3219,6 +3652,17 @@ const TranscriptRow = memo(function TranscriptRow({
       );
     case "plan":
       return <PlanModeLogo reason={item.reason} />;
+    case "ask":
+      return (
+        <AskBand
+          prompt={item.prompt}
+          answers={item.answers}
+          sent={item.sent}
+          cancelled={item.cancelled}
+          onAnswer={(delta) => onAskAnswer?.(item.id, delta)}
+          onTypeInstead={(questionId, seed) => onAskTypeInstead?.(questionId, seed)}
+        />
+      );
     case "task":
       return (
         <div className="line task-row">

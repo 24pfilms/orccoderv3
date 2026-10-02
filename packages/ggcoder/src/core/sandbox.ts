@@ -9,6 +9,7 @@ import { log } from "./logger.js";
 import { getAppPaths } from "../config.js";
 import { DEFAULT_ALLOWED_DOMAINS } from "./sandbox-domains.js";
 import type { ShellResolution } from "./shell.js";
+import { getTempRoots } from "./temp-paths.js";
 
 export interface SandboxPolicy {
   /**
@@ -188,7 +189,7 @@ export function buildSandboxSettings(
   platform: NodeJS.Platform = process.platform,
 ): SandboxSettings {
   const workspace = path.resolve(cwd);
-  const temp = path.resolve(os.tmpdir());
+  const tempRoots = getTempRoots(platform);
   const home = os.homedir();
   const allowedDomains = [
     ...new Set(
@@ -205,7 +206,7 @@ export function buildSandboxSettings(
   const writeZones = [
     ...new Set(
       [
-        temp,
+        ...tempRoots,
         workspace,
         ...(policy.additionalRoots ?? []).map((root) => path.resolve(root)),
         path.resolve(getAppPaths().agentDir),
@@ -214,7 +215,7 @@ export function buildSandboxSettings(
         // persistence, and this list governs WRITES, so the ~/.ssh READ denial
         // below would not stop it.
         ...(policy.allowOutsideWorkspaceWrites ? [home] : []),
-        ...(platform === "win32" ? [] : ["/tmp"]),
+
         // NB: the macOS /private aliases need no entry of their own — each
         // anchor above is expanded through withRealPath, so /var/folders/… and
         // /private/var/folders/… are both already zones. Listing bare /private
@@ -230,9 +231,8 @@ export function buildSandboxSettings(
       [
         workspace,
         ...(policy.additionalRoots ?? []).map((root) => path.resolve(root)),
-        temp,
-        // The conventional scratch dir, distinct from os.tmpdir() on macOS.
-        ...(platform === "win32" ? [] : ["/tmp"]),
+        ...tempRoots,
+
         path.resolve(getAppPaths().agentDir),
         ...toolCacheDirs(home),
         ...(policy.allowOutsideWorkspaceWrites ? [home] : []),
@@ -255,7 +255,7 @@ export function buildSandboxSettings(
     filesystem: {
       denyRead: sensitiveReadPaths(home),
       // SRT adds its platform-required temporary paths; these are the only
-      // product-owned write roots supplied by GG Coder.
+      // product-owned write roots supplied by OrcaCoder.
       allowWrite: platform === "win32" ? writeRoots : [...writeRoots, "/dev/null"],
       // `.git/hooks` is a mandatory sandbox protection with no opt-out, which
       // is worth keeping: it stops a command installing a hook that later runs

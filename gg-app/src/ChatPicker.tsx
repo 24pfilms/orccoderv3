@@ -10,6 +10,7 @@ import {
   type ChatAgentId,
   type RecentSession,
 } from "./agent";
+import { motionWorkspacePath } from "./motion-workspace";
 import { Badge } from "./Badge";
 import { BackButton } from "./BackButton";
 import { ListSkeleton } from "./Skeleton";
@@ -20,14 +21,35 @@ interface Props {
   onChosen: (cwd: string) => void;
   onClose?: () => void;
   initialAgent?: ChatAgentId;
+  /** Which non-coding workspace this picker opens. Defaults to chat. */
+  mode?: "chat" | "motion";
 }
 
-/** Agent and session chooser rooted at the configured projects folder. */
+const COPY = {
+  chat: {
+    title: "Chats",
+    newLabel: "+ New chat",
+    empty: "No previous chats yet.",
+    noRoot: "Choose a projects folder in Settings before starting a chat.",
+    loadError: "Chats could not be loaded.",
+  },
+  motion: {
+    title: "Motion",
+    newLabel: "+ New video",
+    empty: "No motion sessions yet.",
+    noRoot: "Choose a projects folder in Settings before starting a video.",
+    loadError: "Motion sessions could not be loaded.",
+  },
+} as const;
+
+/** Session chooser for Chat or Motion, rooted at the configured projects folder. */
 export function ChatPicker({
   onChosen,
   onClose,
   initialAgent = "general",
+  mode = "chat",
 }: Props): React.ReactElement {
+  const copy = COPY[mode];
   const [projectsRoot, setProjectsRoot] = useState("");
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,18 +78,19 @@ export function ChatPicker({
     setError(null);
     void getSettings()
       .then(async (settings) => {
-        const root = settings?.projectsRoot.trim() ?? "";
-        if (!root) throw new Error("Choose a projects folder in Settings before starting a chat.");
+        const projects = settings?.projectsRoot.trim() ?? "";
+        if (!projects) throw new Error(copy.noRoot);
+        const root = mode === "motion" ? motionWorkspacePath(projects) : projects;
         if (!cancelled) setProjectsRoot(root);
         await waitForReady();
-        return listSessions(root, "all");
+        return listSessions(root, mode === "motion" ? "motion" : "all");
       })
       .then((recent) => {
         if (!cancelled) setSessions(recent);
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Chats could not be loaded.");
+          setError(reason instanceof Error ? reason.message : copy.loadError);
         }
       })
       .finally(() => {
@@ -76,12 +99,12 @@ export function ChatPicker({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode, copy.noRoot, copy.loadError]);
 
   function choose(session?: RecentSession): void {
     if (busy || !projectsRoot) return;
     setBusy(true);
-    void selectWorkspace("chat", projectsRoot, session?.path, session?.chatAgent ?? initialAgent)
+    void selectWorkspace(mode, projectsRoot, session?.path, session?.chatAgent ?? initialAgent)
       .then(() => onChosen(projectsRoot))
       .catch(() => setBusy(false));
   }
@@ -90,7 +113,7 @@ export function ChatPicker({
     <div className="picker chat-picker">
       <div className="picker-head" data-tauri-drag-region>
         {onClose ? <BackButton label="Back" onClick={onClose} /> : null}
-        <span className="picker-title">Chats</span>
+        <span className="picker-title">{copy.title}</span>
         {!loading && !error && <Badge>{sessions.length}</Badge>}
         <span className="picker-head-actions">
           <button
@@ -98,7 +121,7 @@ export function ChatPicker({
             disabled={busy || loading || !projectsRoot}
             onClick={() => choose()}
           >
-            {"+ New chat"}
+            {copy.newLabel}
           </button>
           <RadioButton />
           <WindowLayoutButton />
@@ -114,9 +137,9 @@ export function ChatPicker({
         )}
         {!loading && !error && sessions.length === 0 && (
           <div className="picker-empty">
-            <span style={{ color: theme.textMuted }}>No previous chats yet.</span>
+            <span style={{ color: theme.textMuted }}>{copy.empty}</span>
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => choose()}>
-              {"+ New chat"}
+              {copy.newLabel}
             </button>
           </div>
         )}

@@ -480,7 +480,7 @@ export class MCPClientManager {
         return;
       }
       res.end(
-        "<html><body><h1>Login successful!</h1><p>You can close this tab and return to GG Coder.</p></body></html>",
+        "<html><body><h1>Login successful!</h1><p>You can close this tab and return to OrcaCoder.</p></body></html>",
       );
       codeResolve?.(reqUrl.searchParams);
     });

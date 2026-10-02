@@ -7,7 +7,10 @@
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#1a0800" />
     <title>OrcaCoder</title>
-    <style>
+    <!-- [effects] id lets runtime effect stylesheets (border-beam, metal-fx)
+         copy this tag's Tauri-injected nonce, so the production CSP authorizes
+         them. Harmless to keep even with the effects removed. -->
+    <style id="app-style-nonce">
       html,
       body {
         background: #0f1115;

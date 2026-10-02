@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -35,6 +35,9 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 
+mod boards;
+mod updater;
+
 /// The single shared Node daemon process. Every window's `AgentSession` lives
 /// inside this one process as an in-process object, addressed by a session id
 /// (see `Windows`). Replaces the old one-sidecar-process-per-window model: one
@@ -60,9 +63,23 @@ struct Daemon {
 #[serde(rename_all = "lowercase")]
 enum WorkspaceMode {
     Chat,
+    Motion,
     #[default]
     #[serde(other)]
     Code,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum WindowSurface {
+    Board,
+    #[default]
+    #[serde(other)]
+    Workspace,
+}
+
+fn is_workspace_surface(surface: &WindowSurface) -> bool {
+    *surface == WindowSurface::Workspace
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -81,6 +98,8 @@ enum ChatAgent {
 struct WindowSession {
     session_id: Option<String>,
     mode: WorkspaceMode,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
     chat_agent: ChatAgent,
     cwd: Option<PathBuf>,
     session_path: Option<String>,
@@ -105,6 +124,14 @@ struct AppExiting(AtomicBool);
 #[derive(Clone, serde::Serialize)]
 struct RestoreEntry {
     mode: WorkspaceMode,
+    #[serde(default, skip_serializing_if = "is_workspace_surface")]
+    surface: WindowSurface,
+    #[serde(
+        rename = "selectedBoardId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    selected_board_id: Option<String>,
     #[serde(rename = "chatAgent")]
     chat_agent: ChatAgent,
     cwd: String,
@@ -311,7 +338,7 @@ struct ProcInfo {
     command: String,
 }
 
-/// Command substrings that identify a GG Coder *sidecar* process itself.
+/// Command substrings that identify a OrcaCoder *sidecar* process itself.
 /// `app-sidecar` matches both bundled `app-sidecar.mjs` and dev
 /// `app-sidecar.js`. This is our OWN binary name (fully under our control, not
 /// a third-party MCP name), so it's a safe, stable anchor. MCP children are NOT
@@ -400,6 +427,9 @@ fn orphan_killset(snapshot: &[ProcInfo], self_pid: i32, ledger_pgids: &HashSet<i
 /// Pure parser for `ps -eo pid=,ppid=,pgid=,command=` output (one row per
 /// line). Column padding (multiple spaces) is collapsed by `split_whitespace`.
 /// Available on all platforms so the parsing can be unit-tested.
+/// On Windows its only caller is `#[cfg(unix)]`, so outside tests it is dead
+/// there; the allow is scoped to non-Unix so Unix builds still flag real rot.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn parse_ps_output(stdout: &str) -> Vec<ProcInfo> {
     stdout
         .lines()
@@ -1198,6 +1228,31 @@ async fn agent_mcp_elicit(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: answer (or dismiss) an `ask_user` question band. The coding/chat turn
+/// is blocked on this, so both paths must reach the sidecar: `answer` carries
+/// the picked values, `cancel` releases the parked tool call with no answer.
+#[tauri::command]
+async fn agent_ask_user(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+    action: String,
+    answers: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/ask/{}", sidecar_base(port), urlencoding(&id)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "action": action, "answers": answers }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Proxy: disconnect a provider (clear its stored credentials).
 #[tauri::command]
 async fn agent_auth_logout(
@@ -1264,7 +1319,7 @@ async fn agent_kill_task(
 }
 
 /// Proxy: import a Claude Code / Codex / Cursor transcript into a resumable
-/// GG Coder session. Returns the importer's typed result (`{ ok, ... }`),
+/// OrcaCoder session. Returns the importer's typed result (`{ ok, ... }`),
 /// including the failure case, so the webview can show the reason verbatim.
 #[tauri::command]
 async fn agent_import_transcript(
@@ -1510,7 +1565,7 @@ async fn agent_ken_prompt(
     Ok(())
 }
 
-/// Proxy: cancel Ken's in-flight run (leaves GG Coder's run untouched).
+/// Proxy: cancel Ken's in-flight run (leaves OrcaCoder's run untouched).
 #[tauri::command]
 async fn agent_ken_cancel(
     webview: WebviewWindow,
@@ -1609,7 +1664,7 @@ async fn agent_switch_model(
 }
 
 /// Proxy: pin Ken (mentor + autopilot) to a model, or clear the pin so he
-/// follows GG Coder's model again. `model: None` clears. Returns
+/// follows OrcaCoder's model again. `model: None` clears. Returns
 /// `{ kenProvider, kenModel, kenModelOverride }`.
 #[tauri::command]
 async fn agent_switch_ken_model(
@@ -1928,6 +1983,14 @@ fn app_create_project(name: String, base_dir: Option<String>) -> Result<serde_js
 struct WorkspaceEntry {
     #[serde(default)]
     mode: WorkspaceMode,
+    #[serde(default, skip_serializing_if = "is_workspace_surface")]
+    surface: WindowSurface,
+    #[serde(
+        rename = "selectedBoardId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    selected_board_id: Option<String>,
     #[serde(rename = "chatAgent", default)]
     chat_agent: ChatAgent,
     cwd: String,
@@ -1954,9 +2017,12 @@ struct Workspace {
     windows: Vec<WorkspaceEntry>,
 }
 
-/// Absolute path to ~/.gg/gg-app-workspace.json.
+/// Absolute path to ~/.gg/orcacoder-workspace.json. OrcaCoder keeps its own
+/// window snapshot: upstream GG Coder (installed alongside it) writes
+/// gg-app-workspace.json in the same ~/.gg, and sharing one file let each app
+/// overwrite — and restore — the other's windows.
 fn app_workspace_path() -> PathBuf {
-    home_dir().join(".gg").join("gg-app-workspace.json")
+    home_dir().join(".gg").join("orcacoder-workspace.json")
 }
 
 /// Read the workspace snapshot; missing/invalid file → an empty workspace.
@@ -1967,15 +2033,67 @@ fn read_workspace() -> Workspace {
         .unwrap_or_default()
 }
 
-/// Write the workspace snapshot (creating ~/.gg if needed). Best-effort.
-fn write_workspace(ws: &Workspace) {
-    let path = app_workspace_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+pub(crate) fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let dir = path.parent().ok_or("file path has no parent")?;
+    std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("state");
+    let temp = dir.join(format!(".{name}-{}-{nonce}.tmp", std::process::id()));
+    let result = (|| -> Result<(), String> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|error| error.to_string())?;
+        file.write_all(bytes).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            use windows_sys::Win32::Storage::FileSystem::{
+                MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+            };
+            let from: Vec<u16> = temp.as_os_str().encode_wide().chain(Some(0)).collect();
+            let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let moved = unsafe {
+                MoveFileExW(
+                    from.as_ptr(),
+                    to.as_ptr(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                )
+            };
+            if moved == 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            std::fs::rename(&temp, path).map_err(|error| error.to_string())?;
+            std::fs::File::open(dir)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
     }
-    if let Ok(pretty) = serde_json::to_string_pretty(ws) {
-        let _ = std::fs::write(&path, pretty);
-    }
+    result
+}
+
+/// Atomically replace the workspace snapshot and force its bytes to storage.
+fn write_workspace(ws: &Workspace) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec_pretty(ws).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    atomic_replace(&app_workspace_path(), &bytes)
 }
 
 /// Pure: picker-only windows have a daemon session at the default boot cwd but
@@ -1997,10 +2115,10 @@ fn filter_restorable<F: Fn(&str) -> bool>(
         .collect()
 }
 
-/// Walk every live window + its `Windows` session entry and write a fresh
+/// Walk every live window + its `Windows` session entry and durably write a fresh
 /// snapshot. Picker-only windows (without an active target) are excluded.
 /// Geometry is captured from each window's current outer position + inner size.
-fn snapshot_workspace(app: &tauri::AppHandle) {
+fn snapshot_workspace(app: &tauri::AppHandle) -> Result<(), String> {
     let windows = app.webview_windows();
     let selected_labels: HashSet<String> = app
         .state::<RestoreTargets>()
@@ -2039,6 +2157,8 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
         }
         entries.push(WorkspaceEntry {
             mode: inst.mode,
+            surface: inst.surface,
+            selected_board_id: inst.selected_board_id.clone(),
             chat_agent: inst.chat_agent,
             cwd,
             session_path: inst.session_path.clone(),
@@ -2049,7 +2169,7 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
         });
     }
     drop(map);
-    write_workspace(&Workspace { windows: entries });
+    write_workspace(&Workspace { windows: entries })
 }
 
 /// Remove one window's entry from the snapshot (deliberate user close). Keyed by
@@ -2075,7 +2195,7 @@ fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
         .position(|w| w.mode == mode && w.chat_agent == chat_agent && w.cwd == cwd)
     {
         ws.windows.remove(idx);
-        write_workspace(&ws);
+        let _ = write_workspace(&ws);
     }
 }
 
@@ -2087,6 +2207,68 @@ fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
     let state: State<RestoreTargets> = webview.state();
     let map = state.map.lock().unwrap();
     restore_target(&map, webview.label())
+}
+
+fn valid_selected_board_id(selected_board_id: Option<&str>) -> bool {
+    selected_board_id.is_none_or(|id| {
+        !id.is_empty()
+            && id.len() <= 128
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    })
+}
+
+#[tauri::command]
+fn set_window_surface(
+    webview: WebviewWindow,
+    app: tauri::AppHandle,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
+) -> Result<(), String> {
+    if !valid_selected_board_id(selected_board_id.as_deref()) {
+        return Err("Invalid selected board id.".to_string());
+    }
+    let label = webview.label().to_string();
+
+    let (previous_target, previous_window) = {
+        let targets: State<RestoreTargets> = app.state();
+        let windows: State<Windows> = app.state();
+        let mut target_map = targets.map.lock().unwrap();
+        let mut window_map = windows.map.lock().unwrap();
+        let target = target_map
+            .get_mut(&label)
+            .ok_or_else(|| "No active workspace for this window.".to_string())?;
+        let entry = window_map
+            .get_mut(&label)
+            .ok_or_else(|| "No active window session.".to_string())?;
+        let previous_target = (target.surface, target.selected_board_id.clone());
+        let previous_window = (entry.surface, entry.selected_board_id.clone());
+        target.surface = surface;
+        target.selected_board_id = selected_board_id.clone();
+        entry.surface = surface;
+        entry.selected_board_id = selected_board_id;
+        (previous_target, previous_window)
+    };
+
+    if let Err(error) = snapshot_workspace(&app) {
+        if let Some(target) = app
+            .state::<RestoreTargets>()
+            .map
+            .lock()
+            .unwrap()
+            .get_mut(&label)
+        {
+            target.surface = previous_target.0;
+            target.selected_board_id = previous_target.1;
+        }
+        if let Some(entry) = app.state::<Windows>().map.lock().unwrap().get_mut(&label) {
+            entry.surface = previous_window.0;
+            entry.selected_board_id = previous_window.1;
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 // ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
@@ -2170,7 +2352,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "anthropic",
         label: "Anthropic",
-        description: "Claude Fable 5, Opus 5, Sonnet 5, Haiku 4.5",
+        description: "Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5",
         methods: &["oauth"],
         oauth_key: None,
         oauth_label: None,
@@ -2182,7 +2364,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "openai",
         label: "OpenAI",
-        description: "GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna, GPT-5.5",
+        description: "GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna",
         methods: &["oauth"],
         oauth_key: None,
         oauth_label: None,
@@ -2260,7 +2442,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "glm",
         label: "Z.AI (GLM)",
-        description: "GLM-5.3",
+        description: "GLM-5.3, GLM-5.3-Flash",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,
@@ -2332,7 +2514,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "openrouter",
         label: "OpenRouter",
-        description: "Multi-provider gateway",
+        description: "Qwen3.6-Plus · multi-provider gateway",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,
@@ -3371,7 +3553,25 @@ fn build_app_window_with_visibility(
     // macOS keeps Tauri's native handler so folder drops include absolute paths.
     #[cfg(target_os = "windows")]
     {
-        builder = builder.disable_drag_drop_handler();
+        builder = builder
+            // Compact title bar: born without the native title bar, so windows
+            // never flash it at startup. OrcaCoder's header is the drag region
+            // and draws minimise / maximise / close (WindowControls.tsx); with
+            // the setting off, the frontend restores decorations at boot.
+            .decorations(false)
+            .disable_drag_drop_handler()
+            // Disable WebView2's native window-occlusion calculation. Without
+            // this, WebView2 SUSPENDS PAINTING for a window it judges occluded or
+            // in the background — so during a multi-window restore, windows that
+            // overlap or sit behind another come up BLACK (JS still runs; only
+            // the compositor stops), recovering only when focused or reloaded.
+            // This was the real cause of the intermittent blank panels. The
+            // string also repeats Tauri's default disabled features, because
+            // additional_browser_args REPLACES that default rather than adding
+            // to it.
+            .additional_browser_args(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion",
+            );
     }
     if matches!(window_chrome(), WindowChrome::MacOverlay) {
         builder = apply_mac_overlay(builder);
@@ -3515,6 +3715,89 @@ fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), Stri
 /// `set_size`/`set_position` dispatch to the main thread asynchronously, and
 /// firing all of them in a tight loop lets the window server coalesce the later
 /// dispatches — so the trailing windows would move but keep their old size.
+/// Minimize every OrcaCoder window at once, or bring them all back.
+///
+/// Minimize rather than hide: a hidden window leaves the taskbar entirely, and with no
+/// global shortcut registered there would be no way back to it. Minimized windows stay
+/// reachable from the taskbar whatever else happens.
+/// Minimize or restore every window; `None` toggles. Factored out of the Tauri
+/// command so the global shortcut handler can call identical logic — the
+/// shortcut must work when NO window is focused (all minimized), which a webview
+/// keydown listener cannot, so the OS-level shortcut is the only path that
+/// restores. Both routes share this so both directions behave the same.
+fn apply_all_minimized(app: &tauri::AppHandle, minimized: Option<bool>) {
+    let windows = app.webview_windows();
+    // No explicit target means toggle: if anything is minimized, restore everything;
+    // otherwise put it all away. One shortcut then does both directions.
+    let minimized = minimized.unwrap_or_else(|| {
+        !windows
+            .values()
+            .any(|window| window.is_minimized().unwrap_or(false))
+    });
+    for window in windows.values() {
+        let result = if minimized {
+            window.minimize()
+        } else {
+            window.unminimize()
+        };
+        // One uncooperative window must not strand the rest half-minimized.
+        if let Err(error) = result {
+            log::warn!("window {} could not change minimized state: {error}", window.label());
+        }
+    }
+    if !minimized {
+        // Put focus somewhere deterministic on restore, so the user lands in a window
+        // rather than behind whatever else is on screen.
+        if let Some(window) = sorted_windows(app, windows.len()).first() {
+            let _ = window.set_focus();
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_all_minimized(
+    app: tauri::AppHandle,
+    minimized: Option<bool>,
+) -> Result<(), String> {
+    apply_all_minimized(&app, minimized);
+    Ok(())
+}
+
+/// Write the restore snapshot and tear the daemon down exactly once, then leave
+/// the caller to exit. Idempotent via AppExiting: whichever fires first — a tray
+/// Quit, Ctrl+Q, or the RunEvent::ExitRequested from the last window closing —
+/// does the work with every window still alive; a later teardown event sees the
+/// flag already set and skips, so it can never overwrite the good snapshot with
+/// an empty one.
+fn perform_shutdown(app: &tauri::AppHandle) {
+    // `swap` returns the PREVIOUS value. If it was already true, shutdown is
+    // underway and the snapshot was already taken while windows existed.
+    if app.state::<AppExiting>().0.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // Re-read each live session's state so a window's cwd/session is current,
+    // then snapshot while the windows are still open (so all of them are saved).
+    refresh_live_sessions(app);
+    let _ = snapshot_workspace(app);
+    // Terminate the daemon's process group once — reaps every session's MCP/LSP
+    // children in one shot (no orphans).
+    let child = app.state::<Daemon>().child.lock().unwrap().take();
+    if let Some(child) = child {
+        terminate_child(child);
+    }
+}
+
+/// Quit the whole app in one action, preserving every open project window for
+/// next launch. Windows has no native app-quit (macOS has Cmd+Q), so the only
+/// way out was closing each window's X — which drops each window from the
+/// restore set one at a time, leaving nothing to reopen. Reached from the tray
+/// Quit item and Ctrl+Q.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    perform_shutdown(&app);
+    app.exit(0);
+}
+
 /// Staggering lets each window's size+position fully commit before the next's
 /// hits the main-thread queue.
 #[tauri::command]
@@ -3567,7 +3850,7 @@ async fn select_project(
         &mut app.state::<RestoreTargets>().map.lock().unwrap(),
         &label,
     );
-    snapshot_workspace(&app);
+    let _ = snapshot_workspace(&app);
 
     // Take the old session id (and clear it) so the old SSE bridge retires.
     let old_id = {
@@ -3588,6 +3871,8 @@ async fn select_project(
 
     let target = RestoreEntry {
         mode,
+        surface: WindowSurface::Workspace,
+        selected_board_id: None,
         chat_agent,
         cwd: cwd.clone(),
         session_path: session_path.clone(),
@@ -3600,6 +3885,12 @@ async fn select_project(
         chat_agent,
         &cwd,
         session_path.as_deref(),
+    );
+    set_window_surface_state(
+        &mut app.state::<Windows>().map.lock().unwrap(),
+        &label,
+        WindowSurface::Workspace,
+        None,
     );
     finish_window_session(
         app.clone(),
@@ -3619,7 +3910,7 @@ async fn select_project(
         label,
         target,
     );
-    snapshot_workspace(&app);
+    let _ = snapshot_workspace(&app);
     Ok(())
 }
 
@@ -3723,6 +4014,7 @@ mod tray_id {
     pub const NEW_CODE: &str = "tray:new-code";
     pub const REMOTE: &str = "tray:remote";
     pub const SETTINGS: &str = "tray:settings";
+    pub const QUIT: &str = "tray:quit";
 }
 
 /// Everything the tray menu's labels depend on. Both fields are pushed down by
@@ -3825,6 +4117,16 @@ fn build_tray_menu(
         true,
         None::<&str>,
     )?)?;
+    // Quit the whole app in one action — the only path that preserves every open
+    // window for next launch (closing each window's X drops them one by one).
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(
+        app,
+        tray_id::QUIT,
+        "Quit OrcaCoder",
+        true,
+        None::<&str>,
+    )?)?;
     Ok(menu)
 }
 
@@ -3862,6 +4164,13 @@ fn init_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         // don't "fix" this by copying their `cfg(windows)` override.
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| {
+            // Quit is terminal, not a webview intent — do it directly rather
+            // than routing through dispatch_tray_action.
+            if event.id().as_ref() == tray_id::QUIT {
+                perform_shutdown(app);
+                app.exit(0);
+                return;
+            }
             let action = match event.id().as_ref() {
                 tray_id::UPDATE => "update",
                 tray_id::NEW_CHAT => "new-chat",
@@ -4310,7 +4619,7 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
 /// Path to the workspace dev sidecar wrapper, relative to this crate. The
 /// wrapper initializes Error Mom before importing ggcoder's built sidecar.
 fn workspace_sidecar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/error-mom-sidecar.mjs")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/sidecar-bootstrap.mjs")
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
@@ -4521,7 +4830,6 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
         // GG_APP_LISTENING handshake.
         .env("GG_APP_PORT", "0")
         .env("GG_APP_TOKEN", &app.state::<Daemon>().token)
-        .env("ERROR_MOM_RELEASE", env!("CARGO_PKG_VERSION"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
@@ -4689,6 +4997,20 @@ async fn daemon_delete_session(app: &tauri::AppHandle, port: u16, id: &str) {
         ))
         .send()
         .await;
+}
+
+fn set_window_surface_state(
+    map: &mut HashMap<String, WindowSession>,
+    label: &str,
+    surface: WindowSurface,
+    selected_board_id: Option<String>,
+) -> bool {
+    let Some(entry) = map.get_mut(label) else {
+        return false;
+    };
+    entry.surface = surface;
+    entry.selected_board_id = selected_board_id;
+    true
 }
 
 fn publish_window_session(
@@ -4879,91 +5201,218 @@ fn recreate_all_window_sessions(app: tauri::AppHandle) {
     }
 }
 
-/// Boot the app's windows. If a workspace snapshot has restorable windows (each
-/// with a cwd that still exists on disk), reopen one window per entry — pointed
-/// at its project + session, with saved geometry — and record a per-window
-/// restore target so the webview skips the picker. Otherwise fall back to the
-/// single default `main` window at the boot cwd (the picker then shows).
+/// `main` for the first restored window, `project-N` for the rest.
+fn restore_label(index: usize) -> String {
+    if index == 0 {
+        "main".to_string()
+    } else {
+        format!("project-{index}")
+    }
+}
+
+/// Restore one window: register its target, build it, move it to `geometry`
+/// (its saved physical rect, when captured), and start its session.
+fn restore_one_window(
+    app: &tauri::AppHandle,
+    index: usize,
+    entry: &WorkspaceEntry,
+    geometry: Option<(i32, i32, u32, u32)>,
+) -> Result<(), String> {
+    let label = restore_label(index);
+    // Register the target before constructing the webview: even a hidden
+    // webview may execute immediately after build() returns.
+    {
+        let state: State<RestoreTargets> = app.state();
+        register_restore_target(
+            &mut state.map.lock().unwrap(),
+            label.clone(),
+            RestoreEntry {
+                mode: entry.mode,
+                surface: entry.surface,
+                selected_board_id: entry.selected_board_id.clone(),
+                chat_agent: entry.chat_agent,
+                cwd: entry.cwd.clone(),
+                session_path: entry.session_path.clone(),
+            },
+        );
+    }
+    // With saved geometry, build HIDDEN, place it, then show — as upstream GG
+    // Coder does. Moving and resizing an already-visible WebView2 window while
+    // it presents its first frame left the last restored window black.
+    let win = match build_app_window_with_visibility(app, &label, geometry.is_none()) {
+        Ok(win) => win,
+        Err(error) => {
+            remove_restore_target(
+                &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+                &label,
+            );
+            return Err(error);
+        }
+    };
+    // The snapshot records PHYSICAL pixels (outer_position / inner_size), so
+    // restore with the physical setters. The builder's position/inner_size
+    // take LOGICAL units: on a 125%-scaled screen that restored every window
+    // 1.25x too large and partly off the edge of the monitor.
+    if let Some((x, y, width, height)) = geometry {
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        let _ = win.set_size(tauri::PhysicalSize::new(width, height));
+        let _ = win.show();
+    }
+    start_window_session(
+        app.clone(),
+        label.clone(),
+        entry.mode,
+        entry.chat_agent,
+        PathBuf::from(&entry.cwd),
+        entry.session_path.clone(),
+    );
+    set_window_surface_state(
+        &mut app.state::<Windows>().map.lock().unwrap(),
+        &label,
+        entry.surface,
+        entry.selected_board_id.clone(),
+    );
+    Ok(())
+}
+
+/// Pure: a window's saved (x, y, width, height), only when all four were
+/// captured — a partial rect would place a window at a stale or default spot.
+fn saved_geometry(entry: &WorkspaceEntry) -> Option<(i32, i32, u32, u32)> {
+    Some((entry.x?, entry.y?, entry.width?, entry.height?))
+}
+
+/// Delays after a multi-window restore at which every window gets a one-pixel
+/// resize-and-back. Restoring several WebView2 windows at once intermittently
+/// leaves ONE of them black — alive and fully loaded, just never presented —
+/// and which one varies run to run. A resize forces WebView2 to present a
+/// frame. It must come late: a nudge at 500ms (0.54.6) fired before the GPU
+/// settled and did nothing, while the same fix by hand seconds later works.
+/// The second pass is a backstop for a slow start.
+const RESTORE_REPAINT_DELAYS_MS: [u64; 2] = [4_000, 8_000];
+
+/// Resize-nudge every restored window after `RESTORE_REPAINT_DELAYS_MS`. Does
+/// not navigate, so an already-painted window is untouched. Maximized and
+/// minimized windows are skipped: resizing would change their state.
+fn repaint_restored_windows_later(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut elapsed = 0;
+        for delay in RESTORE_REPAINT_DELAYS_MS {
+            tokio::time::sleep(std::time::Duration::from_millis(delay - elapsed)).await;
+            elapsed = delay;
+            for win in app.webview_windows().values() {
+                if win.is_maximized().unwrap_or(false) || win.is_minimized().unwrap_or(false) {
+                    continue;
+                }
+                let Ok(size) = win.inner_size() else { continue };
+                let _ = win.set_size(tauri::PhysicalSize::new(size.width + 1, size.height + 1));
+                // Give the grow a beat to register as its own resize.
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                let _ = win.set_size(size);
+            }
+            log::info!("restore repaint pass at {delay}ms done");
+        }
+    });
+}
+
+/// Pure: whether a saved physical rect can still be grabbed on one of the
+/// connected screens — at least 100px of its title strip must overlap one. A
+/// window saved on a since-unplugged monitor would otherwise restore off-screen.
+fn rect_on_screens(rect: (i32, i32, u32, u32), screens: &[(i32, i32, u32, u32)]) -> bool {
+    const TITLE_STRIP: i64 = 30;
+    const MIN_GRAB: i64 = 100;
+    let (x, y, w, h) = (rect.0 as i64, rect.1 as i64, rect.2 as i64, rect.3 as i64);
+    let strip = TITLE_STRIP.min(h);
+    screens.iter().any(|&(sx, sy, sw, sh)| {
+        let (sx, sy, sw, sh) = (sx as i64, sy as i64, sw as i64, sh as i64);
+        let overlap_x = (x + w).min(sx + sw) - x.max(sx);
+        let overlap_y = (y + strip).min(sy + sh) - y.max(sy);
+        overlap_x >= MIN_GRAB.min(w) && overlap_y > 0
+    })
+}
+
+/// Boot the app's windows. With a restorable snapshot, reopen EVERY saved
+/// window — each on its project, session and saved geometry — so relaunching
+/// returns to where the user left off, as upstream GG Coder does. Otherwise
+/// open the single default `main` window (the project picker shows).
+///
+/// Multi-window restore was parked in 0.54.9 because restored windows came up
+/// black. The cause was GPU-compositor starvation from every idle window
+/// animating at once, fixed in 0.55 (unfocused windows pause decorative
+/// animation — see useWindowFocused), so all windows restore again.
 fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     let ws = read_workspace();
     let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
-    if entries.is_empty() {
-        // Fresh boot / nothing to restore: the usual single main window.
-        build_app_window(app, "main")?;
-        start_window_session(
-            app.clone(),
-            "main".into(),
-            WorkspaceMode::Code,
-            ChatAgent::General,
-            default_cwd(),
-            None,
-        );
+
+    let screens: Vec<(i32, i32, u32, u32)> = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| (m.position().x, m.position().y, m.size().width, m.size().height))
+        .collect();
+
+    let mut restored = 0;
+    let mut any_geometry = false;
+    for entry in &entries {
+        let geometry = saved_geometry(entry).filter(|rect| rect_on_screens(*rect, &screens));
+        any_geometry |= geometry.is_some();
+        // `restored` (not the loop index) keeps labels contiguous — main,
+        // project-1, … — even when an earlier window fails to restore.
+        match restore_one_window(app, restored, entry, geometry) {
+            Ok(()) => restored += 1,
+            Err(error) => log::warn!("restore of window for {} failed: {error}", entry.cwd),
+        }
+    }
+    if restored > 0 {
+        if !any_geometry {
+            arrange_windows(app, restored);
+        }
+        if restored > 1 {
+            repaint_restored_windows_later(app);
+        }
         broadcast_window_order(app);
         return Ok(());
     }
 
-    let count = entries.len();
-    let mut any_geometry = false;
-    for (i, entry) in entries.into_iter().enumerate() {
-        // First restored window reclaims `main`; the rest get project-N.
-        let label = if i == 0 {
-            "main".to_string()
-        } else {
-            format!("project-{i}")
-        };
-        // Register the target before constructing the webview: even a hidden
-        // webview may execute immediately after build() returns.
-        {
-            let state: State<RestoreTargets> = app.state();
-            register_restore_target(
-                &mut state.map.lock().unwrap(),
-                label.clone(),
-                RestoreEntry {
-                    mode: entry.mode,
-                    chat_agent: entry.chat_agent,
-                    cwd: entry.cwd.clone(),
-                    session_path: entry.session_path.clone(),
-                },
-            );
-        }
-        let win = match build_app_window_with_visibility(app, &label, false) {
-            Ok(win) => win,
-            Err(error) => {
-                remove_restore_target(
-                    &mut app.state::<RestoreTargets>().map.lock().unwrap(),
-                    &label,
-                );
-                return Err(error);
-            }
-        };
-        start_window_session(
-            app.clone(),
-            label.clone(),
-            entry.mode,
-            entry.chat_agent,
-            PathBuf::from(&entry.cwd),
-            entry.session_path.clone(),
-        );
-        // Apply saved geometry when present; else we tile after the loop.
-        if let (Some(x), Some(y)) = (entry.x, entry.y) {
-            any_geometry = true;
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-        if let (Some(w), Some(h)) = (entry.width, entry.height) {
-            any_geometry = true;
-            let _ = win.set_size(tauri::PhysicalSize::new(w, h));
-        }
-        let _ = win.show();
-    }
-    if !any_geometry {
-        arrange_windows(app, count);
-    }
+    // Fresh boot / nothing to restore / every restore failed: the usual main.
+    build_app_window(app, "main")?;
+    start_window_session(
+        app.clone(),
+        "main".into(),
+        WorkspaceMode::Code,
+        ChatAgent::General,
+        default_cwd(),
+        None,
+    );
     broadcast_window_order(app);
     Ok(())
 }
 
+/// The relaunched app inherits the overridden `USERPROFILE`, so re-appending the
+/// suffix would nest a new home on every update and orphan the previous state.
+fn updater_test_home(base: &Path) -> PathBuf {
+    const SUFFIX: &str = ".orcacoder-updater-test-home";
+    if base.file_name().and_then(|name| name.to_str()) == Some(SUFFIX) {
+        return base.to_path_buf();
+    }
+    base.join(SUFFIX)
+}
+
+fn prepare_updater_test_home(home: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(home.join("AppData/Local"))?;
+    std::fs::create_dir_all(home.join("AppData/Roaming"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    if context.config().identifier == "com.orcacoder.desktop.updater-test" {
+        let test_home = updater_test_home(&home_dir());
+        prepare_updater_test_home(&test_home).expect("create isolated updater test home");
+        std::env::set_var("USERPROFILE", &test_home);
+        std::env::set_var("HOME", &test_home);
+    }
+
     // Per-launch daemon auth token (see `Daemon::token`). The shared reqwest
     // client attaches it as a default header so all ~60 proxy call sites are
     // authenticated without per-site changes.
@@ -4980,10 +5429,20 @@ pub fn run() {
         .unwrap_or_else(|_| reqwest::Client::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let window = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().into_values().next());
+            if let Some(window) = window {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -4992,11 +5451,12 @@ pub fn run() {
                 ))
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("gg-app".into()),
+                        file_name: Some("orcacoder".into()),
                     },
                 ))
                 .build(),
         )
+        .register_asynchronous_uri_scheme_protocol("board-asset", boards::asset_protocol)
         .manage(Daemon {
             token: daemon_token,
             ..Default::default()
@@ -5004,10 +5464,14 @@ pub fn run() {
         .manage(Windows::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
+        // Lazy: constructing this state performs no filesystem or SQLite I/O.
+        .manage(boards::BoardStoreState::default())
+        .manage(boards::PickerTokenStore::default())
         .manage(FocusedWindow::default())
         .manage(MoveDebounce::default())
         .manage(TrayState::default())
         .manage(TrayIntents::default())
+        .manage(updater::UpdateCoordinator::default())
         .manage(http_client)
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
@@ -5037,6 +5501,7 @@ pub fn run() {
             agent_auth_oauth_start,
             agent_auth_oauth_code,
             agent_mcp_elicit,
+            agent_ask_user,
             agent_auth_logout,
             agent_kill_task,
             agent_import_transcript,
@@ -5093,16 +5558,69 @@ pub fn run() {
             gaze_focus,
             focus_window_by_offset,
             arrange_all,
+            set_all_minimized,
+            quit_app,
             window_restore_target,
+            set_window_surface,
+            boards::board_list,
+            boards::board_create,
+            boards::board_get,
+            boards::board_update_settings,
+            boards::board_item_create,
+            boards::board_item_update,
+            boards::board_item_soft_delete,
+            boards::board_items_apply,
+            boards::board_soft_delete,
+            boards::board_restore,
+            boards::board_asset_choose_and_import,
+            boards::board_export_choose_destination,
+            boards::board_backup_create,
+            boards::board_backup_choose_and_preview,
+            boards::board_restore_apply,
+            boards::board_asset_import_bytes,
+            boards::board_image_generate,
+            boards::board_lease_acquire,
+            boards::board_lease_release,
             window_tray_intent,
             set_update_available,
-            set_remote_active
+            set_remote_active,
+            updater::update_state,
+            updater::update_check,
+            updater::update_set_window_readiness,
+            updater::update_dismiss_updated,
+            updater::update_install
         ])
         .setup(|app| {
             // Windows-only: track per-window minimized state so restoring one
             // window can restore its siblings (macOS does this natively).
             #[cfg(target_os = "windows")]
             app.manage(MinimizeState::default());
+            // OS-level Ctrl/Cmd+Shift+H: minimize every window, and — because it
+            // is registered with the operating system rather than as a webview
+            // keydown — fire again to restore them even though no window has
+            // focus while they are all minimized. That focus gap is exactly why
+            // the old in-webview handler could hide but never bring back.
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+                };
+                #[cfg(target_os = "macos")]
+                let mods = Modifiers::SUPER | Modifiers::SHIFT;
+                #[cfg(not(target_os = "macos"))]
+                let mods = Modifiers::CONTROL | Modifiers::SHIFT;
+                let toggle = Shortcut::new(Some(mods), Code::KeyH);
+                // The handler fires on both press and release; act on press only,
+                // or the release would immediately toggle back to a net no-op.
+                if let Err(error) = app.global_shortcut().on_shortcut(toggle, |app, _scut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        apply_all_minimized(app, None);
+                    }
+                }) {
+                    // Another app may already own the combo; log and carry on
+                    // rather than fail the launch over a convenience shortcut.
+                    log::warn!("could not register global minimize/restore shortcut: {error}");
+                }
+            }
             // Sweep orphaned sidecars from previous (crashed/force-quit) app
             // instances BEFORE spawning any new sidecars — they'd otherwise
             // accumulate forever across launches. Best-effort + logged.
@@ -5124,6 +5642,7 @@ pub fn run() {
             // single default `main` window. Windows are built in code (not from
             // config) so macOS gets `hidden_title(true)` via the builder.
             restore_or_default_windows(&app.handle().clone())?;
+            updater::initialise(&app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -5203,22 +5722,14 @@ pub fn run() {
             }
             _ => {}
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running tauri application")
         .run(|app, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                // Mark the quit BEFORE windows start tearing down, so the
-                // Destroyed handlers preserve the snapshot, then write the final
-                // snapshot (current geometry + each window's live cwd/session).
-                app.state::<AppExiting>().0.store(true, Ordering::SeqCst);
-                refresh_live_sessions(app);
-                snapshot_workspace(app);
-                // Terminate the daemon's process group once — reaps every
-                // session's MCP/LSP children in one shot (no orphans).
-                let child = app.state::<Daemon>().child.lock().unwrap().take();
-                if let Some(child) = child {
-                    terminate_child(child);
-                }
+                // Fires when the last window closes. Shared with the tray Quit
+                // and Ctrl+Q paths; the AppExiting guard inside makes a
+                // double-fire (programmatic quit then this event) a safe no-op.
+                perform_shutdown(app);
             }
         });
 }
@@ -5228,7 +5739,41 @@ pub fn run() {
 /// started a new session mid-run (changing its session file) is recorded at its
 /// CURRENT session, not the one it was created with. Best-effort + time-boxed:
 /// any window we can't reach keeps its last-known session_path.
-fn refresh_live_sessions(app: &tauri::AppHandle) {
+async fn fetch_live_session_updates(
+    client: reqwest::Client,
+    port: u16,
+    targets: Vec<(String, String)>,
+) -> Vec<(String, Option<String>, Option<PathBuf>)> {
+    let mut updates = Vec::with_capacity(targets.len());
+    for (label, session_id) in targets {
+        let request = client
+            .get(format!("{}/state", sidecar_base(port)))
+            .header("x-gg-session", session_id)
+            .timeout(std::time::Duration::from_millis(400))
+            .send()
+            .await;
+        let Ok(response) = request else {
+            continue;
+        };
+        let Ok(body) = response.json::<serde_json::Value>().await else {
+            continue;
+        };
+        let session_path = body
+            .get("sessionPath")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let cwd = body
+            .get("cwd")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        updates.push((label, session_path, cwd));
+    }
+    updates
+}
+
+async fn refresh_live_sessions_async(app: &tauri::AppHandle) {
     let Some(port) = *app.state::<Daemon>().port.lock().unwrap() else {
         return;
     };
@@ -5236,64 +5781,67 @@ fn refresh_live_sessions(app: &tauri::AppHandle) {
         let state: State<Windows> = app.state();
         let map = state.map.lock().unwrap();
         map.iter()
-            .filter_map(|(label, w)| w.session_id.clone().map(|id| (label.clone(), id)))
+            .filter_map(|(label, window)| window.session_id.clone().map(|id| (label.clone(), id)))
             .collect()
     };
     if targets.is_empty() {
         return;
     }
     let client = app.state::<reqwest::Client>().inner().clone();
-    // The exit callback runs on the main event-loop thread (outside the async
-    // runtime), so block_on is safe here. Each request is time-boxed so a hung
-    // session can't stall quit.
-    let results: Vec<(String, Option<String>, Option<PathBuf>)> =
-        tauri::async_runtime::block_on(async {
-            let mut out = Vec::with_capacity(targets.len());
-            for (label, sid) in targets {
-                let url = format!("{}/state", sidecar_base(port));
-                let req = client
-                    .get(&url)
-                    .header("x-gg-session", &sid)
-                    .timeout(std::time::Duration::from_millis(400))
-                    .send()
-                    .await;
-                let Ok(res) = req else {
-                    continue;
-                };
-                let Ok(body) = res.json::<serde_json::Value>().await else {
-                    continue;
-                };
-                let session_path = body
-                    .get("sessionPath")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
-                let cwd = body
-                    .get("cwd")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(PathBuf::from);
-                out.push((label, session_path, cwd));
-            }
-            out
-        });
+    let results = fetch_live_session_updates(client, port, targets).await;
     let state: State<Windows> = app.state();
     let mut map = state.map.lock().unwrap();
     for (label, session_path, cwd) in results {
-        if let Some(inst) = map.get_mut(&label) {
+        if let Some(instance) = map.get_mut(&label) {
             if session_path.is_some() {
-                inst.session_path = session_path;
+                instance.session_path = session_path;
             }
             if let Some(cwd) = cwd {
-                inst.cwd = Some(cwd);
+                instance.cwd = Some(cwd);
             }
         }
     }
 }
 
+/// Exit callbacks are synchronous and run outside the async runtime.
+fn refresh_live_sessions(app: &tauri::AppHandle) {
+    tauri::async_runtime::block_on(refresh_live_sessions_async(app));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_session_fetch_with_no_targets_completes() {
+        let updates = tauri::async_runtime::block_on(fetch_live_session_updates(
+            reqwest::Client::new(),
+            1,
+            Vec::new(),
+        ));
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn updater_test_home_does_not_nest_on_relaunch() {
+        let first = updater_test_home(Path::new("C:/Users/example"));
+        assert_eq!(updater_test_home(&first), first);
+    }
+
+    #[test]
+    fn updater_test_home_has_windows_known_folders() {
+        let home = std::env::temp_dir().join(format!(
+            "orcacoder-updater-home-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+
+        prepare_updater_test_home(&home).unwrap();
+
+        assert!(home.join("AppData/Local").is_dir());
+        assert!(home.join("AppData/Roaming").is_dir());
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn cancel_response_accepts_acknowledged_success() {
@@ -5364,11 +5912,65 @@ mod tests {
     }
 
     #[test]
+    fn saved_geometry_requires_all_four_values() {
+        let full = WorkspaceEntry {
+            x: Some(-1900),
+            y: Some(40),
+            width: Some(1024),
+            height: Some(660),
+            ..Default::default()
+        };
+        assert_eq!(saved_geometry(&full), Some((-1900, 40, 1024, 660)));
+        // A partial rect must not place a window — it gets the default slot.
+        let no_size = WorkspaceEntry {
+            width: None,
+            ..full.clone()
+        };
+        assert_eq!(saved_geometry(&no_size), None);
+        assert_eq!(saved_geometry(&WorkspaceEntry::default()), None);
+    }
+
+    #[test]
+    fn rect_on_screens_keeps_windows_grabbable() {
+        // A 4K main screen plus a 1080p screen to its left (physical pixels).
+        let both = [(0, 0, 3840, 2160), (-1920, 634, 1920, 1080)];
+        let main_only = [(0, 0, 3840, 2160)];
+        assert!(rect_on_screens((2400, 1310, 1280, 701), &both));
+        // Saved on the left monitor: kept while it is plugged in…
+        assert!(rect_on_screens((-1800, 700, 1280, 701), &both));
+        // …dropped once it is unplugged, so the window opens on-screen instead.
+        assert!(!rect_on_screens((-1800, 700, 1280, 701), &main_only));
+        // Only 50px of the window still on the screen: not enough to grab.
+        assert!(!rect_on_screens((3790, 100, 1280, 701), &main_only));
+        // Title strip above the top of every screen: unreachable.
+        assert!(!rect_on_screens((100, -800, 1280, 701), &main_only));
+    }
+
+    #[test]
+    fn restore_repaint_delays_are_late_and_increasing() {
+        // Late enough for restored windows to have started (~3s); strictly
+        // increasing, since the pass loop sleeps `delay - elapsed`.
+        assert!(RESTORE_REPAINT_DELAYS_MS[0] >= 3_000);
+        assert!(RESTORE_REPAINT_DELAYS_MS.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn workspace_file_is_orcacoder_owned() {
+        // GG Coder writes gg-app-workspace.json in the same ~/.gg; sharing it
+        // let each app restore the other's windows.
+        let path = app_workspace_path();
+        assert_eq!(path.file_name().unwrap(), "orcacoder-workspace.json");
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), ".gg");
+    }
+
+    #[test]
     fn workspace_roundtrips_through_json() {
         let ws = Workspace {
             windows: vec![
                 WorkspaceEntry {
                     mode: WorkspaceMode::Chat,
+                    surface: WindowSurface::Board,
+                    selected_board_id: Some("board-a".into()),
                     chat_agent: ChatAgent::Research,
                     cwd: "/p/a".into(),
                     session_path: Some("/s/a.jsonl".into()),
@@ -5387,8 +5989,15 @@ mod tests {
         let back: Workspace = serde_json::from_str(&json).unwrap();
         assert_eq!(ws, back);
         assert_eq!(back.windows[0].mode, WorkspaceMode::Chat);
+        assert_eq!(back.windows[0].surface, WindowSurface::Board);
+        assert_eq!(
+            back.windows[0].selected_board_id.as_deref(),
+            Some("board-a")
+        );
         assert_eq!(back.windows[0].chat_agent, ChatAgent::Research);
         assert!(json.contains(r#""mode":"chat""#));
+        assert!(json.contains(r#""surface":"board""#));
+        assert!(json.contains(r#""selectedBoardId":"board-a""#));
         assert!(json.contains(r#""chatAgent":"research""#));
         // The second entry omits optional fields entirely (skip_serializing_if).
         assert!(!json.contains("\"sessionPath\":null"));
@@ -5399,24 +6008,47 @@ mod tests {
         let legacy: Workspace =
             serde_json::from_str(r#"{ "windows": [{ "cwd": "/p/a" }] }"#).unwrap();
         assert_eq!(legacy.windows[0].mode, WorkspaceMode::Code);
+        assert_eq!(legacy.windows[0].surface, WindowSurface::Workspace);
+        assert!(legacy.windows[0].selected_board_id.is_none());
         assert_eq!(legacy.windows[0].chat_agent, ChatAgent::General);
 
-        let invalid: Workspace =
-            serde_json::from_str(r#"{ "windows": [{ "mode": "future", "cwd": "/p/a" }] }"#)
-                .unwrap();
+        let invalid: Workspace = serde_json::from_str(
+            r#"{ "windows": [{ "mode": "future", "surface": "future", "cwd": "/p/a" }] }"#,
+        )
+        .unwrap();
         assert_eq!(invalid.windows[0].mode, WorkspaceMode::Code);
+        assert_eq!(invalid.windows[0].surface, WindowSurface::Workspace);
+
+        let default_json = serde_json::to_string(&legacy.windows[0]).unwrap();
+        assert!(!default_json.contains("surface"));
+        assert!(!default_json.contains("selectedBoardId"));
+    }
+
+    #[test]
+    fn workspace_restores_motion_mode() {
+        let motion: Workspace =
+            serde_json::from_str(r#"{ "windows": [{ "mode": "motion", "cwd": "/p/a" }] }"#)
+                .unwrap();
+        assert_eq!(motion.windows[0].mode, WorkspaceMode::Motion);
+        assert!(serde_json::to_string(&motion)
+            .unwrap()
+            .contains(r#""mode":"motion""#));
     }
 
     #[test]
     fn restore_target_serializes_mode_and_session_path() {
         let target = RestoreEntry {
             mode: WorkspaceMode::Chat,
+            surface: WindowSurface::Board,
+            selected_board_id: Some("board-a".into()),
             chat_agent: ChatAgent::Therapist,
             cwd: "/p/a".into(),
             session_path: Some("/s/a.jsonl".into()),
         };
         let json = serde_json::to_value(target).unwrap();
         assert_eq!(json["mode"], "chat");
+        assert_eq!(json["surface"], "board");
+        assert_eq!(json["selectedBoardId"], "board-a");
         assert_eq!(json["chatAgent"], "therapist");
         assert_eq!(json["cwd"], "/p/a");
         assert_eq!(json["sessionPath"], "/s/a.jsonl");
@@ -5864,7 +6496,7 @@ mod tests {
     fn live_sidecar_with_alive_parent_is_excluded() {
         // The current gg-app (pid 100) is the parent of a live sidecar (pid 200).
         let snap = vec![
-            proc(100, 1, "/Applications/GG Coder.app/Contents/MacOS/gg-app"),
+            proc(100, 1, "/Applications/OrcaCoder.app/Contents/MacOS/gg-app"),
             proc(200, 100, "ggnode app-sidecar.mjs"),
         ];
         let ks = orphan_killset(&snap, 100, &no_ledger());
@@ -5992,8 +6624,8 @@ mod tests {
         // Real `ps -eo pid=,ppid=,pgid=,command=` output: multiple spaces
         // between fields. Columns are pid, ppid, pgid, then the command.
         let raw = "    1     0     1 /sbin/launchd\n\
-                   11541     1 11541 /Applications/GG Coder.app/Contents/MacOS/gg-app\n\
-                   11553 11541 11553 /Applications/GG Coder.app/Contents/MacOS/ggnode app-sidecar.mjs";
+                   11541     1 11541 /Applications/OrcaCoder.app/Contents/MacOS/gg-app\n\
+                   11553 11541 11553 /Applications/OrcaCoder.app/Contents/MacOS/ggnode app-sidecar.mjs";
         let rows = parse_ps_output(raw);
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].pid, 1);
@@ -6070,7 +6702,7 @@ mod tests {
                    1000|4|C:\\Windows\\System32\\cmd.exe\n\
                    5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
                    5001|5000|C:\\nodejs\\node.exe kencode-search\n\
-                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
+                   6000|4|C:\\Program Files\\OrcaCoder\\gg-app.exe\n\
                    6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
         let snapshot = parse_cim_output(raw);
         assert_eq!(snapshot.len(), 6);
@@ -6195,6 +6827,43 @@ mod tests {
         assert!(tile_rects(0, 0, 0, 1920, 1080).is_empty());
     }
 
+    #[test]
+    fn selected_board_ids_are_bounded_and_path_free() {
+        assert!(valid_selected_board_id(None));
+        assert!(valid_selected_board_id(Some("board_01-a")));
+        assert!(!valid_selected_board_id(Some("")));
+        assert!(!valid_selected_board_id(Some("../board")));
+        assert!(!valid_selected_board_id(Some(&"a".repeat(129))));
+    }
+
+    #[test]
+    fn changing_surface_preserves_agent_session_identity() {
+        let mut map = HashMap::from([(
+            "main".to_string(),
+            WindowSession {
+                session_id: Some("session-1".into()),
+                mode: WorkspaceMode::Chat,
+                chat_agent: ChatAgent::Research,
+                cwd: Some(PathBuf::from("/project")),
+                generation: 42,
+                ..Default::default()
+            },
+        )]);
+
+        assert!(set_window_surface_state(
+            &mut map,
+            "main",
+            WindowSurface::Board,
+            Some("board-a".into())
+        ));
+        let entry = &map["main"];
+        assert_eq!(entry.surface, WindowSurface::Board);
+        assert_eq!(entry.selected_board_id.as_deref(), Some("board-a"));
+        assert_eq!(entry.session_id.as_deref(), Some("session-1"));
+        assert_eq!(entry.mode, WorkspaceMode::Chat);
+        assert_eq!(entry.generation, 42);
+    }
+
     // ── Window↔session map (daemon model) ──────────────────────────────────
     // The `Windows` map replaces the old per-window `Sidecars` registry. These
     // lock in the three mutations the lifecycle relies on: a window gets a
@@ -6212,6 +6881,8 @@ mod tests {
             WindowSession {
                 session_id: None,
                 mode: WorkspaceMode::Chat,
+                surface: WindowSurface::Board,
+                selected_board_id: Some("board-a".into()),
                 chat_agent: ChatAgent::Research,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: Some("/s/a.jsonl".into()),
@@ -6236,6 +6907,8 @@ mod tests {
             WindowSession {
                 session_id: Some("old-id".into()),
                 mode: WorkspaceMode::Code,
+                surface: WindowSurface::Workspace,
+                selected_board_id: None,
                 chat_agent: ChatAgent::General,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: None,
@@ -6297,6 +6970,8 @@ mod tests {
         let mut targets = HashMap::new();
         let entry = RestoreEntry {
             mode: WorkspaceMode::Code,
+            surface: WindowSurface::Workspace,
+            selected_board_id: None,
             chat_agent: ChatAgent::General,
             cwd: "/project".into(),
             session_path: Some("/sessions/one.jsonl".into()),

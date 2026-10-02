@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -201,8 +201,10 @@ describe("LspClientPool", () => {
     managers.push(manager);
 
     const file = path.join(tmpDir, "a.fake");
-    const start = Date.now();
     expect((await manager.diagnosticsAfterWriteDetailed(file, "x\n")).kind).toBe("server_failed");
+    // Measure only the TTL exercise below; process startup is unrelated and can
+    // be delayed by other workspace packages running in parallel.
+    const start = Date.now();
 
     // A second write PAST the halfway mark. This is the discriminating step: if
     // a failed retain refreshed `lastUsedAt`, continued writing would keep the
@@ -282,8 +284,15 @@ describe("LspClientPool", () => {
       path.join(tmpDir, "slow.fake"),
       "has ERROR here\n",
     );
-    // Let the client spawn and the pass register before sweeping.
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Sweep only once the pass is registered. A fixed sleep here raced the
+    // spawn on a loaded machine: swept before the pass began, the server was
+    // (correctly) idle and got reclaimed, failing the test for the wrong reason.
+    // The fake server holds its answer 400ms after the pass starts, so the
+    // sweep still lands mid-pass.
+    await vi.waitFor(() => expect(idlePool.activeCallCount(spec, tmpDir)).toBe(1), {
+      timeout: 10_000,
+      interval: 5,
+    });
     idlePool.sweepNow();
     expect(idlePool.size).toBe(1);
 

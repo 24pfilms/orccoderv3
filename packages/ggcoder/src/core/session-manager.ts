@@ -142,7 +142,7 @@ interface DisplayItemPayload {
 }
 
 /** Custom-entry kind for a Ken Kai (mentor agent) turn. Ken's advisory
- *  conversation is NOT part of the LLM message history (GG Coder never sees it),
+ *  conversation is NOT part of the LLM message history (OrcaCoder never sees it),
  *  but it's persisted alongside the build session so it survives resume. Stored
  *  as a `custom` entry with `parentId: null` so it is NEVER on the message DAG
  *  branch — this keeps it out of `getMessages()` AND avoids racing the build
@@ -180,7 +180,7 @@ export interface RecordedPosition {
 
 /** Custom-entry kind for an autopilot verdict marker. Mirrors `ken_turn`:
  *  persisted as a `custom` entry with `parentId: null` so it's never on the
- *  message DAG (GG Coder never sees it) but survives resume/compaction and
+ *  message DAG (OrcaCoder never sees it) but survives resume/compaction and
  *  interleaves back into the transcript via `afterMessageCount`. Covers all
  *  four terminal/near-terminal autopilot markers so a resumed session renders
  *  the exact same Ken bubble the live run showed — never the raw verdict
@@ -241,7 +241,7 @@ export interface AppMarkerPayload extends RecordedPosition {
 export const RUN_STARTED_CUSTOM_KIND = "run_started";
 export const RUN_FINISHED_CUSTOM_KIND = "run_finished";
 
-export type RunOutcome = "completed" | "failed" | "aborted";
+export type RunOutcome = "completed" | "failed" | "aborted" | "unverified";
 
 export interface RunStartedPayload {
   version: 1;
@@ -484,6 +484,12 @@ export class SessionManager {
     const lockPath = path.join(root, `${this.coordinationKey(conversationId)}.lock`);
     const token = crypto.randomUUID();
 
+    // Windows can report EPERM/EBUSY/EACCES on `mkdir` while the previous
+    // holder's `rm` has the lock dir in pending-delete. A few immediate retries
+    // cover the case where the dir vanishes between mkdir and stat; a genuine
+    // permission error on the root never produces a lock dir and gives up here.
+    let vanishedRetries = 0;
+
     while (true) {
       try {
         await fs.mkdir(lockPath);
@@ -495,9 +501,19 @@ export class SessionManager {
         await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify(owner), "utf-8");
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const owner = await this.leaseOwner(lockPath);
+        // EEXIST is the normal "someone holds it" signal. EPERM/EBUSY/EACCES
+        // only count as contention when the lock dir is actually there
+        // (pending-delete); otherwise it is a real permission fault and must
+        // surface rather than spin in waitForLease forever.
+        const code = (error as NodeJS.ErrnoException).code;
+        const contentionCode = code === "EPERM" || code === "EBUSY" || code === "EACCES";
+        if (code !== "EEXIST" && !contentionCode) throw error;
         const stat = await fs.stat(lockPath).catch(() => null);
+        if (contentionCode && stat === null) {
+          if (++vanishedRetries > 3) throw error;
+          continue;
+        }
+        const owner = await this.leaseOwner(lockPath);
         const corruptAndOld =
           !owner && stat !== null && Date.now() - stat.mtimeMs > CORRUPT_LEASE_STALE_MS;
         const deadOwner = owner !== null && !this.processIsAlive(owner.pid);

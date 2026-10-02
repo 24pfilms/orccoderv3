@@ -99,7 +99,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     token: options.agentHome.token,
     agent: {
       id: "ggcoder",
-      name: "GG Coder",
+      name: "OrcaCoder",
       description: `AI coding agent — ${options.model}`,
     },
   });
@@ -202,7 +202,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const modelInfo = MODELS.find((m) => m.id === currentModel);
 
     let text = "";
-    text += `**GG Coder**\n`;
+    text += `**OrcaCoder**\n`;
     text += `Project: **${path.basename(currentCwd)}** \u00b7 Model: **${modelInfo?.name ?? currentModel}**\n\n`;
 
     text += `**Commands**\n`;
@@ -511,7 +511,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const state = await getOrCreateSession(targetSessionId);
 
     if (state.isProcessing) {
-      stream.error("GG Coder is still processing a previous message. Please wait.");
+      stream.error("OrcaCoder is still processing a previous message. Please wait.");
       return;
     }
 
@@ -627,7 +627,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
 
     console.log();
     for (const row of renderLogoBlock([
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("OrcaCoder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" \u00b7 By ") +
         chalk.white.bold("Ken Kai"),
@@ -641,7 +641,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
       chalk.hex("#6b7280")("  Mode      ") +
         chalk.hex("#a78bfa")("Agent Home") +
         chalk.hex("#6b7280")("  \u00b7  Agent ") +
-        chalk.white("GG Coder"),
+        chalk.white("OrcaCoder"),
     );
     console.log();
     console.log(chalk.hex("#6b7280")("  Connecting to relay..."));

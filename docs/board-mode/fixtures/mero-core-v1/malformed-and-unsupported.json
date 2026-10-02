@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "purpose": "Importer preview rejection and unsupported-field preservation only; never load as a runtime board",
+  "boards": [
+    {
+      "boardId": "fixture-malformed-board",
+      "name": "Malformed Fixture",
+      "panZoom": { "x": 0, "y": 0, "k": 10 },
+      "items": [
+        { "id": "duplicate-id", "type": "FRAME", "x": 0, "y": 0, "width": 400, "height": 300, "children": ["missing-child"] },
+        { "id": "duplicate-id", "type": "SHAPE", "shape": "RECTANGLE", "x": 20, "y": 20, "width": 0, "height": -20 },
+        { "id": "remote-image", "type": "IMAGE", "x": 50, "y": 50, "width": 200, "height": 100, "src": "https://example.invalid/not-downloaded.png" },
+        { "id": "unsupported-video", "type": "YOUTUBE_VIDEO", "x": 100, "y": 100, "width": 320, "height": 180, "videoId": "fixture-only" },
+        { "id": "unsupported-obsidian", "type": "OBSIDIAN_NOTE", "x": 150, "y": 150, "width": 300, "height": 200, "obsidianData": { "filePath": "C:\\fixture\\vault\\note.md", "fileName": "note.md", "markdownContent": "# Preserve as escaped metadata" } },
+        { "id": "future-widget", "type": "FUTURE_WIDGET", "x": 200, "y": 200, "width": 150, "height": 150, "unknownInstruction": "preserve but never execute" }
+      ]
+    }
+  ],
+  "expectedPreview": {
+    "hardErrors": ["duplicate item ID", "invalid zoom", "non-positive dimensions", "broken frame child"],
+    "externalDependencies": ["remote-image"],
+    "preservedUnsupported": ["unsupported-video", "unsupported-obsidian", "future-widget"],
+    "excludedFields": ["obsidianData.filePath"]
+  }
+}

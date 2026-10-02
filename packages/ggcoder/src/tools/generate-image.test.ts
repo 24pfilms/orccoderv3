@@ -86,11 +86,16 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ggcoder-genimg-"));
+  // Keep generated images inside the temp directory. The default output root is
+  // derived from the HOME directory, not from cwd, so without this the suite
+  // writes real files into the user's Pictures folder.
+  process.env.GG_GENERATED_IMAGES_ROOT = path.join(tmpDir, "generated-root");
   originalFetch = globalThis.fetch;
 });
 
 afterEach(async () => {
   globalThis.fetch = originalFetch;
+  delete process.env.GG_GENERATED_IMAGES_ROOT;
   vi.restoreAllMocks();
   await rm(tmpDir, { recursive: true, force: true });
 });

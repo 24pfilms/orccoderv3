@@ -25,7 +25,7 @@ interface Props {
 }
 
 /**
- * Ken Kai's activity bar. A 1:1 mirror of the GG Coder ActivityBar's running row
+ * Ken Kai's activity bar. A 1:1 mirror of the OrcaCoder ActivityBar's running row
  * — same braille spinner, same `(elapsed · ↓ N tokens · thinking for Xs)` meta,
  * same statusrow layout + esc-to-cancel — just tinted to Ken and labelled "Ken
  * is thinking…". Stacks above the main bar while Ken runs concurrently, so its

@@ -794,7 +794,7 @@ export async function startServeMode(options: ServeModeOptions): Promise<ServeCo
     // GG logo with gradient (matches the interactive TUI banner)
     console.log();
     for (const row of renderLogoBlock([
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("OrcaCoder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" · By ") +
         chalk.white.bold("Ken Kai"),

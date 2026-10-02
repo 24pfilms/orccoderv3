@@ -2,22 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [orca-main]
   pull_request:
-    branches: [main]
+    branches: [orca-main]
 
 permissions:
   contents: read
 
 # Cancel the superseded run when a branch gets rapid successive pushes/PR
-# updates. Keyed on head_ref for PRs, run_id (never collides) for main pushes.
+# updates. Keyed on head_ref for PRs, run_id (never collides) for orca-main pushes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-# Cross-platform smoke matrix. Every push to main and every PR runs build +
-# typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
-# platform-specific regressions before they hit npm.
+# Windows is the supported desktop target. macOS is built here as an EARLY
+# WARNING only: it compiles the app and runs the cross-platform checks, so
+# breakage on macOS is found on the pull request that causes it rather than
+# months later when Mac support is actually wanted. It does not sign, notarize,
+# or produce anything installable, and no one is shipped a macOS build.
+#
+# The macOS leg deliberately stops before the packaged smoke test: that step
+# builds an MSI, which is Windows-only. A macOS equivalent has not been written.
+#
+# Linux returns only when its platform work is explicitly resumed.
 #
 # We deliberately keep the gg-editor + gg-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
@@ -32,16 +39,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [22.x]
+        os: [windows-2025, macos-15]
+        node: [24.15.0]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -105,47 +112,44 @@ jobs:
         run: node packages/gg-boss/dist/cli.js --help
         shell: bash
 
-  # Distribution-critical cross-OS job: stages the per-platform Node runtime,
-  # bundles the sidecar, boots it with the bundled runtime (smoke), and runs the
-  # Rust unit tests that gate path/window-chrome resolution. The full
-  # `tauri build` lives in release.yml; this keeps CI fast while still
-  # exercising the per-OS spawn path that breaks installed bundles.
+  # Distribution-critical Windows job: stages the bundled Node runtime, boots
+  # the sidecar, runs Rust path/window tests, and exercises an extracted MSI.
   app:
     name: app · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # 30 not 15: the Windows leg compiles the Tauri tree and builds/launches
-    # an MSI (~12 min warm; the Rust compile is much slower cold-cache).
-    timeout-minutes: 30
+    # 45 not 15: the Windows leg compiles the Tauri tree and builds/launches
+    # an MSI (~12 min warm; the Rust compile is much slower cold-cache), and a
+    # cold macOS Rust compile is slower still.
+    timeout-minutes: 45
     strategy:
+      # macOS must not be able to cancel the Windows leg. Windows is the
+      # supported target; macOS is advance warning and is allowed to fail on its
+      # own without hiding the result that matters.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [windows-2025, macos-15]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22.x
+          node-version: 24.15.0
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable snapshot
+        with:
+          toolchain: 1.97.1
 
       # Both `cargo test` and the Windows packaged build compile the same large
       # Tauri dependency tree; without a cache the packaged smoke would rebuild
       # it from scratch on every run.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: gg-app/src-tauri
-
-      - name: Linux system deps (tauri)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -170,9 +174,7 @@ jobs:
         run: node gg-app/scripts/smoke-sidecar.mjs
         shell: bash
 
-      # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills;
-      # node_modules carries platform-conditional binaries so one baseline
-      # cannot hold across the matrix).
+      # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills).
       - name: Sidecar size gate
         run: node bench/size-gate.mjs --only sidecar
         shell: bash
@@ -184,19 +186,45 @@ jobs:
         working-directory: gg-app/src-tauri
         run: cargo test
 
-      # Windows-only, and the ONLY job that exercises real installer output.
-      # `smoke-sidecar` above proves the bundled runtime loads, but it launches
-      # the sidecar directly — it cannot catch what actually breaks for a
-      # Windows user who installed the app: the shell failing to find
-      # `ggnode.exe` beside the exe, the sidecar resource missing from the MSI,
-      # or the app starting with no visible window. This builds an MSI,
-      # administratively extracts it (installs nothing), launches it with a
-      # throwaway user profile, and requires a visible window plus a packaged
-      # ggnode child running the packaged bundle.
-      #
-      # Only the Windows matrix leg pays the release-build cost; the macOS and
-      # Linux legs run in parallel and stay fast.
+      # Builds an MSI, extracts it without installing, launches it with a
+      # throwaway profile, and requires a visible window plus packaged sidecar.
+      # Windows-only: the script builds an MSI. There is no macOS equivalent yet.
       - name: Packaged app smoke (MSI build + launch)
         if: runner.os == 'Windows'
         working-directory: gg-app
         run: pnpm smoke:packaged
+
+      # macOS: prove the app still COMPILES and bundles. `--bundles app` stops at
+      # the .app and skips the DMG, which is the slow, flaky part and proves
+      # nothing extra about the code.
+      #
+      # Unsigned on purpose. Signing needs an Apple Developer certificate, and a
+      # secret must never be exposed to a pull request from a fork. This job
+      # answers one question — does it build — and the .app is discarded.
+      - name: macOS app build (compile check, unsigned)
+        if: runner.os == 'macOS'
+        working-directory: gg-app
+        run: pnpm tauri build --bundles app
+
+      # Keep the .app so it can be downloaded and tried on a real Mac. Without
+      # this the build proves it compiles and leaves nothing behind, which is no
+      # use to someone who has rented a cloud Mac for an hour to look at it.
+      #
+      # Zipped to preserve the bundle: a .app is a DIRECTORY, and uploading it
+      # unzipped flattens it into loose files that will not launch.
+      #
+      # It is unsigned, so macOS blocks it on first open. On a Mac you control,
+      # right-click the app and choose Open — that offers a way through that a
+      # double-click does not. Giving it to anyone else needs real signing.
+      - name: Keep the macOS build for testing
+        if: runner.os == 'macOS'
+        working-directory: gg-app/src-tauri/target/release/bundle/macos
+        run: ditto -c -k --sequesterRsrc --keepParent OrcaCoder.app OrcaCoder-unsigned.zip
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: runner.os == 'macOS'
+        with:
+          name: orcacoder-macos-unsigned
+          path: gg-app/src-tauri/target/release/bundle/macos/OrcaCoder-unsigned.zip
+          retention-days: 7
+          if-no-files-found: error

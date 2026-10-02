@@ -1,0 +1,340 @@
+name: Desktop protected signing
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Desktop candidate workflow run ID
+        required: true
+        type: string
+      commit_sha:
+        description: Exact approved 40-character commit SHA
+        required: true
+        type: string
+      version:
+        description: Exact approved SemVer
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24.15.0
+  PNPM_VERSION: 10.28.2
+  RUST_VERSION: 1.97.1
+  CANDIDATE_NAME: desktop-candidate-${{ inputs.version }}-${{ inputs.commit_sha }}
+
+jobs:
+  validate:
+    name: Validate candidate identity
+    runs-on: windows-2025
+    timeout-minutes: 10
+    outputs:
+      artifact_name: ${{ steps.identity.outputs.artifact_name }}
+    steps:
+      - name: Validate run and inputs
+        id: identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:APPROVED_SHA -notmatch '^[0-9a-f]{40}$') { throw 'commit_sha must be a full lowercase SHA' }
+          if ($env:APPROVED_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'version must be approved 0.x SemVer' }
+          if ($env:CANDIDATE_RUN_ID -notmatch '^[0-9]+$') { throw 'candidate_run_id must be numeric' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:CANDIDATE_RUN_ID" | ConvertFrom-Json
+          if ($run.conclusion -ne 'success') { throw 'candidate run did not succeed' }
+          if ($run.head_sha -ne $env:APPROVED_SHA) { throw 'candidate run SHA does not match approval' }
+          if ($run.path -ne '.github/workflows/release.yml') { throw 'run is not the Desktop candidate workflow' }
+          "artifact_name=$env:CANDIDATE_NAME" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.CANDIDATE_NAME }}
+          path: candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify candidate digest inventory
+        shell: pwsh
+        env:
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((Get-Content candidate/source-sha.txt -Raw) -ne $env:APPROVED_SHA) { throw 'candidate SHA file mismatch' }
+          if ((Get-Content candidate/version.txt -Raw) -ne $env:APPROVED_VERSION) { throw 'candidate version file mismatch' }
+          Push-Location candidate
+          Get-Content SHA256SUMS | ForEach-Object {
+            $hash, $name = $_ -split '  ', 2
+            if (-not $name -or (Get-FileHash $name -Algorithm SHA256).Hash.ToLower() -ne $hash) { throw "candidate digest mismatch: $name" }
+          }
+          Pop-Location
+
+  sign-binaries:
+    name: Authenticode application binaries
+    needs: validate
+    runs-on: windows-2025
+    timeout-minutes: 20
+    environment: desktop-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.CANDIDATE_NAME }}
+          path: candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign application and bundled runtime
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\candidate
+          files-folder-filter: exe,dll,node
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: OrcaCoder
+          description-url: https://github.com/24pfilms/orcacoder-releases
+          cache-dependencies: false
+          trace: false
+
+      - name: Verify binary signatures and timestamps
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binaries = @(Get-ChildItem candidate -Recurse -File | Where-Object Extension -In '.exe','.dll','.node')
+          if ($binaries.Count -lt 2) { throw 'expected application and bundled runtime binaries' }
+          $binaries | ForEach-Object {
+            $signature = Get-AuthenticodeSignature $_.FullName
+            if ($signature.Status -ne 'Valid') { throw "invalid Authenticode signature: $($_.FullName) ($($signature.Status))" }
+            if (-not $signature.TimeStamperCertificate) { throw "missing Authenticode timestamp: $($_.FullName)" }
+          }
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-signed-binaries-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: |
+            candidate/gg-app.exe
+            candidate/ggnode-x86_64-pc-windows-msvc.exe
+            candidate/sidecar/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  package:
+    name: Package signed NSIS installer
+    needs: sign-binaries
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable snapshot
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Prepare locked package workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm --filter @kenkaiiii/gg-ai build
+          pnpm --filter @kenkaiiii/gg-agent build
+          pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter gg-app build
+          pnpm --filter gg-app stage:node
+          pnpm --filter gg-app bundle:sidecar
+          mkdir -p gg-app/src-tauri/target/release
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-signed-binaries-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: signed-binaries
+
+      - name: Place and re-verify signed binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item signed-binaries/gg-app.exe gg-app/src-tauri/target/release/gg-app.exe -Force
+          Copy-Item signed-binaries/ggnode-x86_64-pc-windows-msvc.exe gg-app/src-tauri/binaries/ggnode-x86_64-pc-windows-msvc.exe -Force
+          Remove-Item gg-app/src-tauri/resources/sidecar -Recurse -Force
+          Copy-Item signed-binaries/sidecar gg-app/src-tauri/resources/sidecar -Recurse
+          $binaries = @(Get-ChildItem gg-app/src-tauri/target/release/gg-app.exe,gg-app/src-tauri/binaries/ggnode-x86_64-pc-windows-msvc.exe,gg-app/src-tauri/resources/sidecar -Recurse -File | Where-Object Extension -In '.exe','.dll','.node')
+          $binaries | ForEach-Object {
+            if ((Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid') { throw "signature was not preserved: $($_.FullName)" }
+          }
+
+      - name: Bundle unsigned installer around signed binaries
+        working-directory: gg-app
+        run: pnpm tauri bundle --ci --bundles nsis --no-sign
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-unsigned-installer-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: gg-app/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  sign-installer:
+    name: Authenticode NSIS installer
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 20
+    environment: desktop-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-unsigned-installer-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: installer
+
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign installer
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\installer
+          files-folder-filter: "*-setup.exe"
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: OrcaCoder
+          description-url: https://github.com/24pfilms/orcacoder-releases
+          cache-dependencies: false
+          trace: false
+
+      - name: Verify installer signature and timestamp
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem installer/*-setup.exe)
+          if ($installers.Count -ne 1) { throw "expected one NSIS installer, found $($installers.Count)" }
+          $signature = Get-AuthenticodeSignature $installers[0]
+          if ($signature.Status -ne 'Valid') { throw "invalid installer signature: $($signature.Status)" }
+          if (-not $signature.TimeStamperCertificate) { throw 'missing installer timestamp' }
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-authenticode-installer-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: installer/*-setup.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  tauri-sign:
+    name: Apply Tauri update signature
+    needs: sign-installer
+    runs-on: windows-2025
+    timeout-minutes: 15
+    environment: desktop-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.commit_sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install locked signing CLI and pinned SBOM generator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm install --frozen-lockfile --ignore-scripts
+          dotnet tool install --global Microsoft.Sbom.DotNetTool --version 4.1.5
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: desktop-authenticode-installer-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: release
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.CANDIDATE_NAME }}
+          path: candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Apply fleet update signature
+        working-directory: gg-app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = @(Get-ChildItem ../release/*-setup.exe)
+          if ($installer.Count -ne 1) { throw "expected one installer, found $($installer.Count)" }
+          pnpm tauri signer sign $installer[0].FullName
+          if (-not (Test-Path "$($installer[0].FullName).sig")) { throw 'Tauri signature was not created' }
+
+      - name: Assemble signed evidence
+        shell: pwsh
+        env:
+          APPROVED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item candidate/SHA256SUMS release/CANDIDATE-SHA256SUMS
+          Copy-Item candidate/cargo-metadata.json,candidate/pnpm-dependencies.json,candidate/Cargo.lock,candidate/pnpm-lock.yaml release/
+          Set-Content release/source-sha.txt $env:APPROVED_SHA -NoNewline
+          Set-Content release/version.txt $env:APPROVED_VERSION -NoNewline
+          sbom-tool generate -b release -bc . -pn OrcaCoder -pv $env:APPROVED_VERSION -ps 24pfilms -nsb https://github.com/24pfilms/orcacoder-releases
+          Copy-Item release/_manifest/spdx_2.2/manifest.spdx.json release/OrcaCoder.spdx.json
+          Remove-Item release/_manifest -Recurse -Force
+          Get-ChildItem release -File | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content release/SHA256SUMS
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-signed-release-${{ inputs.version }}-${{ inputs.commit_sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

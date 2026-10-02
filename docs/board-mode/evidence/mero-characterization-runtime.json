@@ -1,0 +1,51 @@
+{
+  "desktop": {
+    "viewport": [
+      1440,
+      900
+    ],
+    "itemCount": 9,
+    "itemIds": [
+      "fixture-arrow",
+      "fixture-circle",
+      "fixture-diamond",
+      "fixture-frame-inner",
+      "fixture-frame-outer",
+      "fixture-image",
+      "fixture-note",
+      "fixture-rect",
+      "fixture-text"
+    ],
+    "canvasTransform": "translate(205px, 100px) scale(1)",
+    "toolbarButtons": [],
+    "minimapVisible": false
+  },
+  "zoom": {
+    "before": "translate(205px, 100px) scale(1)",
+    "after": "translate(229.6px, 112px) scale(1.12)"
+  },
+  "selection": {
+    "selectedClass": "absolute select-none rounded-lg outline outline-1 outline-blue-500 outline-offset-1 ",
+    "contextualActions": [
+      "Decrease Font Size",
+      "Increase Font Size",
+      "No Fill",
+      "Bring to Front",
+      "Send to Back"
+    ]
+  },
+  "history": {
+    "duplicateCount": 10,
+    "undoCount": 9,
+    "redoCount": 10,
+    "restoredCount": 9
+  },
+  "minimum": {
+    "viewport": [
+      900,
+      600
+    ],
+    "itemCount": 9,
+    "horizontalOverflow": false
+  }
+}
